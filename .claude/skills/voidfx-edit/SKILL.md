@@ -48,23 +48,26 @@ reverse-engineered from the reference `doomsday_voidfx_9x16`. The full analysis 
 **Transitions: themed to the footage**
 Almost every cut is hidden. Pick transitions by what is in the clips: foliage → leaf wipe, lab or forensics → glass slide or blood, camera → Polaroid flash, water or boat → water rise, fire → smoke and embers. Keep about 3–4 plain hard cuts in the second half so the big transitions hit harder.
 
-| Transition (`edit/timeline.py`) | Use for | Length |
+| `out=` name in config.py (overlay `fx=`) | Use for | Length |
 |---|---|---|
-| `t_leaf` palm or fern frond wipe | outdoor and green shots | 0.30 s |
-| `t_blur` defocus dissolve with zoom | the neutral glue between big moves; use 3–4 times | 0.30 s |
-| `streaks` + `t_glass` light streaks, then a diagonal glass-edge wipe | sunlit or reflective shots | 0.19 s |
-| `t_smoke` rising smoke and embers | fire, heat, anger | 0.45 s |
-| `t_dip` quick dip to dark | into macro or extreme close-ups | 0.27 s |
-| `draw_slide` + `t_slidewipe` glass slide graphics, then the slide flies at camera | forensic or lab scenes | 1.3 s overlay + 0.47 s wipe |
-| `t_blood` blood pours down, then drains to reveal | the mid-edit climax | 0.6 s |
-| `t_spin` spin with rotational blur | disorientation, into an upside-down shot | 0.34 s |
-| `t_polaroid` flash, then the frame becomes a Polaroid that drops away | camera or photo moments | 0.66 s |
-| `t_drops` blood spatter blots | violence, the spatter wall | 0.46 s |
-| `t_whip` horizontal or vertical whip blur | fast energy; alternate the direction | 0.14–0.20 s |
-| `t_punch` hard cut with zoom-in and slight flash | a strong hit on a cut | 0.18–0.20 s |
-| `t_red` red flash with concentric rings | the single strongest hit | 0.5 s |
-| `t_water` water line rises with bubbles and tint, then drains | water and boats, near the end | 0.7 s |
-| `t_iris` blood drop falls and swells into a lens showing clip 1 | **always the last transition: the loop** | 0.7 s |
+| `leaf` (`out_opts` ang, seed) palm or fern frond wipe | outdoor and green shots | 0.30 s |
+| `blur` defocus dissolve with zoom | the neutral glue between big moves; use 3–4 times | 0.30 s |
+| `glass` (`fx=['streaks']` before it; `out_opts` ang, rev) light streaks, then a diagonal glass-edge wipe | sunlit or reflective shots | 0.19 s |
+| `smoke` rising smoke and embers | fire, heat, anger | 0.45 s |
+| `dip` (`fx=['fringe']` on macro shots) quick dip to dark | into macro or extreme close-ups | 0.27 s |
+| `slidewipe` (`fx=['slides']` on the same shot) glass slide graphics, then the slide flies at camera | forensic or lab scenes | 1.3 s overlay + 0.47 s wipe |
+| `blood` blood pours down, then drains to reveal | the mid-edit climax | 0.6 s |
+| `spin` spin with rotational blur | disorientation, into an upside-down shot | 0.34 s |
+| `polaroid` flash, then the frame becomes a Polaroid that drops away | camera or photo moments | 0.66 s |
+| `drops` blood spatter blots | violence, the spatter wall | 0.46 s |
+| `whip` (`out_opts` d=±1, vertical, dur, amount) horizontal or vertical whip blur | fast energy; alternate the direction | 0.14–0.20 s |
+| `punch={}` on the incoming shot (z, flash, dur) hard cut with zoom-in and slight flash | a strong hit on a cut | 0.18–0.20 s |
+| `red` red flash with concentric rings | the single strongest hit | 0.5 s |
+| `water` water line rises with bubbles and tint, then drains | water and boats, near the end | 0.7 s |
+| `iris` blood drop falls and swells into a lens showing clip 1 | **always the last transition: the loop** | 0.7 s |
+| `cut` plain hard cut | 3–4 in the second half | 0 |
+
+Other overlays: `fx=['leak_bubbles']` (red light leak and drifting particles) on a long hold before the ending.
 
 Follow the reference's arc:
 - **Opening:** two organic wipes.
@@ -92,29 +95,30 @@ The user's stored footage is listed in `scenepacks/README.md` (Dexter S1, S2, S4
    python edit/tools/catalog.py media/scenepack.mp4 -o media/catalog
    ```
    Look at every `sheet_N.jpg`, shortlist about 35 candidates, then run `--strip <ids>` and look at the strips to choose in-points.
-3. **Plan:** write the cut list (half-beat grid points) and a shot table: clip, in-point, transition out, with reasons. Show the user this plan before rendering a long edit, unless they asked for a finished video straight away.
-4. **Configure:** start a new edit as a copy of `edit/` (for example `edits/<name>/`), keeping `fx.py` and `render.py`, and update:
-   - `config.py`: `SCENEPACK`, `SONG`, `SONG_OFFSET`, `CUTS`, `SHOTS` (src in-point, `x` face hint, `z`, grade and push per clip).
-   - `timeline.py`: the `TRANS` list and the shot-specific overlays in `layer()`. These are tied to shot indexes and times, so rewrite them for the new cut list.
-   - `audio.py`: the SFX `put(...)` calls, so they follow the new transition times.
-5. **Extract and check framing:** run `python extract.py` and `python valid.py`, then look at `out/sheets/clips.jpg`. Replace any clip that is mostly a back of a head, a blank wall, or crosses a hard cut inside its slot. `valid.py` prints `CUTS` when that happens.
-6. **Preview every transition** before the full render:
-   ```bash
-   python render.py sheet NAME t0 t1 0.05 10
-   ```
-   Look at each sheet. Check for edges or lines left by mattes, graphics that look like flat clip-art, and shots that are too dark or too bright.
-7. **Full render:** `python render.py frames 0 <N> 4`, then `python audio.py`, then the ffmpeg encode line in `build.sh`. This takes about 1.5 min for 22 s on 4 cores.
+3. **Plan:** write a shot table: clip, in-point, length in half-beats, transition out, with reasons. Show the user this plan before rendering, unless they asked for a finished video straight away.
+4. **Configure: edit only `config.py`.** Start a new edit as a copy of `edit/` (for example `edits/<name>/`) and set:
+   - media and timing: `SCENEPACK`, `SONG`, `SONG_OFFSET`, `GRID0` and `HALF` (from beats.json: `grid[0]` and `period / 2`), `FIRST_CUT`.
+   - `SHOTS`: one dict per clip, with `beats` (2–4 half-beats, one 5–6 hold), `out` (transition name), optional `out_opts`, `fx`, `punch`, `pack=` (to take that clip from a different scene pack), plus `src` in-point, `x` face hint, `z`, grade and push.
+
+   Cut times, transition timing (wipes placed slightly late, per `timing.py`) and every sound effect are derived automatically. Importing the config or timeline rejects bad plans with a clear message: wrong lengths, unknown names, overlapping transitions, or no `iris` at the end.
+5. **Extract:** `python extract.py` cuts all clips in parallel (about 100 s for 22 clips). It tracks faces, converts any source to 60 fps, applies each shot's grade once, and stores 4:4:4 JPEG frames. Check `out/sheets/clips.jpg`, and read the WARNING lines, which flag a clip that runs out of usable frames (it would freeze). After changing one shot's `src`, framing or grade, re-extract only that shot: `python extract.py 7`.
+6. **Draft:** `python render.py video --draft` makes a 30 fps review copy in about 45 s. Check transitions in detail with `python render.py sheet NAME t0 t1 0.05 10`: look for matte edges, flat-looking graphics, and shots that are too dark or too bright.
+7. **Final:** `python render.py video` renders straight into the encoder (x264 medium, film tuning, crf 18) with the soundtrack in one pass, giving `out/edit.mp4` in about 2.5 min. `bash build.sh` runs extract plus final in one step, and `bash build.sh --draft` gives the quick version.
 8. **QA:**
    - Re-measure the cuts against the grid; every hard cut should be within ±20 ms.
    - Look at a 4 fps overview sheet of the encoded file.
    - Check the last frame flows into the first.
-   - Check the file size (about 75 MB for 22 s).
+   - Check the file size (about 90 MB for 22 s).
 9. Deliver the MP4 and list anything unverified. You cannot listen to the mix, so say that the SFX level should be checked by ear.
+
+To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRANSITIONS` with its window relative to the cut, add its sound in `audio.py` `sfx_for`, and add a `SHIFT` in `timing.py` if it should land late.
 
 ## Known limits to tell the user about
 
 - 720p scene packs get upscaled about 2.7× in the 9:16 crop and look soft. Ask for a 1080p or 4K pack when quality matters.
 - The graphics (fronds, smoke, blood, water) are procedural approximations of After Effects-style assets. The leaf wipe and blood spatter are the most stylized.
+
+- Packs at 30 or 24 fps are converted to 60 fps by repeating frames, so playback speed is right but slow motion looks steppy. Prefer 60 fps packs for slow, flowing shots.
 
 ## When the user gives feedback
 
@@ -122,3 +126,4 @@ Update this file so the preference sticks. Change the rule and add a dated line 
 
 ### Preference log
 - 2026-11-09: Style adopted as the default for all future edits, based on the Dexter × Doomsday voidfx reference (first build: `edit/`, `dexter_doomsday_edit_v1.mp4`).
+- 2026-11-09: Faster pipeline. The plan lives in config.py alone, with cuts, transitions and SFX derived from it. The grade is applied once at extract time, the draft mode takes 45 s, and render plus encode is a single pass with no intermediate image files.

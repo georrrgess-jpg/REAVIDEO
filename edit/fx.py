@@ -3,7 +3,16 @@ import math, json
 import numpy as np, cv2
 from config import *
 
-META = {int(k): v for k, v in json.load(open('clips/meta.json')).items()}
+class _Meta(dict):
+    """clips/meta.json, loaded on first use (extract.py writes it)."""
+    def __missing__(self, i):
+        if not dict.__len__(self):
+            self.update({int(k): v for k, v in json.load(open('clips/meta.json')).items()})
+            if i in self: return self[i]
+        raise KeyError('shot %s has no clip: run python extract.py %s' % (i, i))
+
+
+META = _Meta()
 YY, XX = np.mgrid[0:H, 0:W].astype(np.float32)
 
 
@@ -64,6 +73,23 @@ def grade(img, s):
     return np.clip(f, 0, 1)
 
 
+_luts = {}
+
+
+def grade_u8(img, s):
+    """grade() for 8-bit frames via a full 256^3 lookup table built once per grade (identical output, ~10x faster)."""
+    key = (s['sat'], s['rk'], s['con'], tuple(s['tint']), s['gain'])
+    if key not in _luts:
+        if len(_luts) > 2: _luts.pop(next(iter(_luts)))
+        v = np.arange(256, dtype=np.uint8); lut = np.empty((256 * 256 * 256, 3), np.uint8)
+        for b in range(0, 256, 16):                      # 16 blue planes at a time keeps memory low
+            cube = np.stack(np.meshgrid(v[b:b + 16], v, v, indexing='ij'), -1).reshape(16 * 256, 256, 3)
+            lut[b * 65536:(b + 16) * 65536] = (grade(cube, s) * 255 + 0.5).astype(np.uint8).reshape(-1, 3)
+        _luts[key] = lut
+    i = img.astype(np.uint32); idx = (i[..., 0] << 16) | (i[..., 1] << 8) | i[..., 2]
+    return _luts[key][idx]
+
+
 def zoom(img, z, ang=0.0, cx=W / 2, cy=H * 0.42):
     M = cv2.getRotationMatrix2D((cx, cy), ang, z)
     return cv2.warpAffine(img, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
@@ -74,7 +100,8 @@ def shot(i, t, ez=1.0):
     k = round((PRE + t - s['start']) * FPS)
     u = (t - s['start']) / (s['end'] - s['start'])
     z = max(lerp(s['push'][0], s['push'][1], u), 1.0) * ez
-    f = grade(clip_frame(i, k), s)
+    c = clip_frame(i, k)
+    f = c.astype(np.float32) * np.float32(1 / 255) if META[i].get('graded') else grade(c, s)
     return zoom(f, z) if abs(z - 1) > 1e-4 else f
 
 
@@ -117,14 +144,15 @@ _fin = {}
 
 def finish(f, n):
     if not _fin:
-        _fin['vig'] = (1 - 0.42 * np.clip(((XX - W / 2) / (W * 0.78)) ** 2 + ((YY - H / 2) / (H * 0.70)) ** 2, 0, 1) ** 1.25)[..., None]
+        _fin['vig'] = np.float32(1) * (1 - 0.42 * np.clip(((XX - W / 2) / (W * 0.78)) ** 2 + ((YY - H / 2) / (H * 0.70)) ** 2, 0, 1) ** 1.25)[..., None]
         r = np.random.default_rng(99)
         _fin['grain'] = [cv2.resize(r.normal(0, 0.030, (H * 2 // 3, W * 2 // 3)).astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)[..., None] for _ in range(8)]
     sm = cv2.resize(f, (W // 8, H // 8), interpolation=cv2.INTER_AREA)
     hl = cv2.GaussianBlur(np.clip(sm - 0.62, 0, 1), (0, 0), 7)
     f = f + cv2.resize(hl, (W, H), interpolation=cv2.INTER_LINEAR) * 0.45       # soft bloom
-    f = f * _fin['vig'] + _fin['grain'][n % 8]
-    return (np.clip(f, 0, 1) * 255 + 0.5).astype(np.uint8)
+    f *= _fin['vig']; f += _fin['grain'][n % 8]
+    np.clip(f, 0, 1, out=f); f *= 255; f += 0.5
+    return f.astype(np.uint8)
 
 
 # ---------------------------------------------------------------- sprites

@@ -25,20 +25,19 @@ def streaks(f, t, t0=3.25, dur=0.65):
     return f + (acc * amp)[..., None] * np.float32([1.0, 0.97, 0.92])
 
 
-SLIDE_T0 = 5.657
-WIPE7 = (6.50, 6.97)
+SLIDE_T0 = 0.0   # set per call from the shot start
 
 
-def slide_pose(which, t):
-    u = t - SLIDE_T0
+def slide_pose(which, t, t0=None):
+    u = t - (SLIDE_T0 if t0 is None else t0)
     if which == 0: return (0.40 * W + 20 * u, 0.33 * H - 16 * u, math.radians(-5 + 3.5 * u), 0.50)
     return (0.60 * W - 14 * u, 0.71 * H + 22 * u, math.radians(6 - 3 * u), 0.64)
 
 
-def draw_slide(f, which, t, alpha=1.0, pose=None, sprite=None):
+def draw_slide(f, which, t, alpha=1.0, pose=None, t0=0.0):
     spr, body = lazy('slide', make_slide)
-    cx, cy, ang, sc = pose or slide_pose(which, t)
-    ent = eout((t - SLIDE_T0 - 0.05 * which) / 0.28)
+    cx, cy, ang, sc = pose or slide_pose(which, t, t0)
+    ent = eout((t - t0 - 0.05 * which) / 0.28)
     if pose is None: sc *= 1.3 - 0.3 * ent; alpha *= ent
     if alpha <= 0.003: return f
     M = affine((spr.shape[1] / 2, spr.shape[0] / 2), (cx, cy), ang, sc)
@@ -68,18 +67,25 @@ def bubbles(f, t, alpha, mask=None, seed=21, n=70, t0=19.8, small=False):
     return f + c[..., None] * np.float32([1.0, 1.0, 0.95])
 
 
+def fringe(f):
+    f = f.copy(); f[..., 2] = np.roll(f[..., 2], 9, axis=1); f[..., 0] = np.roll(f[..., 0], -5, axis=1)
+    f[..., 2] += 0.10 * ss(0.55 * W, W, XX)
+    return f
+
+
 def layer(i, t, ez=1.0):
-    f = shot(i, t, ez)
-    if i == 3: f = streaks(f, t)
-    elif i == 5:   # macro eye: red/cyan fringing
-        f = f.copy(); f[..., 2] = np.roll(f[..., 2], 9, axis=1); f[..., 0] = np.roll(f[..., 0], -5, axis=1)
-        f[..., 2] += 0.10 * ss(0.55 * W, W, XX)
-    elif i == 6:
-        f = draw_slide(f, 1, t, alpha=1 - ease((t - WIPE7[0]) / 0.3))
-        if t < WIPE7[0]: f = draw_slide(f, 0, t)
-    elif i == 19:
-        f = light_leak(f, t)
-        f = bubbles(f, t, ease((t - 19.75) / 0.35), small=True, n=55)
+    s = SHOTS[i]; f = shot(i, t, ez)
+    for name in s.get('fx', ()):
+        if name == 'streaks': f = streaks(f, t, t0=s['end'] - 0.65)          # glass light streaks, end on the wipe
+        elif name == 'fringe': f = fringe(f)                                 # macro: red/cyan fringing
+        elif name == 'slides':                                               # floating glass blood slides
+            w0 = s['end'] - 0.45
+            f = draw_slide(f, 1, t, alpha=1 - ease((t - w0) / 0.3), t0=s['start'])
+            if t < w0 or s.get('out') != 'slidewipe': f = draw_slide(f, 0, t, t0=s['start'])
+        elif name == 'leak_bubbles':                                         # red light leak + drifting particles
+            f = light_leak(f, t)
+            f = bubbles(f, t, ease((t - (s['end'] - 0.50)) / 0.35), small=True, n=55, t0=s['end'] - 0.45)
+        else: raise ValueError('unknown fx %r on shot %d' % (name, i))
     return f
 
 
@@ -169,11 +175,11 @@ def t_dip(t, c, A, B, a, b):
     return blur(layer(B, t), 16 * (1 - u)) * (0.06 + 0.94 * eout(u))
 
 
-def t_slidewipe(t, A, B):
-    a, b = WIPE7; p = clamp((t - a) / (b - a))
+def t_slidewipe(t, A, B, a, b):
+    p = clamp((t - a) / (b - a))
     spr, body = lazy('slide', make_slide)
     f = layer(A, t)
-    cx0, cy0, a0, s0 = slide_pose(0, t)
+    cx0, cy0, a0, s0 = slide_pose(0, t, SHOTS[A]['start'])
     e = ease(p)
     cx, cy = lerp(cx0, W / 2, e), lerp(cy0, H / 2, e)
     ang = lerp(a0, math.radians(-90), ease(p * 1.05))
@@ -184,7 +190,7 @@ def t_slidewipe(t, A, B):
     return over(f, place(spr, M) * (1 - ease((p - 0.55) / 0.45)))
 
 
-def t_blood(t, A, B, a=7.53, sw=7.82, b=8.14):
+def t_blood(t, A, B, a, sw, b):
     f = layer(A, t) if t < sw else layer(B, t)
     BN = lazy('blood_n', lambda: cv2.resize(tile_fbm(700, 540, octaves=5, seed=41, base=6), (W, 2 * H), interpolation=cv2.INTER_CUBIC))
     BN2 = lazy('blood_n2', lambda: cv2.resize(tile_fbm(500, 540, octaves=5, seed=42, base=22), (W, 2 * H), interpolation=cv2.INTER_CUBIC))
@@ -311,7 +317,7 @@ def t_red(t, c, A, B, a, b):
     return f + (ring * 0.34 * r)[..., None] * np.float32([0.70, 0.70, 1.0])
 
 
-def t_water(t, A, B, a=21.10, sw=21.379, b=21.80):
+def t_water(t, A, B, a, sw, b):
     f = layer(A, t) if t < sw else layer(B, t)
     x = np.arange(W, dtype=np.float32)
     wave = 22 * np.sin(x / 66 + 10 * t) + 10 * np.sin(x / 27 - 17 * t + 1)
@@ -331,7 +337,7 @@ def t_water(t, A, B, a=21.10, sw=21.379, b=21.80):
     return bubbles(f, t, strength, mask=m, seed=5, n=80, t0=a)
 
 
-def t_iris(t, A, B, a=21.80, fall=22.20, end=22.52):
+def t_iris(t, A, B, a, fall, end):
     if t >= end: return layer(B, t - DUR)
     fa = layer(A, t); fb = layer(B, t - DUR)
     if t < fall:
@@ -355,30 +361,58 @@ def t_iris(t, A, B, a=21.80, fall=22.20, end=22.52):
     return fa * (1 - inside) + drop * inside
 
 
-TRANS = [
-    (C[1] - .15, C[1] + .15, lambda t: t_leaf(t, C[1], 0, 1, -38, 3)),
-    (C[2] - .15, C[2] + .15, lambda t: t_leaf(t, C[2], 1, 2, 162, 9)),
-    (C[3] - .15, C[3] + .15, lambda t: t_blur(t, C[3], 2, 3)),
-    (3.80, 3.99, lambda t: t_glass(t, 3.80, 3.99, 3, 4)),
-    (4.83, 5.28, lambda t: t_smoke(t, C[5], 4, 5, 4.83, 5.28)),
-    (5.56, 5.83, lambda t: t_dip(t, C[6], 5, 6, 5.56, 5.83)),
-    (WIPE7[0], WIPE7[1], lambda t: t_slidewipe(t, 6, 7)),
-    (7.53, 8.14, lambda t: t_blood(t, 7, 8)),
-    (C[9] - .15, C[9] + .15, lambda t: t_blur(t, C[9], 8, 9)),
-    (C[10] - .17, C[10] + .17, lambda t: t_spin(t, C[10], 9, 10)),
-    (C[11] - .10, C[11] + .56, lambda t: t_polaroid(t, C[11], 10, 11)),
-    (C[12] - .26, C[12] + .20, lambda t: t_drops(t, C[12], 11, 12, C[12] - .26, C[12] + .20)),
-    (C[13] - .10, C[13] + .10, lambda t: t_whip(t, C[13], 12, 13, d=1)),
-    (C[14] - .15, C[14] + .15, lambda t: t_blur(t, C[14], 13, 14)),
-    (C[15], C[15] + .20, lambda t: t_punch(t, C[15], 15)),
-    (C[16] - .14, C[16] + .38, lambda t: t_red(t, C[16], 15, 16, C[16] - .14, C[16] + .38)),
-    (C[17] - .07, C[17] + .07, lambda t: t_whip(t, C[17], 16, 17, dur=0.14, vertical=True, amount=0.5)),
-    (C[18], C[18] + .18, lambda t: t_punch(t, C[18], 18, dur=0.18, z=1.14, flash=0.10)),
-    (C[19] - .10, C[19] + .10, lambda t: t_whip(t, C[19], 18, 19, d=-1)),
-    (20.16, 20.34, lambda t: t_glass(t, 20.16, 20.34, 19, 20, ang=148, rev=True, bright=0.8)),
-    (21.10, 21.80, lambda t: t_water(t, 20, 21)),
-    (21.80, DUR + 1, lambda t: t_iris(t, 21, 0)),
-]
+# Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
+# c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
+# so the same transition works at any tempo and position.
+def _iris_times(c):   # c = end of the last shot; the drop falls, swells and reveals shot 0
+    return c - 0.60, c - 0.20, c + 0.12
+
+
+TRANSITIONS = {
+    'cut':       (lambda c, o: (c, c), None),
+    'leaf':      (lambda c, o: (c - .15, c + .15), lambda t, c, A, B, o: t_leaf(t, c, A, B, o.get('ang', -38), o.get('seed', 3))),
+    'blur':      (lambda c, o: (c - .15, c + .15), lambda t, c, A, B, o: t_blur(t, c, A, B)),
+    'glass':     (lambda c, o: (c - .10, c + .09), lambda t, c, A, B, o: t_glass(t, c - .10, c + .09, A, B, ang=o.get('ang', 32), rev=o.get('rev', False), bright=o.get('bright', 1.0))),
+    'smoke':     (lambda c, o: (c - .198, c + .252), lambda t, c, A, B, o: t_smoke(t, c, A, B, c - .198, c + .252)),
+    'dip':       (lambda c, o: (c - .097, c + .173), lambda t, c, A, B, o: t_dip(t, c, A, B, c - .097, c + .173)),
+    'slidewipe': (lambda c, o: (c - .45, c + .02), lambda t, c, A, B, o: t_slidewipe(t, A, B, c - .45, c + .02)),
+    'blood':     (lambda c, o: (c - .29, c + .32), lambda t, c, A, B, o: t_blood(t, A, B, c - .29, c, c + .32)),
+    'spin':      (lambda c, o: (c - .17, c + .17), lambda t, c, A, B, o: t_spin(t, c, A, B)),
+    'polaroid':  (lambda c, o: (c - .10, c + .56), lambda t, c, A, B, o: t_polaroid(t, c, A, B)),
+    'drops':     (lambda c, o: (c - .26, c + .20), lambda t, c, A, B, o: t_drops(t, c, A, B, c - .26, c + .20)),
+    'whip':      (lambda c, o: (c - o.get('dur', .20) / 2, c + o.get('dur', .20) / 2),
+                  lambda t, c, A, B, o: t_whip(t, c, A, B, dur=o.get('dur', .20), d=o.get('d', 1), vertical=o.get('vertical', False), amount=o.get('amount', 0.9))),
+    'red':       (lambda c, o: (c - .14, c + .38), lambda t, c, A, B, o: t_red(t, c, A, B, c - .14, c + .38)),
+    'water':     (lambda c, o: (c - .279, c + .421), lambda t, c, A, B, o: t_water(t, A, B, c - .279, c, c + .421)),
+}
+
+
+def build_trans():
+    out = []; n = len(SHOTS)
+    for i, s in enumerate(SHOTS):
+        name = s.get('out', 'cut')
+        if name == 'iris':
+            if i != n - 1: raise ValueError('iris is the loop ending: only the last shot can use it')
+            continue
+        if i == n - 1: raise ValueError('the last shot must use out=\'iris\' (the loop)')
+        if name not in TRANSITIONS: raise ValueError('shot %d: unknown transition %r' % (i, name))
+        c = CUTS[i + 1]; o = s.get('out_opts', {}); win, fn = TRANSITIONS[name]
+        if fn is not None:
+            a, b = win(c, o); out.append((a, b, (lambda fn, c, A, B, o: lambda t: fn(t, c, A, B, o))(fn, c, i, i + 1, o)))
+    for i, s in enumerate(SHOTS):                       # punch-ins on the first frames of a shot
+        if 'punch' in s and i > 0:
+            p = s['punch']; c = CUTS[i]; d = p.get('dur', .20)
+            out.append((c, c + d, (lambda c, i, p, d: lambda t: t_punch(t, c, i, dur=d, z=p.get('z', 1.22), flash=p.get('flash', 0.14)))(c, i, p, d)))
+    a, fall, end = _iris_times(CUTS[-1]); last = n - 1
+    if SHOTS[-1].get('out') == 'iris':
+        out.append((a, DUR + 1, lambda t: t_iris(t, last, 0, a, fall, end)))
+    out.sort(key=lambda w: w[0])
+    for (a0, b0, _), (a1, b1, _) in zip(out, out[1:]):
+        if a1 < b0 - 1e-3: raise ValueError('transitions overlap at %.2f-%.2f s: make the shot between them longer' % (a1, b0))
+    return out
+
+
+TRANS = build_trans()
 
 
 def base_index(t):

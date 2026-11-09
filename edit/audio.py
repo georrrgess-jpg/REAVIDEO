@@ -82,38 +82,45 @@ def shimmer(dur=0.7):
     y *= np.linspace(0.2, 1, n); return y / np.abs(y).max()
 
 
-C = CUTS
-put(whoosh(0.34, 700, 5200), C[1] - 0.20, gain=0.085)                 # leaf wipes: airy rustle
-put(whoosh(0.34, 5200, 800), C[2] - 0.20, gain=0.085)
-put(whoosh(0.36, 300, 1500, q=0.8), C[3] - 0.18, gain=0.06)           # blur dissolve
-put(shimmer(0.62), 3.28, pan=0.3, gain=0.030)                         # glass light streaks
-put(whoosh(0.26, 1500, 6500), 3.76, gain=0.075)                       # glass wipe
-put(whoosh(0.60, 160, 900, q=0.7, peak=0.4), 4.80, gain=0.11)         # fire / smoke
-put(whoosh(0.52, 400, 3800, peak=0.8), 6.47, gain=0.085)              # slide flies at camera
-put(whoosh(0.70, 220, 700, q=0.7, peak=0.4), 7.50, gain=0.12)         # blood
-put(bubbles(0.55, 18), 7.56, gain=0.05)
-put(whoosh(0.36, 300, 1500, q=0.8), C[9] - 0.18, gain=0.06)
-put(whoosh(0.42, 500, 4200, peak=0.5), C[10] - 0.21, gain=0.095)      # spin
-put(shutter(), C[11] - 0.012, gain=0.16)                              # camera
-put(whoosh(0.30, 2500, 600, peak=0.3), C[11] + 0.30, gain=0.05)       # polaroid drops away
-put(splat(), C[12] - 0.22, pan=-0.2, gain=0.13); put(splat(0.16), C[12] - 0.10, pan=0.3, gain=0.09)
-put(whoosh(0.24, 900, 5200), C[13] - 0.12, gain=0.09)                 # whip
-put(whoosh(0.36, 300, 1500, q=0.8), C[14] - 0.18, gain=0.06)
-put(boom(0.5, 80, 42), C[15], gain=0.14)                              # punch-in
-put(whoosh(0.34, 250, 2600, peak=0.92), C[16] - 0.33, gain=0.09)      # swell into the red hit
-put(boom(), C[16], gain=0.26)
-put(whoosh(0.18, 1500, 5000), C[17] - 0.09, gain=0.06)
-put(boom(0.4, 70, 40), C[18], gain=0.10)
-put(whoosh(0.24, 5200, 900), C[19] - 0.12, gain=0.09)
-put(whoosh(0.26, 1500, 6500), 20.12, gain=0.07)
-put(bubbles(0.75), 21.08, gain=0.10)                                  # water
-put(whoosh(0.50, 300, 4200, peak=0.9), 22.05, gain=0.09)              # iris riser into the loop
+# ---- SFX follow the plan: each transition type has its sound, placed relative to its cut ----
+def sfx_for(name, c, o, up):
+    if name == 'leaf': put(whoosh(0.34, 700, 5200) if up else whoosh(0.34, 5200, 800), c - 0.20, gain=0.085)
+    elif name == 'blur': put(whoosh(0.36, 300, 1500, q=0.8), c - 0.18, gain=0.06)
+    elif name == 'glass': put(whoosh(0.26, 1500, 6500), c - 0.14, gain=0.075)
+    elif name == 'smoke': put(whoosh(0.60, 160, 900, q=0.7, peak=0.4), c - 0.228, gain=0.11)
+    elif name == 'slidewipe': put(whoosh(0.52, 400, 3800, peak=0.8), c - 0.48, gain=0.085)
+    elif name == 'blood':
+        put(whoosh(0.70, 220, 700, q=0.7, peak=0.4), c - 0.32, gain=0.12); put(bubbles(0.55, 18), c - 0.26, gain=0.05)
+    elif name == 'spin': put(whoosh(0.42, 500, 4200, peak=0.5), c - 0.21, gain=0.095)
+    elif name == 'polaroid':
+        put(shutter(), c - 0.012, gain=0.16); put(whoosh(0.30, 2500, 600, peak=0.3), c + 0.30, gain=0.05)
+    elif name == 'drops':
+        put(splat(), c - 0.22, pan=-0.2, gain=0.13); put(splat(0.16), c - 0.10, pan=0.3, gain=0.09)
+    elif name == 'whip':
+        d = o.get('dur', 0.20); big = o.get('amount', 0.9) > 0.7
+        f0, f1 = (900, 5200) if o.get('d', 1) > 0 else (5200, 900)
+        if o.get('vertical'): f0, f1 = 1500, 5000
+        put(whoosh(d + 0.04, f0, f1), c - d / 2 - 0.02, gain=0.09 if big else 0.06)
+    elif name == 'red':
+        put(whoosh(0.34, 250, 2600, peak=0.92), c - 0.33, gain=0.09); put(boom(), c, gain=0.26)
+    elif name == 'water': put(bubbles(0.75), c - 0.30, gain=0.10)
+    elif name == 'iris': put(whoosh(0.50, 300, 4200, peak=0.9), c - 0.35, gain=0.09)
+
+
+for i, s in enumerate(SHOTS):
+    o = s.get('out_opts', {}); name = s.get('out', 'cut'); c = CUTS[i + 1]
+    sfx_for(name, c, o, up=math.cos(math.radians(o.get('ang', -38))) > 0)
+    if 'streaks' in s.get('fx', ()): put(shimmer(0.62), s['end'] - 0.62, pan=0.3, gain=0.030)
+    if 'punch' in s and i > 0:
+        big = s['punch'].get('z', 1.22) > 1.18
+        put(boom(0.5, 80, 42) if big else boom(0.4, 70, 40), s['start'], gain=0.14 if big else 0.10)
 
 mix = music + fx
 fade = int(0.008 * SR); ramp = np.linspace(0, 1, fade)[:, None]
 mix[:fade] *= ramp; mix[-fade:] *= ramp[::-1]
 pk = np.abs(mix).max()
 if pk > 0.97: mix *= 0.97 / pk
+import os; os.makedirs('out', exist_ok=True)
 sf.write('out/audio.wav', mix.astype(np.float32), SR)
 sf.write('out/sfx_only.wav', fx.astype(np.float32), SR)
 print('music peak %.2f  sfx peak %.3f  mix peak %.2f  sfx rms/music rms %.3f' % (np.abs(music).max(), np.abs(fx).max(), np.abs(mix).max(), np.sqrt((fx ** 2).mean()) / np.sqrt((music ** 2).mean())))
