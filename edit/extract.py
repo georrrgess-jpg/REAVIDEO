@@ -1,6 +1,9 @@
 import numpy as np, cv2, subprocess, os, sys, json
 from config import *
-SRC = '../media/scenepack.mp4'; SW, SH = 1280, 720
+SRC = SCENEPACK
+_p = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height',
+                     '-of', 'csv=p=0', SRC], stdout=subprocess.PIPE, text=True, check=True).stdout
+SW, SH = (int(v) for v in _p.strip().split(',')[:2])
 det = cv2.FaceDetectorYN.create(os.path.expanduser('~/.cache/rea-video/models/face_detection_yunet_2023mar.onnx'), '', (SW, SH), 0.55, 0.3, 50)
 def read(a, d):
     p = subprocess.Popen(['ffmpeg', '-v', 'error', '-ss', '%.4f' % a, '-i', SRC, '-t', '%.4f' % d, '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-'], stdout=subprocess.PIPE)
@@ -15,7 +18,7 @@ meta = {}
 for i in only:
     s = SHOTS[i]; a = s['src'] - PRE; d = (s['end'] - s['start']) + PRE + POST
     fr = read(a, d); n = len(fr)
-    cw = 405 / s['z']; ch = 720 / s['z']
+    ch = SH / s['z']; cw = ch * W / H   # full-height 9:16 window, tightened by z
     xs = np.full(n, np.nan)
     for k in range(0, n, 3):
         _, faces = det.detect(fr[k])

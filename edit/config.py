@@ -2,7 +2,9 @@
 # (song offset 65.643 s, grid g(k) = 0.311 + 0.31446 k).
 W, H, FPS = 1080, 1920, 60
 DUR = 22.65
-SONG_OFFSET = 65.643
+SCENEPACK = '../media/scenepack.mp4'   # source footage, any 16:9 resolution
+SONG = '../media/song.mp3'
+SONG_OFFSET = 65.643                    # section start in the song, from tools/beatgrid.py
 PRE = 0.60   # source handle before slot start (s)
 POST = 0.50  # source handle after slot end (s)
 CUTS = [0.0, 0.940, 1.883, 2.827, 3.900, 5.028, 5.657, 6.950, 7.820, 8.801, 10.059, 11.317,

@@ -5,7 +5,7 @@ from config import *
 
 SR = 48000
 N = int(round(DUR * SR))
-raw = subprocess.run(['ffmpeg', '-v', 'error', '-ss', '%.4f' % SONG_OFFSET, '-i', '../media/song.mp3', '-t', '%.4f' % (DUR + 0.2),
+raw = subprocess.run(['ffmpeg', '-v', 'error', '-ss', '%.4f' % SONG_OFFSET, '-i', SONG, '-t', '%.4f' % (DUR + 0.2),
                       '-f', 'f32le', '-ac', '2', '-ar', str(SR), '-'], stdout=subprocess.PIPE).stdout
 music = np.frombuffer(raw, np.float32).reshape(-1, 2)[:N].astype(np.float64)
 music *= 0.84 / np.abs(music).max()
