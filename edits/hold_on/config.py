@@ -20,10 +20,10 @@ PRE, POST = 0.60, 0.50
 
 MUTED = dict(con=1.12, tint=(1.04, 1.0, .96))
 SHOTS = [
- # -- bar 1-2: sunlit public Dexter, two organic wipes, the frame shatters on the loudest snare (3.0 s)
+ # -- bar 1-2: sunlit public Dexter, two organic wipes, Dexter's knife thrusts in and the camera dives into the blade on the loudest snare (3.0 s)
  dict(name='sky_face',   out='leaf', out_opts={'ang': -38, 'seed': 3},  src=46.30, x=.50, sat=.55, rk=.9, gain=.95, push=(1.00, 1.07), **MUTED),
  dict(name='shh_jungle', beats=2, out='leaf', out_opts={'ang': 162, 'seed': 9}, pack=S2B, src=346.78, x=.47, z=1.35, cy=.40, sat=.50, rk=.8, gain=1.05, push=(1.00, 1.06), **MUTED),
- dict(name='look_up',    beats=4, out='shatter', out_opts={'cx': 0.48, 'cy': 0.38}, src=53.30, x=.44, sat=.50, rk=.9, gain=1.15, push=(1.00, 1.07), **MUTED),
+ dict(name='look_up',    beats=4, out='knife', src=53.30, x=.44, sat=.50, rk=.9, gain=1.15, push=(1.00, 1.07), **MUTED),
  dict(name='car_window', beats=2, out='blur', src=276.45, x=.47, sat=.40, rk=.8, gain=1.15, push=(1.06, 1.00), **MUTED),
  # -- bar 3-4: darker, effects build: smoke, the blood room, dive into the slide's blood under a microscope, lab, blood pour
  dict(name='intense',    beats=4, out='smoke', src=57.70, x=.59, sat=.45, rk=1.0, gain=1.40, push=(1.00, 1.07), con=1.15, tint=(1.03, 1.0, .97)),

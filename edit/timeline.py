@@ -575,6 +575,76 @@ def t_plastic(t, c, A, B, a, b):
     return base * (1 - m) * (1 - shadow[..., None]) + milky * m
 
 
+# ------------------------------------------------------------ kill knife (shape window)
+def _knife_geo():
+    def build():
+        Lb = 900.0; sv = np.linspace(0, 1, 60)
+        spine = -90 + 50 * np.clip((sv - 0.75) / 0.25, 0, 1) ** 2
+        edge = 90 - 130 * np.clip((sv - 0.45) / 0.55, 0, 1) ** 1.8
+        blade = np.concatenate([np.stack([sv * Lb, spine], 1), np.stack([sv[::-1] * Lb, edge[::-1]], 1)])
+        bolster = np.array([[-46, -96], [0, -92], [0, 92], [-46, 98]], np.float64)
+        th = np.linspace(-np.pi / 2, np.pi / 2, 16)
+        handle = np.concatenate([[[-46, -72], [-380, -66]], np.stack([-380 - 46 * np.cos(th), -4 + 62 * np.sin(th)], 1)[::-1] * [1, 1], [[-380, 58], [-46, 66]]])
+        edge_line = np.stack([sv * Lb, edge - 6], 1); spine_line = np.stack([sv * Lb * 0.97, spine + 4], 1)
+        return dict(Lb=Lb, blade=blade, bolster=bolster, handle=handle, edge=edge_line, spine=spine_line, rivets=[-130, -240, -330])
+    return lazy('knife', build)
+
+
+def t_knife(t, c, A, B, a, b):
+    """Dexter's carving knife thrusts in; the blade is a window onto the next shot; the camera dives into the blade."""
+    G = _knife_geo(); Lb = G['Lb']
+    if t < c:                                                   # thrust in from bottom-right, settle across the frame
+        u = eout((t - a) / (c - a))
+        cx, cy = lerp(1.55 * W, 0.70 * W, u), lerp(1.30 * H, 0.66 * H, u)
+        ang = math.radians(lerp(-112, -122, u)); sc = lerp(0.95, 1.05, u)
+        P = (0.0, 0.0); fa = layer(A, t)
+    else:                                                       # pan into the wide part of the blade until it fills the frame
+        u = clamp((t - c) / (b - c)); e = ease(u)
+        P = (Lb * 0.30 * e, 0.0)
+        cx, cy = lerp(0.70 * W, W / 2, e), lerp(0.66 * H, H / 2, e)
+        ang = math.radians(lerp(-122, -90, e)); sc = 1.05 * math.exp(math.log(10.0) * ein(u) ** 0.9 + 0.0 * u)
+        fa = layer(A, t)
+    ca, sa = math.cos(ang) * sc, math.sin(ang) * sc
+    def tf(pts):                                                # local knife coords -> screen (P lands on (cx, cy))
+        p = np.asarray(pts, np.float64) - P
+        return np.stack([cx + p[:, 0] * ca - p[:, 1] * sa, cy + p[:, 0] * sa + p[:, 1] * ca], 1)
+    def poly_mask(pts, S=4):
+        m = np.zeros((H, W), np.uint8); q = np.round(tf(pts) * S).astype(np.int64)
+        q = np.clip(q, -2 ** 30, 2 ** 30).astype(np.int32)
+        cv2.fillPoly(m, [q], 255, cv2.LINE_AA, shift=2)
+        return m.astype(np.float32) / 255
+    blade = poly_mask(G['blade']); bol = poly_mask(G['bolster']); hand = poly_mask(G['handle'])
+    whole = np.clip(blade + bol + hand, 0, 1)
+    # local x along the blade for every pixel (for the travelling glint and steel shading)
+    inv = 1.0 / (sc * sc); lx = ((XX - cx) * ca + (YY - cy) * sa) * inv + P[0]; ly = (-(XX - cx) * sa + (YY - cy) * ca) * inv + P[1]
+    fb = layer(B, t, 1 + 0.08 * (1 - clamp((t - a) / (b - a))))
+    steel = fb * 0.86 + np.float32([0.07, 0.06, 0.05]) + (0.10 * ss(40, 95, np.abs(ly)))[..., None]   # cool steel tint toward the rims
+    gpos = lerp(-100, Lb + 150, clamp((t - a) / (c - a + 0.12)))
+    glint = np.exp(-((lx - gpos + 0.35 * ly) / 45) ** 2) * 0.55 * (1 - clamp((t - c) / 0.12))
+    steel = steel + glint[..., None]
+    shadow = cv2.GaussianBlur(np.roll(np.roll(whole, int(40 * min(sc, 3)), 0), int(26 * min(sc, 3)), 1), (0, 0), 18) * 0.55
+    f = fa * (1 - shadow[..., None])
+    f = f * (1 - blade[..., None]) + steel * blade[..., None]
+    # sharpened edge bevel and spine highlight, drawn as lines scaled with the knife
+    lines = np.zeros((H, W), np.uint8)
+    for key, th, val in (('edge', 10, 255), ('spine', 4, 170)):
+        q = np.clip(np.round(tf(G[key]) * 4), -2 ** 30, 2 ** 30).astype(np.int32)
+        cv2.polylines(lines, [q], False, val, max(1, int(th * sc)), cv2.LINE_AA, shift=2)
+    lf = cv2.GaussianBlur(lines.astype(np.float32) / 255, (0, 0), max(1.0, 1.5 * min(sc, 4))) * blade
+    f = f + (lf * (0.55 + glint))[..., None] * np.float32([1.0, 0.98, 0.95])
+    # bolster: brushed steel; handle: black grip with a top highlight and steel rivets
+    bcol = (0.50 + 0.30 * ss(-60, 80, ly))[..., None] * np.float32([0.95, 0.95, 1.0])
+    f = f * (1 - bol[..., None]) + bcol * bol[..., None]
+    hcol = np.float32([0.045, 0.045, 0.05]) + (0.20 * np.exp(-((ly + 45) / 14) ** 2))[..., None]
+    f = f * (1 - hand[..., None]) + hcol * hand[..., None]
+    for rx in G['rivets']:
+        p = tf([[rx, -4]])[0]; r = max(1, int(13 * sc))
+        if -r < p[0] < W + r and -r < p[1] < H + r:
+            cv2.circle(f, (int(p[0]), int(p[1])), r, (0.78, 0.78, 0.82), -1, cv2.LINE_AA)
+            cv2.circle(f, (int(p[0] - r * 0.3), int(p[1] - r * 0.3)), max(1, r // 3), (1.0, 1.0, 1.0), -1, cv2.LINE_AA)
+    return f
+
+
 # Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
 # c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
 # so the same transition works at any tempo and position.
@@ -599,6 +669,7 @@ TRANSITIONS = {
     'red':       (lambda c, o: (c - .14, c + .38), lambda t, c, A, B, o: t_red(t, c, A, B, c - .14, c + .38)),
     'confetti':  (lambda c, o: (c - .22, c + .38), lambda t, c, A, B, o: t_confetti(t, c, A, B, c - .22, c + .38)),
     'shatter':   (lambda c, o: (c - .12, c + .34), lambda t, c, A, B, o: t_shatter(t, c, A, B, c - .12, c + .34, o.get('cx', 0.5), o.get('cy', 0.40))),
+    'knife':     (lambda c, o: (c - .30, c + .34), lambda t, c, A, B, o: t_knife(t, c, A, B, c - .30, c + .34)),
     'scope':     (lambda c, o: (c - .40, c + .38), lambda t, c, A, B, o: t_scope(t, c, A, B, c - .40, c + .38, o.get('px', 0.5), o.get('py', 0.5))),
     'plastic':   (lambda c, o: (c - .30, c + .40), lambda t, c, A, B, o: t_plastic(t, c, A, B, c - .30, c + .40)),
     'water':     (lambda c, o: (c - .279, c + .421), lambda t, c, A, B, o: t_water(t, A, B, c - .279, c, c + .421)),

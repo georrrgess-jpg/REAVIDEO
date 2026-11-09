@@ -53,7 +53,8 @@ Almost every cut is hidden. Pick transitions by what is in the clips: foliage �
 |---|---|---|
 | `leaf` (`out_opts` ang, seed) palm or fern frond wipe | outdoor and green shots | 0.30 s |
 | `blur` defocus dissolve with zoom | the neutral glue between big moves; use 3–4 times | 0.30 s |
-| `shatter` (`out_opts` cx, cy = impact point) cracks race out from the impact, then the frame breaks into glass shards flying at camera; impact flash | the loudest snare; windows, mirrors, a violent beat | 0.46 s |
+| `knife` Dexter's carving knife thrusts in (drop shadow, edge glint); the blade is a window onto the next shot; the camera dives into the blade until it fills the frame | a Dexter signature moment on a loud snare | 0.64 s |
+| ~~`shatter`~~ glass shatter. **The user disliked it; prefer `knife` or another character-themed shape transition.** | | |
 | ~~`glass` + `fx=['streaks']`~~ light streaks and glass-edge wipe. **The user disliked the glow; don't use it unless asked.** | | |
 | `smoke` rising smoke and embers | fire, heat, anger | 0.45 s |
 | `dip` (`fx=['fringe']` on macro shots) quick dip to dark | into macro or extreme close-ups | 0.27 s |
@@ -140,6 +141,7 @@ Update this file so the preference sticks. Change the rule and add a dated line 
 
 ### Preference log
 - 2026-11-09: Style adopted as the default for all future edits, based on the Dexter × Doomsday voidfx reference (first build: `edit/`, `dexter_doomsday_edit_v1.mp4`).
+- 2026-11-10: The user rejected the glass `shatter` too and asked for a creative transition themed to the character (not blood, not forensic), such as a shape that selects an object and pans into it. It was replaced with `knife`, and the user generally likes the edit's quality. For new edits, prefer character-signature objects used as shape windows or masks.
 - 2026-11-10: Feedback on the Hold On edit: the user disliked the glass light-streak glow, the floating slide graphics with the slide wipe, and the water rise, and asked for new, unique animated transitions instead. They were replaced with `shatter`, `scope` and `plastic`. The user also rejected the dark extreme close-up (teeth) after the smoke, which was replaced with the blood-room look-up shot. Prefer fresh, physical, themed animations over overlays that just glow or tint.
 - 2026-11-10: Second edit, Dexter × "Hold On, We're Going Home" (`edits/hold_on/`). It established that a section is a final chorus of exactly 8 bars that loops on its downbeat, that big transitions go on the measured loudest hits, that shots are chosen by sharpness and face size (sharper sources than the first edit), and added the `confetti` transition.
 - 2026-11-09: Faster pipeline. The plan lives in config.py alone, with cuts, transitions and SFX derived from it. The grade is applied once at extract time, the draft mode takes 45 s, and render plus encode is a single pass with no intermediate image files.

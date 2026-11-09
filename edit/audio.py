@@ -105,6 +105,16 @@ def crinkle(dur=0.7):
     return y / np.abs(y).max()
 
 
+def shing(dur=0.9):
+    """Knife draw: rising metallic scrape into a ringing tail."""
+    n = int(dur * SR); u = np.arange(n) / SR
+    scrape = sg.lfilter(*sg.butter(2, [2500 / (SR / 2), 9000 / (SR / 2)], 'band'), rng.standard_normal(n)) * np.exp(-((u - 0.10) / 0.07) ** 2)
+    ring = sum(np.sin(2 * np.pi * f * u + p) * a for f, a, p in ((2430, 1.0, 0), (3710, 0.6, 1), (5890, 0.4, 2), (8120, 0.25, 3)))
+    ring = ring * np.where(u < 0.12, (u / 0.12) ** 2, np.exp(-(u - 0.12) * 5.5))
+    y = 0.8 * scrape + 0.35 * ring
+    return y / np.abs(y).max()
+
+
 # ---- SFX follow the plan: each transition type has its sound, placed relative to its cut ----
 def sfx_for(name, c, o, up):
     if name == 'leaf': put(whoosh(0.34, 700, 5200) if up else whoosh(0.34, 5200, 800), c - 0.20, gain=0.085)
@@ -126,6 +136,9 @@ def sfx_for(name, c, o, up):
         put(whoosh(d + 0.04, f0, f1), c - d / 2 - 0.02, gain=0.09 if big else 0.06)
     elif name == 'red':
         put(whoosh(0.34, 250, 2600, peak=0.92), c - 0.33, gain=0.09); put(boom(), c, gain=0.26)
+    elif name == 'knife':
+        put(whoosh(0.30, 600, 4200, peak=0.85), c - 0.30, pan=0.4, gain=0.07); put(shing(), c - 0.12, pan=0.2, gain=0.11)
+        put(boom(0.35, 110, 50), c, gain=0.08)
     elif name == 'shatter':
         for k in range(3): put(splat(0.03), c - 0.11 + 0.035 * k, pan=0.2 * k - 0.2, gain=0.05)
         put(glass(), c, gain=0.16); put(boom(0.35, 120, 50), c, gain=0.10)
