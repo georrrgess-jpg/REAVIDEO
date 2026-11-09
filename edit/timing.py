@@ -8,6 +8,8 @@ LONG_HOLD = 6
 
 
 def build_cuts(shots, grid0, half, first_cut, tail):
+    empty = [('%d (%s)' % (i, s['name'])) for i, s in enumerate(shots) if s.get('src') is None]
+    if empty: raise ValueError('choose a clip (src=...) for slot ' + ', '.join(empty))
     k = first_cut; cuts = [0.0]
     for i, s in enumerate(shots):
         if i > 0:

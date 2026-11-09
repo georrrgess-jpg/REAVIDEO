@@ -1,18 +1,58 @@
 ---
 name: voidfx-edit
-description: The user's preferred editing style for short vertical fan edits ("voidfx" style, from the Dexter × Doomsday reference). Use for ANY request to make, remake, recut or restyle an edit, TikTok/Reels/Shorts edit, fan edit, scene-pack edit or music edit, even if the style isn't named. Covers the style rules (beat-grid timing, themed transitions, grade, framing, loop ending, SFX level), the build workflow with the tools in edit/, and the QA checklist.
+description: The user's preferred editing style for short vertical fan edits ("voidfx" style). The approved STANDARD is the Dexter × "Hold On, We're Going Home" v3 edit (edits/hold_on); new edits start from it with edit/tools/new_edit.py. Use for ANY request to make, remake, recut or restyle an edit, TikTok/Reels/Shorts edit, fan edit, scene-pack edit or music edit, even if the style isn't named. Covers the style rules (beat-grid timing, themed transitions, grade, framing, loop ending, SFX level), the build workflow with the tools in edit/, and the QA checklist.
 ---
 
 # voidfx edit style (the user's default)
 
-Every edit made in this repo uses this style unless the user asks otherwise. It was
-reverse-engineered from the reference `doomsday_voidfx_9x16`. The full analysis is in
-`docs/style-breakdown.md`, and the first edit built with it is the code in `edit/`.
+Every edit made in this repo uses this style unless the user asks otherwise. It was first
+reverse-engineered from the reference `doomsday_voidfx_9x16` (analysis: `docs/style-breakdown.md`;
+first build: `edit/config.py`).
+
+## The standard (user-approved, 2026-11-10)
+
+**`edits/hold_on/config.py`, Dexter × "Hold On, We're Going Home" v3, is the standard.** The user
+asked for it to be the template for future edits. Start every new edit from it, and match or
+beat it on the quality bar below. Where an older rule in this file disagrees with the standard,
+the standard wins.
+
+**Starting a new edit**
+```bash
+python edit/tools/sections.py media/<song>.mp3 -o media/<name>_section.json
+```
+```bash
+python edit/tools/new_edit.py <name> --song media/<song>.mp3 --section media/<name>_section.json
+```
+This writes `edits/<name>/config.py` with the standard's 22 slots: lengths, transitions,
+overlays, punch-ins, grade and push. Each slot names the kind of shot it wants. Fill `src`,
+`pack` and `x` for every slot (the config refuses to build while any slot is empty), then
+retune grade and gain per shot.
+
+**What the standard is**
+- **Song section:** the last chorus with full drums, exactly 8 bars (64 half-beats; 19.2 s at 100 BPM). The video is exactly that long, so the closing drum fill loops onto the chorus downbeat.
+- **Rhythm:** first cut at half-beat 4, then 2-4-2-4-2-3-3-2-4-2-2-4-2-2-4-2-2-2-4-2-5 half-beats. Every cut is on a beat (hard cuts measured at 0 ms).
+- **Big hits:** the heaviest moments sit on the loudest measured hits: knife on the loudest early snare (#10), punch-in (#26), blood spatter (#38), punch-in on the poster (#46), red flash on the loudest kick (#52). With a new song, move cuts so these land on its loudest hits (`sections.py` lists them).
+- **Transition order:** leaf → leaf → **knife** → blur → smoke → dip → **scope** (microscope dive into the held object) → blood pour → cut + punch → spin → whip → **polaroid** → drops → whip → **confetti** → cut → punch + vertical whip → cut → **red** → cut → **plastic** → **iris** loop.
+- **Arc:** sunlit public persona → darker, effects build → lab/blood climax at about 7 s → celebration colliding with the dark (parade vs red-lit stares) → red light → cold blue → warm still hold → loop.
+- **Shots:** 22 clips, mostly face close-ups. Sources are chosen by measured sharpness and face size (`tools/score.py`): the standard's median face sharpness is 261 and faces average 61% of frame height. No scene is repeated across packs, and each clip has a moment of change inside its slot.
+- **Grade:** muted (sat 0.35–0.55, con 1.12, tint (1.04, 1.0, 0.96)), reds protected (rk 0.8–1.0), dark shots lifted with gain 1.3–1.45, plus bloom, vignette and grain. A push-in of 5–8% runs on every clip.
+- **Sound:** the song section is untouched; synthesized SFX per transition sit about 23 dB under the music.
+
+**Quality bar (check before delivering)**
+- Hard cuts within one frame of the beat (`render.py` QA in the workflow); the loop seam is close to a normal frame step; the length equals the section exactly.
+- No WARNING lines from `extract.py` (no frozen frames).
+- Median face sharpness ≥ ~200 and mean face size ≥ ~55%.
+- Every transition previewed with `render.py sheet` before the final.
+- Avoid what the user rejected (glass light-streak glow, floating slides, water, glass shatter); see the preference log.
+
+**For another character:** keep the slot structure, rhythm, arc and big-hit placement. Swap the Dexter-signature transitions (knife, scope, plastic, polaroid) for shape transitions built from that character's own signature objects.
+
+**Reproducing the standard:** `bash scenepacks/fetch.sh dexter`, then put the song at `media/hold_on.mp3` (it isn't in the Drive manifest, so the user must supply it again), then `bash edit/build.sh edits/hold_on`.
 
 ## The style, as rules
 
 **Format**
-- 1080×1920, 60 fps, about 20–25 s (the reference is 22.65 s), H.264 at about 26 Mbit/s, AAC 256k.
+- 1080×1920, 60 fps, exactly the chosen section (8 bars; 19.2 s at 100 BPM in the standard), H.264 (x264 medium, film, crf 18), AAC 256k.
 - Music only. No captions, titles, watermarks or voice-over.
 - It must loop: the last transition reveals the first clip.
 
@@ -110,7 +150,7 @@ The user's stored footage is listed in `scenepacks/README.md` (Dexter S1, S2, S4
    - Prefer the sharpest packs. For Dexter, S2 (pack a) and the mixed-season pack score highest.
    - Watch for the same scene appearing in two packs; don't use it twice.
 3. **Plan:** write a shot table: clip, in-point, length in half-beats, transition out, with reasons. Show the user this plan before rendering, unless they asked for a finished video straight away.
-4. **Configure: write only `edits/<name>/config.py`.** The engine in `edit/` is shared: run it from the edit folder and that folder's `config.py` is used (see `edits/hold_on/config.py` for a full example). Set:
+4. **Configure: start with `tools/new_edit.py` (see The standard), then edit only `edits/<name>/config.py`.** The engine in `edit/` is shared: run it from the edit folder and that folder's `config.py` is used (see `edits/hold_on/config.py` for a full example). Set:
    - media and timing: `SCENEPACK`, `SONG`, `SONG_OFFSET`, `GRID0` and `HALF` (from beats.json: `grid[0]` and `period / 2`), `FIRST_CUT`.
    - `SHOTS`: one dict per clip, with `beats` (2–4 half-beats, one 5–6 hold), `out` (transition name), optional `out_opts`, `fx`, `punch`, `pack=` (to take that clip from a different scene pack), plus `src` in-point, `x` face hint, `z`, grade and push.
 
@@ -140,6 +180,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-10: **The user approved Dexter × Hold On v3 and made it the standard for future edits** (see The standard above; `tools/new_edit.py` scaffolds from it).
 - 2026-11-09: Style adopted as the default for all future edits, based on the Dexter × Doomsday voidfx reference (first build: `edit/`, `dexter_doomsday_edit_v1.mp4`).
 - 2026-11-10: The user rejected the glass `shatter` too and asked for a creative transition themed to the character (not blood, not forensic), such as a shape that selects an object and pans into it. It was replaced with `knife`, and the user generally likes the edit's quality. For new edits, prefer character-signature objects used as shape windows or masks.
 - 2026-11-10: Feedback on the Hold On edit: the user disliked the glass light-streak glow, the floating slide graphics with the slide wipe, and the water rise, and asked for new, unique animated transitions instead. They were replaced with `shatter`, `scope` and `plastic`. The user also rejected the dark extreme close-up (teeth) after the smoke, which was replaced with the blood-room look-up shot. Prefer fresh, physical, themed animations over overlays that just glow or tint.
