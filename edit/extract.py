@@ -8,6 +8,8 @@ it (bicubic + unsharp mask), applies the shot's grade, and stores high-quality 4
 frames in clips/NN/. It also finds the usable frame range (stops at hard cuts inside the source
 clip), writes clips/meta.json and makes out/sheets/clips.jpg to check framing.
 """
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.getcwd())   # run from an edit folder: its config.py wins, engine modules come from edit/
 import json, os, subprocess, sys
 from multiprocessing import Pool
 import numpy as np, cv2

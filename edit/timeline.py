@@ -361,6 +361,51 @@ def t_iris(t, A, B, a, fall, end):
     return fa * (1 - inside) + drop * inside
 
 
+# ------------------------------------------------------------ confetti curtain
+_CONF = {}
+
+
+def _confetti_pieces():
+    if 'p' not in _CONF:
+        r = np.random.default_rng(57); n = 1500
+        band = np.concatenate([r.exponential(110, 1000), r.uniform(0, 1.5 * H, 500)])   # dense at the front, sparse trail behind
+        cols = np.array([[0.13, 0.12, 0.80], [0.70, 0.32, 0.12], [0.93, 0.93, 0.93], [0.20, 0.55, 0.90]], np.float32)  # red, blue, white, gold
+        _CONF['p'] = dict(x=r.uniform(-60, W + 60, n), off=band, w=r.uniform(16, 34, n), h=r.uniform(26, 58, n),
+                          rot=r.uniform(0, 6.28, n), vr=r.uniform(-9, 9, n), flip=r.uniform(8, 22, n), ph=r.uniform(0, 6.28, n),
+                          sway=r.uniform(10, 40, n), col=cols[r.choice(4, n, p=[0.36, 0.30, 0.26, 0.08])], depth=r.uniform(0, 1, n))
+    return _CONF['p']
+
+
+def t_confetti(t, c, A, B, a, b):
+    """A curtain of falling parade confetti sweeps down the frame; the next shot is revealed behind it."""
+    u = clamp((t - a) / (b - a))
+    front = lerp(-0.25 * H, 1.45 * H, 0.3 * u + 0.7 * ease(u))
+    x = np.arange(W, dtype=np.float32)
+    edge = front - 120 + 26 * np.sin(x / 47 + 6 * t) + 18 * np.sin(x / 19 - 9 * t)          # ragged reveal line behind the densest band
+    m = ss(-25, 25, edge[None, :] - YY)[..., None]
+    f = layer(A, t) * (1 - m) + layer(B, t) * m if 0.001 < float(m.mean()) < 0.999 else (layer(B, t) if float(m.mean()) >= 0.999 else layer(A, t))
+    P = _confetti_pieces(); tt = t - a
+    y = front - P['off'] + 18 * np.sin(P['ph'] + 3 * tt)
+    vis = (y > -80) & (y < H + 80)
+    can = np.zeros((H, W, 3), np.float32); al = np.zeros((H, W), np.float32)
+    order = np.argsort(P['depth'])
+    for i in order:
+        if not vis[i]: continue
+        cx = P['x'][i] + P['sway'][i] * math.sin(P['ph'][i] + 4.0 * tt); cy = y[i]
+        sc = 0.55 + 0.75 * P['depth'][i]
+        fl = math.cos(P['ph'][i] + P['flip'][i] * tt)                       # paper flipping: width and brightness flicker
+        hw, hh = P['w'][i] * sc * (0.15 + 0.85 * abs(fl)) / 2, P['h'][i] * sc / 2
+        r_ = P['rot'][i] + P['vr'][i] * tt; cr, sr = math.cos(r_), math.sin(r_)
+        pts = np.array([[cx + dx * cr - dy * sr, cy + dx * sr + dy * cr] for dx, dy in ((-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh))], np.int32)
+        shade = 0.55 + 0.45 * abs(fl)
+        cv2.fillConvexPoly(can, pts, tuple(float(v) for v in P['col'][i] * shade), cv2.LINE_AA)
+        cv2.fillConvexPoly(al, pts, 1.0, cv2.LINE_AA)
+    al = cv2.GaussianBlur(al, (0, 0), 1.0)[..., None]; can = cv2.GaussianBlur(can, (0, 0), 1.0)
+    trail = 1 - ease((u - 0.75) / 0.25)                                      # trailing pieces fade as they settle
+    f = f * (1 - 0.35 * cv2.GaussianBlur(al, (0, 0), 9)[..., None] * trail)  # soft contact shadow
+    return f * (1 - al * trail) + can * trail
+
+
 # Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
 # c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
 # so the same transition works at any tempo and position.
@@ -383,6 +428,7 @@ TRANSITIONS = {
     'whip':      (lambda c, o: (c - o.get('dur', .20) / 2, c + o.get('dur', .20) / 2),
                   lambda t, c, A, B, o: t_whip(t, c, A, B, dur=o.get('dur', .20), d=o.get('d', 1), vertical=o.get('vertical', False), amount=o.get('amount', 0.9))),
     'red':       (lambda c, o: (c - .14, c + .38), lambda t, c, A, B, o: t_red(t, c, A, B, c - .14, c + .38)),
+    'confetti':  (lambda c, o: (c - .22, c + .38), lambda t, c, A, B, o: t_confetti(t, c, A, B, c - .22, c + .38)),
     'water':     (lambda c, o: (c - .279, c + .421), lambda t, c, A, B, o: t_water(t, A, B, c - .279, c, c + .421)),
 }
 

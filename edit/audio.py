@@ -1,4 +1,6 @@
 """Soundtrack: the song section the reference uses (65.643 s in) plus quiet synthesized transition SFX."""
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.getcwd())   # run from an edit folder: its config.py wins, engine modules come from edit/
 import subprocess, math
 import numpy as np, soundfile as sf, scipy.signal as sg
 from config import *
@@ -103,6 +105,9 @@ def sfx_for(name, c, o, up):
         put(whoosh(d + 0.04, f0, f1), c - d / 2 - 0.02, gain=0.09 if big else 0.06)
     elif name == 'red':
         put(whoosh(0.34, 250, 2600, peak=0.92), c - 0.33, gain=0.09); put(boom(), c, gain=0.26)
+    elif name == 'confetti':
+        put(splat(0.09), c - 0.24, pan=0.1, gain=0.10); put(boom(0.25, 150, 70), c - 0.24, gain=0.07)
+        put(whoosh(0.62, 2500, 7500, q=0.6, peak=0.3), c - 0.20, gain=0.05)
     elif name == 'water': put(bubbles(0.75), c - 0.30, gain=0.10)
     elif name == 'iris': put(whoosh(0.50, 300, 4200, peak=0.9), c - 0.35, gain=0.09)
 

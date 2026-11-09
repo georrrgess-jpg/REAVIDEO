@@ -8,6 +8,8 @@
 Frames go straight from the render workers into ffmpeg (no intermediate image files), in order,
 with a bounded queue so memory stays flat. The soundtrack is rebuilt first when the plan changed.
 """
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.getcwd())   # run from an edit folder: its config.py wins, engine modules come from edit/
 import collections, os, subprocess, sys, time
 from multiprocessing import Pool
 import numpy as np, cv2
@@ -25,9 +27,10 @@ def render_chunk(frames):
 
 
 def ensure_audio():
-    wav, srcs = 'out/audio.wav', ['config.py', 'audio.py', 'timing.py']
+    eng = os.path.dirname(os.path.abspath(__file__))
+    wav, srcs = 'out/audio.wav', ['config.py', os.path.join(eng, 'audio.py'), os.path.join(eng, 'timing.py')]
     if not os.path.exists(wav) or os.path.getmtime(wav) < max(os.path.getmtime(f) for f in srcs):
-        subprocess.run([sys.executable, 'audio.py'], check=True)
+        subprocess.run([sys.executable, os.path.join(eng, 'audio.py')], check=True)
     return wav
 
 
