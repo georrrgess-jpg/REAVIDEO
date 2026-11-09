@@ -1,0 +1,119 @@
+"""Soundtrack: the song section the reference uses (65.643 s in) plus quiet synthesized transition SFX."""
+import subprocess, math
+import numpy as np, soundfile as sf, scipy.signal as sg
+from config import *
+
+SR = 48000
+N = int(round(DUR * SR))
+raw = subprocess.run(['ffmpeg', '-v', 'error', '-ss', '%.4f' % SONG_OFFSET, '-i', '../media/song.mp3', '-t', '%.4f' % (DUR + 0.2),
+                      '-f', 'f32le', '-ac', '2', '-ar', str(SR), '-'], stdout=subprocess.PIPE).stdout
+music = np.frombuffer(raw, np.float32).reshape(-1, 2)[:N].astype(np.float64)
+music *= 0.84 / np.abs(music).max()
+fx = np.zeros((N, 2))
+rng = np.random.default_rng(4)
+
+
+def put(sig, t, pan=0.0, gain=1.0):
+    i = int(round(t * SR))
+    if i < 0: sig = sig[-i:]; i = 0
+    n = min(len(sig), N - i)
+    if n <= 0: return
+    if sig.ndim == 1:
+        l = math.cos((pan + 1) * math.pi / 4); r = math.sin((pan + 1) * math.pi / 4)
+        fx[i:i + n, 0] += sig[:n] * l * gain; fx[i:i + n, 1] += sig[:n] * r * gain
+    else:
+        fx[i:i + n] += sig[:n] * gain
+
+
+def whoosh(dur, f0, f1, q=1.2, peak=0.55, sweep_pan=True):
+    """Noise through a swept band-pass with a swell envelope; returns stereo."""
+    n = int(dur * SR); x = rng.standard_normal(n)
+    u = np.linspace(0, 1, n); fc = f0 * (f1 / f0) ** u
+    lo = hp = bp = 0.0; y = np.empty(n); damp = 1 / q
+    fcoef = 2 * np.sin(np.pi * np.minimum(fc, SR / 6.5) / SR)
+    for i in range(n):                                   # state-variable filter
+        lo += fcoef[i] * bp; hp = x[i] - lo - damp * bp; bp += fcoef[i] * hp; y[i] = bp
+    env = np.where(u < peak, (u / peak) ** 2.2, ((1 - u) / (1 - peak)) ** 1.6)
+    y *= env; y /= np.abs(y).max() + 1e-9
+    pan = (u * 2 - 1) * 0.7 if sweep_pan else np.zeros(n)
+    return np.stack([y * np.cos((pan + 1) * np.pi / 4), y * np.sin((pan + 1) * np.pi / 4)], 1)
+
+
+def boom(dur=0.9, f0=95, f1=36):
+    n = int(dur * SR); u = np.arange(n) / SR
+    f = f1 + (f0 - f1) * np.exp(-u * 9); ph = 2 * np.pi * np.cumsum(f) / SR
+    y = np.sin(ph) * np.exp(-u * 4.2)
+    nz = sg.lfilter(*sg.butter(2, 500 / (SR / 2)), rng.standard_normal(n)) * np.exp(-u * 30) * 0.8
+    y = y + nz; return y / np.abs(y).max()
+
+
+def shutter():
+    n = int(0.16 * SR); y = np.zeros(n)
+    for t0, d, g in [(0.0, 0.006, 1.0), (0.052, 0.005, 0.7), (0.075, 0.012, 0.35)]:
+        i = int(t0 * SR); m = int(d * SR)
+        y[i:i + m] += rng.standard_normal(m) * np.exp(-np.arange(m) / (m / 3)) * g
+    y = sg.lfilter(*sg.butter(2, [1500 / (SR / 2), 9000 / (SR / 2)], 'band'), y)
+    return y / np.abs(y).max()
+
+
+def splat(dur=0.22):
+    n = int(dur * SR); u = np.arange(n) / SR
+    y = sg.lfilter(*sg.butter(2, 1100 / (SR / 2)), rng.standard_normal(n)) * np.exp(-u * 26)
+    for _ in range(14):
+        i = rng.integers(0, n - 300); y[i:i + 200] += rng.standard_normal(200) * np.exp(-np.arange(200) / 40) * rng.uniform(0.05, 0.25)
+    return y / np.abs(y).max()
+
+
+def bubbles(dur=0.7, count=34):
+    n = int(dur * SR); y = np.zeros(n)
+    for _ in range(count):
+        d = rng.uniform(0.025, 0.07); m = int(d * SR); i = rng.integers(0, n - m)
+        f0 = rng.uniform(280, 800); u = np.arange(m) / m
+        y[i:i + m] += np.sin(2 * np.pi * np.cumsum(f0 * (1 + 0.9 * u)) / SR) * np.sin(np.pi * u) ** 2 * rng.uniform(0.3, 1.0)
+    low = sg.lfilter(*sg.butter(2, 420 / (SR / 2)), rng.standard_normal(n)) * np.sin(np.pi * np.linspace(0, 1, n)) ** 1.5
+    y = y + 1.6 * low; return y / np.abs(y).max()
+
+
+def shimmer(dur=0.7):
+    n = int(dur * SR); u = np.arange(n) / SR; y = np.zeros(n)
+    for _ in range(16):
+        t0 = rng.uniform(0, dur * 0.8); f = rng.uniform(3200, 8200)
+        y += np.where(u > t0, np.sin(2 * np.pi * f * (u - t0)) * np.exp(-(u - t0) * 14), 0) * rng.uniform(0.3, 1)
+    y *= np.linspace(0.2, 1, n); return y / np.abs(y).max()
+
+
+C = CUTS
+put(whoosh(0.34, 700, 5200), C[1] - 0.20, gain=0.085)                 # leaf wipes: airy rustle
+put(whoosh(0.34, 5200, 800), C[2] - 0.20, gain=0.085)
+put(whoosh(0.36, 300, 1500, q=0.8), C[3] - 0.18, gain=0.06)           # blur dissolve
+put(shimmer(0.62), 3.28, pan=0.3, gain=0.030)                         # glass light streaks
+put(whoosh(0.26, 1500, 6500), 3.76, gain=0.075)                       # glass wipe
+put(whoosh(0.60, 160, 900, q=0.7, peak=0.4), 4.80, gain=0.11)         # fire / smoke
+put(whoosh(0.52, 400, 3800, peak=0.8), 6.47, gain=0.085)              # slide flies at camera
+put(whoosh(0.70, 220, 700, q=0.7, peak=0.4), 7.50, gain=0.12)         # blood
+put(bubbles(0.55, 18), 7.56, gain=0.05)
+put(whoosh(0.36, 300, 1500, q=0.8), C[9] - 0.18, gain=0.06)
+put(whoosh(0.42, 500, 4200, peak=0.5), C[10] - 0.21, gain=0.095)      # spin
+put(shutter(), C[11] - 0.012, gain=0.16)                              # camera
+put(whoosh(0.30, 2500, 600, peak=0.3), C[11] + 0.30, gain=0.05)       # polaroid drops away
+put(splat(), C[12] - 0.22, pan=-0.2, gain=0.13); put(splat(0.16), C[12] - 0.10, pan=0.3, gain=0.09)
+put(whoosh(0.24, 900, 5200), C[13] - 0.12, gain=0.09)                 # whip
+put(whoosh(0.36, 300, 1500, q=0.8), C[14] - 0.18, gain=0.06)
+put(boom(0.5, 80, 42), C[15], gain=0.14)                              # punch-in
+put(whoosh(0.34, 250, 2600, peak=0.92), C[16] - 0.33, gain=0.09)      # swell into the red hit
+put(boom(), C[16], gain=0.26)
+put(whoosh(0.18, 1500, 5000), C[17] - 0.09, gain=0.06)
+put(boom(0.4, 70, 40), C[18], gain=0.10)
+put(whoosh(0.24, 5200, 900), C[19] - 0.12, gain=0.09)
+put(whoosh(0.26, 1500, 6500), 20.12, gain=0.07)
+put(bubbles(0.75), 21.08, gain=0.10)                                  # water
+put(whoosh(0.50, 300, 4200, peak=0.9), 22.05, gain=0.09)              # iris riser into the loop
+
+mix = music + fx
+fade = int(0.008 * SR); ramp = np.linspace(0, 1, fade)[:, None]
+mix[:fade] *= ramp; mix[-fade:] *= ramp[::-1]
+pk = np.abs(mix).max()
+if pk > 0.97: mix *= 0.97 / pk
+sf.write('out/audio.wav', mix.astype(np.float32), SR)
+sf.write('out/sfx_only.wav', fx.astype(np.float32), SR)
+print('music peak %.2f  sfx peak %.3f  mix peak %.2f  sfx rms/music rms %.3f' % (np.abs(music).max(), np.abs(fx).max(), np.abs(mix).max(), np.sqrt((fx ** 2).mean()) / np.sqrt((music ** 2).mean())))
