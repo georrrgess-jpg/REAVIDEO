@@ -84,6 +84,27 @@ def shimmer(dur=0.7):
     y *= np.linspace(0.2, 1, n); return y / np.abs(y).max()
 
 
+def glass(dur=0.9):
+    """Glass crash: bright noise burst plus scattered high tinkles."""
+    n = int(dur * SR); u = np.arange(n) / SR
+    y = sg.lfilter(*sg.butter(2, 2500 / (SR / 2), 'high'), rng.standard_normal(n)) * np.exp(-u * 9)
+    for _ in range(26):
+        t0 = rng.uniform(0.02, dur * 0.8); f = rng.uniform(3000, 9000); m = u >= t0
+        y[m] += np.sin(2 * np.pi * f * (u[m] - t0)) * np.exp(-(u[m] - t0) * rng.uniform(25, 60)) * rng.uniform(0.2, 0.7)
+    return y / np.abs(y).max()
+
+
+def crinkle(dur=0.7):
+    """Plastic sheet: band-passed noise gated by sparse crackles."""
+    n = int(dur * SR)
+    y = sg.lfilter(*sg.butter(2, [900 / (SR / 2), 6500 / (SR / 2)], 'band'), rng.standard_normal(n))
+    gate = np.zeros(n)
+    for _ in range(90):
+        i = rng.integers(0, n - 400); gate[i:i + 400] += np.exp(-np.arange(400) / rng.uniform(30, 120)) * rng.uniform(0.3, 1)
+    y = y * (0.15 + gate) * np.sin(np.pi * np.linspace(0, 1, n)) ** 0.7
+    return y / np.abs(y).max()
+
+
 # ---- SFX follow the plan: each transition type has its sound, placed relative to its cut ----
 def sfx_for(name, c, o, up):
     if name == 'leaf': put(whoosh(0.34, 700, 5200) if up else whoosh(0.34, 5200, 800), c - 0.20, gain=0.085)
@@ -105,6 +126,14 @@ def sfx_for(name, c, o, up):
         put(whoosh(d + 0.04, f0, f1), c - d / 2 - 0.02, gain=0.09 if big else 0.06)
     elif name == 'red':
         put(whoosh(0.34, 250, 2600, peak=0.92), c - 0.33, gain=0.09); put(boom(), c, gain=0.26)
+    elif name == 'shatter':
+        for k in range(3): put(splat(0.03), c - 0.11 + 0.035 * k, pan=0.2 * k - 0.2, gain=0.05)
+        put(glass(), c, gain=0.16); put(boom(0.35, 120, 50), c, gain=0.10)
+    elif name == 'scope':
+        put(whoosh(0.42, 400, 3200, peak=0.9), c - 0.42, gain=0.08); put(shutter(), c - 0.01, gain=0.07)
+        put(whoosh(0.40, 3200, 500, peak=0.15), c, gain=0.07)
+    elif name == 'plastic':
+        put(crinkle(0.72), c - 0.30, pan=0.3, gain=0.10); put(whoosh(0.7, 300, 1400, q=0.7, peak=0.5), c - 0.30, gain=0.05)
     elif name == 'confetti':
         put(splat(0.09), c - 0.24, pan=0.1, gain=0.10); put(boom(0.25, 150, 70), c - 0.24, gain=0.07)
         put(whoosh(0.62, 2500, 7500, q=0.6, peak=0.3), c - 0.20, gain=0.05)

@@ -53,10 +53,12 @@ Almost every cut is hidden. Pick transitions by what is in the clips: foliage �
 |---|---|---|
 | `leaf` (`out_opts` ang, seed) palm or fern frond wipe | outdoor and green shots | 0.30 s |
 | `blur` defocus dissolve with zoom | the neutral glue between big moves; use 3–4 times | 0.30 s |
-| `glass` (`fx=['streaks']` before it; `out_opts` ang, rev) light streaks, then a diagonal glass-edge wipe | sunlit or reflective shots | 0.19 s |
+| `shatter` (`out_opts` cx, cy = impact point) cracks race out from the impact, then the frame breaks into glass shards flying at camera; impact flash | the loudest snare; windows, mirrors, a violent beat | 0.46 s |
+| ~~`glass` + `fx=['streaks']`~~ light streaks and glass-edge wipe. **The user disliked the glow; don't use it unless asked.** | | |
 | `smoke` rising smoke and embers | fire, heat, anger | 0.45 s |
 | `dip` (`fx=['fringe']` on macro shots) quick dip to dark | into macro or extreme close-ups | 0.27 s |
-| `slidewipe` (`fx=['slides']` on the same shot) glass slide graphics, then the slide flies at camera | forensic or lab scenes | 1.3 s overlay + 0.47 s wipe |
+| `scope` (`out_opts` px, py = the blood/evidence position in the outgoing shot) dive into it, microscope eyepiece with drifting blood cells and a 40x reticle, pull back out into the next shot | forensic or lab shots, a blood slide, evidence | 0.78 s |
+| ~~`slidewipe` + `fx=['slides']`~~ floating slide graphics. **The user disliked it; use `scope` for forensic moments.** | | |
 | `blood` blood pours down, then drains to reveal | the mid-edit climax | 0.6 s |
 | `spin` spin with rotational blur | disorientation, into an upside-down shot | 0.34 s |
 | `polaroid` flash, then the frame becomes a Polaroid that drops away | camera or photo moments | 0.66 s |
@@ -65,7 +67,8 @@ Almost every cut is hidden. Pick transitions by what is in the clips: foliage �
 | `punch={}` on the incoming shot (z, flash, dur) hard cut with zoom-in and slight flash | a strong hit on a cut | 0.18–0.20 s |
 | `confetti` a curtain of red/blue/white/gold parade confetti falls and reveals the next shot behind it; pieces flutter and settle | parades, celebrations, crowds, any joyful beat before a dark shot | 0.6 s |
 | `red` red flash with concentric rings | the single strongest hit | 0.5 s |
-| `water` water line rises with bubbles and tint, then drains | water and boats, near the end | 0.7 s |
+| `plastic` a sheet of kill-room plastic wrap drags across, refracting and glinting, and the next shot is behind it | kill rooms, dark shots, near the end before the breather | 0.7 s |
+| ~~`water`~~ water rise. **The user disliked it; use `plastic` or another new graphic transition.** | | |
 | `iris` blood drop falls and swells into a lens showing clip 1 | **always the last transition: the loop** | 0.7 s |
 | `cut` plain hard cut | 3–4 in the second half | 0 |
 
@@ -137,5 +140,6 @@ Update this file so the preference sticks. Change the rule and add a dated line 
 
 ### Preference log
 - 2026-11-09: Style adopted as the default for all future edits, based on the Dexter × Doomsday voidfx reference (first build: `edit/`, `dexter_doomsday_edit_v1.mp4`).
+- 2026-11-10: Feedback on the Hold On edit: the user disliked the glass light-streak glow, the floating slide graphics with the slide wipe, and the water rise, and asked for new, unique animated transitions instead. They were replaced with `shatter`, `scope` and `plastic`. The user also rejected the dark extreme close-up (teeth) after the smoke, which was replaced with the blood-room look-up shot. Prefer fresh, physical, themed animations over overlays that just glow or tint.
 - 2026-11-10: Second edit, Dexter × "Hold On, We're Going Home" (`edits/hold_on/`). It established that a section is a final chorus of exactly 8 bars that loops on its downbeat, that big transitions go on the measured loudest hits, that shots are chosen by sharpness and face size (sharper sources than the first edit), and added the `confetti` transition.
 - 2026-11-09: Faster pipeline. The plan lives in config.py alone, with cuts, transitions and SFX derived from it. The grade is applied once at extract time, the draft mode takes 45 s, and render plus encode is a single pass with no intermediate image files.

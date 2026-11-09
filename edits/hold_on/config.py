@@ -20,15 +20,15 @@ PRE, POST = 0.60, 0.50
 
 MUTED = dict(con=1.12, tint=(1.04, 1.0, .96))
 SHOTS = [
- # -- bar 1-2: sunlit public Dexter, two organic wipes, glass on the loudest snare (3.0 s)
+ # -- bar 1-2: sunlit public Dexter, two organic wipes, the frame shatters on the loudest snare (3.0 s)
  dict(name='sky_face',   out='leaf', out_opts={'ang': -38, 'seed': 3},  src=46.30, x=.50, sat=.55, rk=.9, gain=.95, push=(1.00, 1.07), **MUTED),
  dict(name='shh_jungle', beats=2, out='leaf', out_opts={'ang': 162, 'seed': 9}, pack=S2B, src=346.78, x=.47, z=1.35, cy=.40, sat=.50, rk=.8, gain=1.05, push=(1.00, 1.06), **MUTED),
- dict(name='look_up',    beats=4, out='glass', fx=['streaks'], src=53.30, x=.44, sat=.50, rk=.9, gain=1.15, push=(1.00, 1.07), **MUTED),
+ dict(name='look_up',    beats=4, out='shatter', out_opts={'cx': 0.48, 'cy': 0.38}, src=53.30, x=.44, sat=.50, rk=.9, gain=1.15, push=(1.00, 1.07), **MUTED),
  dict(name='car_window', beats=2, out='blur', src=276.45, x=.47, sat=.40, rk=.8, gain=1.15, push=(1.06, 1.00), **MUTED),
- # -- bar 3-4: darker, effects build: smoke, macro, the blood slide to the lamp, lab, blood pour
+ # -- bar 3-4: darker, effects build: smoke, the blood room, dive into the slide's blood under a microscope, lab, blood pour
  dict(name='intense',    beats=4, out='smoke', src=57.70, x=.59, sat=.45, rk=1.0, gain=1.40, push=(1.00, 1.07), con=1.15, tint=(1.03, 1.0, .97)),
- dict(name='ecu_dark',   beats=2, out='dip', fx=['fringe'], pack=S2A, src=268.60, x=.52, sat=.35, rk=.8, gain=1.30, push=(1.08, 1.14), **MUTED),
- dict(name='slide_lamp', beats=3, out='slidewipe', fx=['slides'], pack=S2B, src=268.75, x=.57, sat=.55, rk=1.0, gain=1.25, push=(1.00, 1.06), con=1.15, tint=(1.0, 1.0, 1.0)),
+ dict(name='look_up_room', beats=2, out='dip', src=123.45, x=.61, sat=.40, rk=1.0, gain=1.30, push=(1.00, 1.07), **MUTED),
+ dict(name='slide_lamp', beats=3, out='scope', out_opts={'px': 0.86, 'py': 0.64}, pack=S2B, src=268.75, x=.57, sat=.55, rk=1.0, gain=1.25, push=(1.00, 1.06), con=1.15, tint=(1.0, 1.0, 1.0)),
  dict(name='lab_photos', beats=3, out='blood', pack=S2B, src=171.70, x=.48, sat=.45, rk=1.0, gain=.95, push=(1.00, 1.06), **MUTED),
  dict(name='goggles',    beats=2, out='cut', src=110.25, x=.65, sat=.40, rk=1.0, gain=.95, push=(1.00, 1.05), **MUTED),
  # -- bar 5-6: punch on the 7.8 s snare, spin into the upside-down shot, camera flash -> Polaroid
@@ -43,9 +43,9 @@ SHOTS = [
  dict(name='go_dexter',  beats=2, out='whip', out_opts={'dur': 0.14, 'vertical': True, 'amount': 0.5}, punch={}, src=341.95, x=.47, sat=.55, rk=1.0, gain=.95, push=(1.00, 1.05), **MUTED),
  dict(name='green_profile', beats=2, out='cut', src=231.60, x=.40, sat=.55, rk=.8, gain=1.35, push=(1.00, 1.05), **MUTED),
  dict(name='smile',      beats=2, out='red', src=38.15, x=.55, sat=.45, rk=1.0, gain=.95, push=(1.00, 1.06), **MUTED),
- # -- bar 8: the real red light comes on as the red flash fades; water; long sunset hold; loop
+ # -- bar 8: the real red light comes on as the red flash fades; kill-room plastic drags across; sunset hold; loop
  dict(name='red_light',  beats=4, out='cut', src=120.62, x=.61, sat=.75, rk=1.0, gain=1.05, push=(1.00, 1.07), con=1.12, tint=(1.0, 1.0, 1.0)),
- dict(name='blue_room',  beats=2, out='water', pack=S2A, src=30.25, x=.60, sat=.60, rk=.8, gain=1.20, push=(1.00, 1.06), con=1.12, tint=(1.02, 1.0, .98)),
+ dict(name='blue_room',  beats=2, out='plastic', pack=S2A, src=30.25, x=.60, sat=.60, rk=.8, gain=1.20, push=(1.00, 1.06), con=1.12, tint=(1.02, 1.0, .98)),
  dict(name='sunset_yard', beats=5, out='iris', fx=['leak_bubbles'], src=250.45, x=.31, sat=.40, rk=.9, gain=1.05, push=(1.00, 1.08), **MUTED),
 ]
 for s in SHOTS: s.setdefault('z', 1.0)

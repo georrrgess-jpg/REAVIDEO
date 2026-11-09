@@ -406,6 +406,175 @@ def t_confetti(t, c, A, B, a, b):
     return f * (1 - al * trail) + can * trail
 
 
+# ------------------------------------------------------------ glass shatter
+def _shards(cx, cy, n=46, seed=12):
+    key = ('shards', round(cx), round(cy), n, seed)
+    if key in _lazy: return _lazy[key]
+    from scipy.spatial import cKDTree
+    r = np.random.default_rng(seed)
+    ang = r.uniform(0, 2 * np.pi, n); rad = (r.uniform(0, 1, n) ** 1.6) * 1.15 * max(W, H)   # denser near the impact
+    pts = np.stack([cx + rad * np.cos(ang), cy + rad * np.sin(ang)], 1)
+    pts = np.vstack([pts, [[cx, cy]]])
+    q = 4; gy, gx = np.mgrid[0:H // q, 0:W // q]
+    _, lab = cKDTree(pts).query(np.stack([gx.ravel() * q + q / 2, gy.ravel() * q + q / 2], 1))
+    lab = cv2.resize(lab.reshape(H // q, W // q).astype(np.uint16), (W, H), interpolation=cv2.INTER_NEAREST)
+    edges = (cv2.morphologyEx(lab, cv2.MORPH_GRADIENT, np.ones((3, 3), np.uint8)) > 0).astype(np.float32)
+    shards = []
+    for i in range(len(pts)):
+        m = (lab == i).astype(np.uint8)
+        ys, xs = np.nonzero(m)
+        if len(xs) < 50: continue
+        x0, x1, y0, y1 = xs.min(), xs.max() + 1, ys.min(), ys.max() + 1
+        ccx, ccy = xs.mean(), ys.mean(); d = math.hypot(ccx - cx, ccy - cy) + 60
+        dirx, diry = (ccx - cx) / d, (ccy - cy) / d
+        shards.append(dict(box=(x0, y0, x1, y1), mask=cv2.GaussianBlur(m[y0:y1, x0:x1].astype(np.float32), (0, 0), 0.8), c=(ccx, ccy),
+                           v=(dirx * r.uniform(900, 1700) * (1 + 300 / d), diry * r.uniform(900, 1700) * (1 + 300 / d) - r.uniform(0, 400)),
+                           rot=r.uniform(-260, 260), zoom=r.uniform(0.25, 1.1), delay=min(0.06, d / 9000)))
+    dist = np.sqrt((XX - cx) ** 2 + (YY - cy) ** 2)
+    _lazy[key] = (shards, edges, dist)
+    return _lazy[key]
+
+
+def t_shatter(t, c, A, B, a, b, cx=0.5, cy=0.40):
+    """Cracks race out from an impact point, then the frame breaks into glass shards that fly at camera."""
+    shards, edges, dist = _shards(cx * W, cy * H)
+    if t < c:                                                     # cracks spreading, tiny shake
+        u = clamp((t - a) / (c - a)); rr = 60 + ein(u) * 1.4 * max(W, H)
+        f = layer(A, t, 1 + 0.03 * u)
+        crack = edges * ss(rr + 30, rr - 30, dist)
+        glow = cv2.GaussianBlur(crack, (0, 0), 6)
+        return f * (1 - 0.5 * crack[..., None]) + (crack * 0.9 + glow * 0.8)[..., None] * np.float32([1.0, 0.98, 0.95])
+    u = t - c; F = lazy(('shatter_src', A, round(c, 3)), lambda: layer(A, c - 1.0 / FPS))
+    f = layer(B, t, 1 + 0.10 * (1 - eout(u / 0.3))) + 0.55 * (1 - eout(u / 0.18))   # impact flash on the next shot
+    for sh in sorted(shards, key=lambda q: q['zoom']):
+        uu = max(0.0, u - sh['delay'])
+        x0, y0, x1, y1 = sh['box']; ccx, ccy = sh['c']
+        dx = sh['v'][0] * uu; dy = sh['v'][1] * uu + 2600 * uu * uu
+        z = 1 + sh['zoom'] * uu * 3.0; ang = sh['rot'] * uu
+        M = cv2.getRotationMatrix2D((ccx - x0, ccy - y0), ang, z); M[0, 2] += x0 + dx; M[1, 2] += y0 + dy
+        alpha = 1 - ease((uu - 0.12) / 0.2)
+        if alpha <= 0.01: continue
+        src = F[y0:y1, x0:x1]; m = sh['mask']
+        rim = np.clip(m - cv2.erode(m, np.ones((5, 5), np.uint8)), 0, 1)
+        tile = np.dstack([src * m[..., None] + rim[..., None] * 0.8, m])            # bright glass edge
+        lay = cv2.warpAffine(tile, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        f = f * (1 - lay[..., 3:4] * alpha) + lay[..., :3] * alpha
+    return f
+
+
+# ------------------------------------------------------------ microscope dive
+def _cells(N=1400, seed=33):
+    def build():
+        r = np.random.default_rng(seed)
+        plasma = (0.80 + 0.08 * fbm(N, N, 4, seed, 6))[..., None] * np.float32([0.78, 0.84, 0.97])
+        img = plasma.copy(); yy, xx = np.mgrid[0:N, 0:N].astype(np.float32); placed = []
+        for _ in range(260):
+            x, y, R = r.uniform(0, N), r.uniform(0, N), r.uniform(34, 52)
+            if any((x - px) ** 2 + (y - py) ** 2 < (0.85 * (R + pr)) ** 2 for px, py, pr in placed): continue
+            placed.append((x, y, R))
+            x0, x1, y0, y1 = int(max(0, x - R - 4)), int(min(N, x + R + 4)), int(max(0, y - R - 4)), int(min(N, y + R + 4))
+            d = np.sqrt((xx[y0:y1, x0:x1] - x) ** 2 + (yy[y0:y1, x0:x1] - y) ** 2) / R
+            body = ss(1.02, 0.94, d)[..., None]
+            shade = (0.55 + 0.30 * ss(0.15, 0.6, d) - 0.25 * ss(0.85, 1.0, d))[..., None]   # biconcave: pale centre, dark rim
+            col = np.float32([0.22, 0.18, 0.80]) * shade + np.float32([0.10, 0.10, 0.22]) * (1 - shade)
+            img[y0:y1, x0:x1] = img[y0:y1, x0:x1] * (1 - body) + col * body
+        return img
+    return lazy(('cells', N, seed), build)
+
+
+def _reticle(R):
+    def build():
+        can = np.zeros((H, W), np.uint8); cx, cy = W // 2, int(H * 0.45)
+        cv2.line(can, (cx - int(R * 0.8), cy), (cx + int(R * 0.8), cy), 255, 2, cv2.LINE_AA)
+        cv2.line(can, (cx, cy - int(R * 0.8)), (cx, cy + int(R * 0.8)), 255, 2, cv2.LINE_AA)
+        for k in range(-8, 9):
+            L = 22 if k % 4 == 0 else 11; x = cx + int(k * R * 0.09)
+            cv2.line(can, (x, cy - L), (x, cy + L), 255, 2, cv2.LINE_AA)
+        cv2.circle(can, (cx, cy), int(R * 0.32), 255, 1, cv2.LINE_AA)
+        cv2.putText(can, '40x', (cx + int(R * 0.45), cy + int(R * 0.62)), cv2.FONT_HERSHEY_SIMPLEX, 1.1, 255, 2, cv2.LINE_AA)
+        return cv2.GaussianBlur(can.astype(np.float32) / 255, (0, 0), 0.7)
+    return lazy(('reticle', R), build)
+
+
+def t_scope(t, c, A, B, a, b, px=0.86, py=0.64):
+    """Dive into the blood on the slide, a microscope eyepiece full of blood cells, then pull back out to the next shot."""
+    cx, cy = W / 2, H * 0.45; R0 = 0.46 * W; Rbig = 1.3 * math.hypot(W, H) / 2
+    D = np.sqrt((XX - cx) ** 2 + (YY - cy) ** 2)
+    cells = _cells(); N = cells.shape[0]
+    drift = (t - a) * 140; ox = int(N / 2 - W / 2 + drift) % (N - W); oy = int(N / 2 - H / 2) % max(1, N - H)
+    def scope_view(focus):
+        v = cells[oy:oy + H, ox:ox + W] if N >= H else cv2.resize(cells, (W, H))
+        return blur(v, 18 * (1 - focus))
+    if t < c:
+        u = clamp((t - a) / (c - a)); z = math.exp(math.log(7.0) * ein(u))
+        A_ = layer(A, t); K = 4; acc = np.zeros_like(A_)
+        e = ease(u * 1.15)
+        for k in range(K):                                           # travel to the slide's blood while zooming in (zoom blur)
+            zz = z * (1 - 0.05 * k * u)
+            M = np.float32([[zz, 0, 0], [0, zz, 0]])
+            tx, ty = lerp(px * W, cx, e), lerp(py * H, cy, e)            # the smear drifts to the eyepiece centre
+            M[0, 2] = tx - zz * px * W; M[1, 2] = ty - zz * py * H
+            acc += cv2.warpAffine(A_, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        f = acc / K
+        R = lerp(Rbig, R0, ease(u))
+        mix = ease((u - 0.55) / 0.45)
+        f = f * (1 - mix) + scope_view(ease((u - 0.7) / 0.3)) * mix
+    else:
+        u = clamp((t - c) / (b - c))
+        R = lerp(R0, Rbig, ein(u))
+        mix = 1 - ease(u / 0.6)
+        Bz = layer(B, t, 1 + 1.6 * (1 - eout(u)))
+        f = scope_view(1.0) * mix + Bz * (1 - mix)
+    inside = ss(R + 3, R - 3, D)[..., None]
+    ring = (np.exp(-((D - R) / 10) ** 2))[..., None]
+    f = f * inside + np.float32([0.02, 0.02, 0.03]) * (1 - inside)            # black eyepiece surround
+    f = f * (1 - 0.45 * ss(R * 0.6, R, D)[..., None])                         # lens vignette
+    f = f + ring * np.float32([0.10, 0.25, 0.55]) * 0.8                        # warm chromatic rim
+    ret_a = (1 - ease(abs((t - c) / (b - a)) * 3.2))
+    if ret_a > 0: f = f + (_reticle(int(R0))[..., None] * 0.55 * ret_a) * np.float32([0.15, 0.15, 0.12]) - (_reticle(int(R0))[..., None] * 0.35 * ret_a)
+    return f
+
+
+# ------------------------------------------------------------ kill-room plastic
+def _plastic_tex():
+    def build():
+        h, w = H + 400, W * 3
+        n1 = cv2.resize(fbm(h // 8, w // 32, 4, 81, 3), (w, h), interpolation=cv2.INTER_CUBIC)      # long vertical folds
+        n2 = cv2.resize(fbm(h // 4, w // 8, 4, 82, 4), (w, h), interpolation=cv2.INTER_CUBIC)       # creases
+        x = np.arange(w, dtype=np.float32)[None, :]
+        n3 = cv2.resize(fbm(h // 16, w // 16, 3, 83, 3), (w, h), interpolation=cv2.INTER_CUBIC)
+        Hm = 0.45 * n1 + 0.35 * n2 + 0.12 * (0.5 + 0.5 * np.sin(x / (70 + 60 * n3) + 4 * n1)) + 0.08 * n3
+        gx = cv2.Sobel(Hm, cv2.CV_32F, 1, 0, ksize=5); gy = cv2.Sobel(Hm, cv2.CV_32F, 0, 1, ksize=5)
+        spec = (np.clip(gx * 5.0 + gy * 1.5 - 0.18, 0, 1) ** 2 + 0.4 * np.clip(-gx * 3.5 - 0.35, 0, 1) ** 2) * (0.5 + n2)
+        return gx.astype(np.float32), gy.astype(np.float32), spec.astype(np.float32)
+    return lazy('plastic', build)
+
+
+def t_plastic(t, c, A, B, a, b):
+    """A sheet of kill-room plastic drags across the frame; the next shot is behind it."""
+    gx, gy, spec = _plastic_tex(); u = clamp((t - a) / (b - a))
+    band = 1.1 * W
+    lead = lerp(W + 120, -band - 160, 0.25 * u + 0.75 * ease(u))           # leading edge moves right -> left
+    y = np.arange(H, dtype=np.float32)[:, None]
+    wav = 40 * np.sin(y / 170 + 3 * t) + 18 * np.sin(y / 61 - 5 * t) + 0.16 * (y - H / 2)     # tilted, rippling edges
+    L = lead + wav; T = L + band
+    inside = ss(L - 6, L + 6, XX) * ss(T + 6, T - 6, XX)
+    sw = (L + T) / 2 + 60 * np.sin(y / 230 + t)
+    off = int(-lead) % (gx.shape[1] - W)
+    sgx = gx[100:100 + H, off:off + W]; sgy = gy[100:100 + H, off:off + W]; ssp = spec[100:100 + H, off:off + W]
+    k = 55
+    fa = layer(A, t); fb = layer(B, t)
+    under = np.where((XX < sw)[..., None], fa, fb) if inside.max() > 0 else (fa if t < c else fb)
+    under = cv2.remap(under, XX + sgx * k, YY + sgy * k * 0.4, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    milky = under * 0.82 + np.float32([0.14, 0.14, 0.13]) + (ssp * 0.65)[..., None]
+    rim = np.exp(-((XX - L) / 7) ** 2) * 0.9 + np.exp(-((XX - L - 22) / 30) ** 2) * 0.25 + np.exp(-((XX - T) / 9) ** 2) * 0.5
+    milky = milky + rim[..., None]
+    base = np.where((XX < L)[..., None], fa, fb)                                 # outside the sheet: A ahead of it, B behind it
+    m = inside[..., None]
+    shadow = ss(L - 40, L, XX) * (XX < L) * 0.35
+    return base * (1 - m) * (1 - shadow[..., None]) + milky * m
+
+
 # Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
 # c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
 # so the same transition works at any tempo and position.
@@ -429,6 +598,9 @@ TRANSITIONS = {
                   lambda t, c, A, B, o: t_whip(t, c, A, B, dur=o.get('dur', .20), d=o.get('d', 1), vertical=o.get('vertical', False), amount=o.get('amount', 0.9))),
     'red':       (lambda c, o: (c - .14, c + .38), lambda t, c, A, B, o: t_red(t, c, A, B, c - .14, c + .38)),
     'confetti':  (lambda c, o: (c - .22, c + .38), lambda t, c, A, B, o: t_confetti(t, c, A, B, c - .22, c + .38)),
+    'shatter':   (lambda c, o: (c - .12, c + .34), lambda t, c, A, B, o: t_shatter(t, c, A, B, c - .12, c + .34, o.get('cx', 0.5), o.get('cy', 0.40))),
+    'scope':     (lambda c, o: (c - .40, c + .38), lambda t, c, A, B, o: t_scope(t, c, A, B, c - .40, c + .38, o.get('px', 0.5), o.get('py', 0.5))),
+    'plastic':   (lambda c, o: (c - .30, c + .40), lambda t, c, A, B, o: t_plastic(t, c, A, B, c - .30, c + .40)),
     'water':     (lambda c, o: (c - .279, c + .421), lambda t, c, A, B, o: t_water(t, A, B, c - .279, c, c + .421)),
 }
 
