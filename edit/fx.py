@@ -64,7 +64,10 @@ def grade(img, s):
     f = img.astype(np.float32) / 255.0
     b, g, r = f[..., 0], f[..., 1], f[..., 2]
     l = (0.114 * b + 0.587 * g + 0.299 * r)[..., None]
-    wr = np.clip((r - np.maximum(g, b)) * 5, 0, 1)[..., None]      # keep reds alive in a muted grade
+    if 'rth' in s:                                                   # strict red key: only saturated reds (blood, red light), not skin
+        wr = np.clip((r - np.maximum(g, b) - 1.2 * np.maximum(g - b, 0) - s['rth']) * 6, 0, 1)[..., None]   # orange (g >> b) is not red
+    else:
+        wr = np.clip((r - np.maximum(g, b)) * 5, 0, 1)[..., None]      # keep reds alive in a muted grade
     se = s['sat'] + (max(s['sat'], s['rk']) - s['sat']) * wr
     if 'yk' in s:                                                    # optionally keep golds / lightning alive too
         wy = (np.clip((np.minimum(r, g) - b) * 4 - 0.15, 0, 1) * np.clip(r * 2 - 0.4, 0, 1))[..., None] * (1 - wr)
@@ -81,7 +84,7 @@ _luts = {}
 
 def grade_u8(img, s):
     """grade() for 8-bit frames via a full 256^3 lookup table built once per grade (identical output, ~10x faster)."""
-    key = (s['sat'], s['rk'], s['con'], tuple(s['tint']), s['gain'], s.get('yk'))
+    key = (s['sat'], s['rk'], s['con'], tuple(s['tint']), s['gain'], s.get('yk'), s.get('rth'))
     if key not in _luts:
         if len(_luts) > 2: _luts.pop(next(iter(_luts)))
         v = np.arange(256, dtype=np.uint8); lut = np.empty((256 * 256 * 256, 3), np.uint8)

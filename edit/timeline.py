@@ -95,6 +95,10 @@ def layer(i, t, ez=1.0):
         elif name == 'echo': f = echo_fx(f, i, t, s)
         elif name == 'sweep': f = sweep_fx(f, t, s)
         elif name == 'ripple': f = ripple_fx(f, t, s)
+        elif name == 'dust': f = dust_fx(f, i, t, s)
+        elif name == 'glint': f = glint_fx(f, t, s)
+        elif name == 'ghost': f = ghost_fx(f, i, t, s)
+        elif name == 'trails': f = trails_fx(f, i, t, s)
         elif name == 'crackle_build': f = crackle_fx(f, i, t, s, build=True)
         else: raise ValueError('unknown fx %r on shot %d' % (name, i))
     return f
@@ -1154,6 +1158,341 @@ def ripple_fx(f, t, s, cx=0.5, cy=0.42):
     return g2 + edge[..., None] * BLUE_GLOW * 0.35
 
 
+# ============================================================ Dexter kit II (The Less I Know The Better)
+# ---- overlays
+_DUST = {}
+
+
+def dust_fx(f, i, t, s):
+    """Floating dust motes catching the light: three depth layers, visible where the frame is bright."""
+    if 'p' not in _DUST:
+        r = np.random.default_rng(404)
+        _DUST['p'] = [dict(n=n, x=r.uniform(0, W, n), y=r.uniform(0, H, n), vx=r.uniform(-14, 30, n), vy=r.uniform(-34, -6, n),
+                           ph=r.uniform(0, 6.28, n), sz=r.uniform(a, b, n), blur=bl, gain=gn)
+                      for n, a, b, bl, gn in ((70, 1.2, 2.6, 0.6, 0.55), (26, 3.0, 5.0, 2.2, 0.35), (7, 9, 16, 9.0, 0.16))]
+    q = 2; lum = cv2.resize(luma(f), (W // 16, H // 16), interpolation=cv2.INTER_AREA)
+    lum = cv2.resize(cv2.GaussianBlur(lum, (0, 0), 2), (W // q, H // q))
+    acc = np.zeros((H // q, W // q), np.float32)
+    for L in _DUST['p']:
+        can = np.zeros((H // q, W // q), np.float32)
+        x = (L['x'] + L['vx'] * t + 18 * np.sin(L['ph'] + t * 1.3)) % W; y = (L['y'] + L['vy'] * t + 10 * np.cos(L['ph'] + t)) % H
+        for xx, yy, sz in zip(x, y, L['sz']):
+            cv2.circle(can, (int(xx / q), int(yy / q)), max(1, int(sz / q)), 1.0, -1, cv2.LINE_AA)
+        acc += cv2.GaussianBlur(can, (0, 0), L['blur'] / q + 0.3) * L['gain']
+    acc = acc * (0.25 + 1.2 * np.clip(lum - 0.15, 0, 1))
+    return f + cv2.resize(acc, (W, H))[..., None] * np.float32([0.92, 0.96, 1.0])
+
+
+def glint_fx(f, t, s):
+    """Four-point star glints on the brightest specular spots (catchlights, lenses, metal), twinkling on the beat."""
+    q = 4; l = cv2.GaussianBlur(cv2.resize(luma(f), (W // q, H // q), interpolation=cv2.INTER_AREA), (0, 0), 1.0)
+    mx = cv2.dilate(l, np.ones((31, 31), np.uint8))
+    ys, xs = np.nonzero((l >= mx) & (l > 0.80))
+    if len(xs) == 0: return f
+    order = np.argsort(-l[ys, xs])[:2]; out = f
+    pulse = 0.0
+    for tk in _hits('KICKS') + _hits('SNARES'):
+        if s['start'] - 1e-6 <= tk <= t: pulse = max(pulse, math.exp(-(t - tk) / 0.12))
+    for n, k in enumerate(order):
+        x, y = xs[k] * q + q / 2, ys[k] * q + q / 2; strength = (l[ys[k], xs[k]] - 0.78) * 4
+        tw = 0.55 + 0.45 * math.sin(t * 7.3 + n * 2.1); L = 110 * (0.6 + 0.6 * pulse) * tw * min(1.0, strength)
+        x0, x1, y0, y1 = int(max(0, x - L - 20)), int(min(W, x + L + 20)), int(max(0, y - L - 20)), int(min(H, y + L + 20))
+        X = XX[y0:y1, x0:x1] - x; Y = YY[y0:y1, x0:x1] - y
+        star = (np.exp(-(X / L) ** 2 - (Y / 1.6) ** 2) + np.exp(-(Y / L) ** 2 - (X / 1.6) ** 2)
+                + 0.35 * np.exp(-((X + Y) / (0.45 * L)) ** 2 - ((X - Y) / 1.6) ** 2) + 0.35 * np.exp(-((X - Y) / (0.45 * L)) ** 2 - ((X + Y) / 1.6) ** 2)
+                + 0.9 * np.exp(-(X * X + Y * Y) / 30.0))
+        out = out.copy() if out is f else out
+        out[y0:y1, x0:x1] += (star * (0.75 + 0.6 * pulse))[..., None] * np.float32([0.95, 0.98, 1.0])
+    return out
+
+
+def ghost_fx(f, i, t, s):
+    """Glowing outline double: the frame's edges, drawn as white light, drifting off the subject (voidfx-style)."""
+    g = cv2.GaussianBlur(cv2.resize(luma(f), (W // 2, H // 2)), (0, 0), 1.4)
+    e = cv2.Canny((np.clip(g, 0, 1) * 255).astype(np.uint8), 30, 90).astype(np.float32) / 255
+    e = cv2.resize(cv2.GaussianBlur(e, (0, 0), 0.7), (W, H))
+    pulse = 0.0
+    for tk in _hits('SNARES') + _hits('KICKS'):
+        if s['start'] - 1e-6 <= tk <= t: pulse = max(pulse, math.exp(-(t - tk) / 0.16))
+    u = (t - s['start']) / max(1e-3, s['end'] - s['start'])
+    out = f
+    for sgn, a0 in ((1, 0.55), (-1, 0.30)):
+        z = 1.04 + 0.05 * u + 0.03 * pulse; dx = sgn * (16 + 30 * u) ; dy = -10 * sgn
+        M = cv2.getRotationMatrix2D((W / 2, H * 0.42), sgn * 1.5 * u, z); M[0, 2] += dx; M[1, 2] += dy
+        ed = cv2.warpAffine(e, M, (W, H))
+        glow = cv2.GaussianBlur(ed, (0, 0), 7)
+        out = out + ((ed * 0.9 + glow * 1.4) * a0 * (0.45 + 0.8 * pulse))[..., None] * np.float32([0.98, 0.97, 1.0])
+    return out
+
+
+def trails_fx(f, i, t, s):
+    """Psychedelic trails: earlier frames echo behind, screen-blended in cool white."""
+    out = f
+    for dt, al in ((0.06, 0.45), (0.13, 0.30), (0.22, 0.18)):
+        g = shot(i, t - dt) * np.float32([1.0, 0.95, 0.9])
+        out = 1 - (1 - out) * (1 - np.clip(g * al, 0, 1))
+    return out
+
+
+# ---- transitions
+_INK = {}
+
+
+def _ink_field(name, seeds, seed, noise=0.55):
+    if name not in _INK:
+        h, w = H // 4, W // 4; n = fbm(h, w, 5, seed, 6)
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32); F = np.full((h, w), 99.0, np.float32)
+        for sx, sy, r in seeds: F = np.minimum(F, np.sqrt((xx - sx * w) ** 2 + (yy - sy * h) ** 2) / (r * w))
+        F = F + noise * (n - 0.5)
+        Fu = cv2.resize(F, (W, H), interpolation=cv2.INTER_CUBIC)
+        gy, gx = np.gradient(cv2.GaussianBlur(Fu, (0, 0), 3))
+        gn = np.sqrt(gx * gx + gy * gy) + 1e-6
+        _INK[name] = (Fu, float(Fu.max()) + 0.05, (-gx / gn * -0.6 + -gy / gn * -0.8))      # facing the top-left light
+    return _INK[name]
+
+
+def _ink_paint(f, Fu, g, facing, inside_is_ink=True):
+    e = 0.006
+    inside = ss(g + e, g - e, Fu)
+    rim = np.exp(-((Fu - g) / 0.010) ** 2) * np.clip(facing, 0, 1)
+    ink = np.float32([0.012, 0.012, 0.016]) + (0.05 * fbm(H // 8, W // 8, 3, 77, 4))[..., None].repeat(3, 2).repeat(8, 0).repeat(8, 1)[:H, :W] * 0.4
+    m = inside[..., None] if inside_is_ink else (1 - inside)[..., None]
+    out = f * (1 - m) + ink * m
+    return out + (rim * 0.42)[..., None] * np.float32([0.85, 0.88, 0.95])
+
+
+def t_ink(t, c, A, B, a, b):
+    """Black ink blooms in from the edges with droplets and a wet rim until the frame is ink,
+    then the ink parts from the centre to reveal the next shot."""
+    if t < c:
+        seeds = [(0.02, 0.10, 0.55), (0.98, 0.60, 0.60), (0.35, 1.02, 0.50), (0.12, 0.55, 0.05), (0.85, 0.22, 0.04), (0.70, 0.93, 0.035), (0.25, 0.30, 0.03)]
+        Fu, Fmax, facing = _ink_field('in', seeds, 31)
+        p = clamp((t - a) / (c - a)); g = Fmax * (0.12 * p + 0.88 * ein(p) ** 0.8)
+        return _ink_paint(layer(A, t), Fu, g, facing, True)
+    Fu, Fmax, facing = _ink_field('out', [(0.5, 0.44, 0.75), (0.30, 0.62, 0.10), (0.70, 0.30, 0.08)], 32, 0.5)
+    u = clamp((t - c) / (b - c)); h = Fmax * eout(u) ** 1.1
+    fb = layer(B, t, 1 + 0.08 * (1 - eout(u)))
+    return _ink_paint(fb, Fu, h, -facing, False)
+
+
+def t_slices(t, c, A, B, a, b, n=6):
+    """Knife cuts slash down the frame, then the strips fall away up and down, revealing the next shot."""
+    r = np.random.default_rng(7); xs = np.linspace(0, 1, n + 1); xs[1:-1] += r.uniform(-0.04, 0.04, n - 1)
+    slant = math.tan(math.radians(7)); bx = lambda x, y: x * W + slant * (y - H / 2)
+    if t < c:
+        f = layer(A, t, 1 + 0.03 * clamp((t - a) / (c - a)))
+        can = np.zeros((H, W), np.uint8)
+        for k in range(1, n):
+            pk = eout(clamp((t - a - 0.018 * k) / 0.09))
+            if pk <= 0: continue
+            y1 = pk * H
+            cv2.line(can, (int(round(bx(xs[k], 0) * 4)), 0), (int(round(bx(xs[k], y1) * 4)), int(y1 * 4)), 255, 2, cv2.LINE_AA, shift=2)
+        cf = can.astype(np.float32) / 255
+        return f + cf[..., None] * np.float32([1.0, 1.0, 1.0]) + cv2.GaussianBlur(cf, (0, 0), 6)[..., None] * np.float32([0.25, 0.25, 1.4])
+    u = t - c; fa = layer(A, c - 1e-3); fb = layer(B, t, 1 + 0.10 * (1 - eout(u / 0.3))) * (0.75 + 0.25 * eout(u / 0.25))
+    out = fb.copy(); edges = np.zeros((H, W), np.float32)
+    for k in range(n):
+        dl = 0.022 * k; v = ein(clamp((u - dl) / 0.24)); d = -1 if k % 2 == 0 else 1
+        off = d * v * H * 1.15
+        poly = np.array([[bx(xs[k], 0), 0], [bx(xs[k + 1], 0), 0], [bx(xs[k + 1], H), H], [bx(xs[k], H), H]], np.float64)
+        m = np.zeros((H, W), np.uint8); cv2.fillPoly(m, [np.round((poly + [0, off]) * 4).astype(np.int32)], 255, cv2.LINE_AA, shift=2)
+        mf = m.astype(np.float32) / 255
+        if mf.max() == 0: continue
+        sh = cv2.warpAffine(fa, np.float32([[1, 0, 0], [0, 1, off]]), (W, H), borderMode=cv2.BORDER_REFLECT)
+        kb = int(1 + 140 * (ein(clamp((u - dl + 1 / FPS) / 0.24)) - v) * 12) | 1
+        if kb > 1: sh = cv2.blur(sh, (1, min(kb, 301)))
+        out = out * (1 - mf[..., None]) + sh * mf[..., None]
+        edges += np.clip(cv2.morphologyEx(mf, cv2.MORPH_GRADIENT, np.ones((3, 3), np.uint8)), 0, 1)
+    out = out + (edges * (1 - ease(u / 0.3)))[..., None] * np.float32([0.35, 0.35, 1.3])
+    return out + 0.5 * (1 - eout(u / 0.08))
+
+
+# blood orange
+_ORG = {}
+
+
+def _orange_tex():
+    if 'tex' not in _ORG:
+        A_, R_ = 2048, 512; r = np.random.default_rng(55)
+        def streaks(ny, nx, seed):
+            g = np.random.default_rng(seed).random((ny, nx)).astype(np.float32)
+            g = np.concatenate([g, g[:, :8]], 1)
+            return cv2.resize(g, (A_ + int(8 * A_ / nx), R_), interpolation=cv2.INTER_CUBIC)[:, :A_]
+        v = 0.6 * streaks(24, 900, 1) + 0.4 * streaks(60, 1600, 2)              # radially elongated juice cells
+        v = (v - v.min()) / (v.max() - v.min())
+        seg = 10; segmix = r.uniform(0.15, 0.95, seg)
+        ang = (np.arange(A_) / A_ * seg).astype(int) % seg
+        mix = segmix[ang][None, :] * np.ones((R_, 1), np.float32)
+        mix = np.clip(mix + 0.35 * (streaks(8, 120, 3) - 0.5), 0, 1)
+        _ORG['tex'] = (v.astype(np.float32), mix.astype(np.float32), seg)
+    return _ORG['tex']
+
+
+def draw_orange(f, cx, cy, R, rot, sx=1.0, sy=1.0, window=None, open_u=None):
+    """Blood orange cross-section: rind with pores, pith, 10 segments of crimson-to-orange juice cells with
+    white membranes, wet highlights. window/open_u: segments open (staggered) onto `window`."""
+    v_tex, mix_tex, seg = _orange_tex(); A_, R_ = v_tex.shape[1], v_tex.shape[0]
+    ext = 1.3 * R * max(sx, sy)
+    x0, x1, y0, y1 = int(max(0, cx - ext)), int(min(W, cx + ext)), int(max(0, cy - ext)), int(min(H, cy + ext))
+    if x1 <= x0 or y1 <= y0: return f
+    X = (XX[y0:y1, x0:x1] - cx) / (R * sx); Y = (YY[y0:y1, x0:x1] - cy) / (R * sy)
+    r = np.sqrt(X * X + Y * Y) + 1e-6; th = (np.arctan2(Y, X) - rot) % (2 * np.pi)
+    e = 1.4 / R
+    mapx = (th / (2 * np.pi) * A_).astype(np.float32); mapy = np.clip(r / 0.86, 0, 0.999).astype(np.float32) * (R_ - 1)
+    v = cv2.remap(v_tex, mapx, mapy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+    mx = cv2.remap(mix_tex, mapx, mapy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+    crimson = np.float32([0.04, 0.03, 0.46]); blood = np.float32([0.07, 0.06, 0.72]); orng = np.float32([0.10, 0.36, 0.95])
+    flesh = crimson * (1 - v[..., None]) + blood * v[..., None]
+    flesh = flesh * (1 - mx[..., None] * 0.6) + orng * (mx[..., None] * 0.6) * (0.75 + 0.5 * v[..., None])
+    flesh = flesh * (1 - 0.35 * ss(0.70, 0.86, r))[..., None]                    # darker toward the pith
+    flesh += (ss(0.82, 0.95, v) * ss(0.2, 0.8, r) * 0.55)[..., None]              # wet sparkle on juice cells
+    sa = (th * seg / (2 * np.pi)) % 1.0; dang = np.minimum(sa, 1 - sa) * (2 * np.pi / seg) * r
+    memb = ss(0.016 + e, 0.010, dang) * ss(0.05, 0.10, r)
+    pith_c = np.float32([0.80, 0.88, 0.95])
+    out = f.copy(); sub = out[y0:y1, x0:x1]
+    disc = ss(1.0 + e, 1.0 - e, r)
+    shd = cv2.GaussianBlur(np.roll(np.roll(disc, int(min(0.06 * R, 60)), 0), int(min(0.04 * R, 40)), 1), (0, 0), float(np.clip(0.05 * R, 2, 40))) * 0.5 if R < 2500 else 0
+    sub *= (1 - (shd[..., None] if R < 2500 else 0))
+    rind = ss(0.93 - e, 0.93 + e, r) * disc
+    pores = ss(0.78, 0.9, cv2.remap(cv2.resize(v_tex, (1024, 64)), mapx / 2, mapy / 8, cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP))
+    rind_c = np.float32([0.05, 0.27, 0.80]) * (0.85 - 0.25 * pores)[..., None] + (0.35 * ss(1.0, -1.0, X + Y) * ss(0.95, 0.99, r))[..., None]
+    pith = ss(0.86 - e, 0.86 + e, r) * (1 - rind) * disc
+    core = ss(0.06 + e, 0.06 - e, r)
+    fl = disc * (1 - rind) * (1 - pith) * (1 - core) * (1 - memb)
+    if window is not None and open_u is not None:                                  # segments open one after another
+        sidx = np.floor(th * seg / (2 * np.pi)); op = np.clip((open_u - sidx * 0.06) / 0.25, 0, 1)
+        win = window[y0:y1, x0:x1]; opn = (op * fl)[..., None]
+        sub[:] = sub * (1 - fl[..., None]) + flesh * (fl[..., None] - opn) + win * opn
+    else:
+        sub[:] = sub * (1 - fl[..., None]) + flesh * fl[..., None]
+    mm = disc * memb * (1 - rind) * (1 - pith)
+    sub[:] = sub * (1 - mm[..., None]) + pith_c * mm[..., None]
+    sub[:] = sub * (1 - (pith + core * disc)[..., None]) + pith_c * (0.9 + 0.1 * v)[..., None] * (pith + core * disc)[..., None]
+    sub[:] = sub * (1 - rind[..., None]) + rind_c * rind[..., None]
+    sub += (np.exp(-((X + 0.35) ** 2 + (Y + 0.40) ** 2) / 0.05) * 0.18 * disc)[..., None]     # broad wet gloss
+    return out
+
+
+def t_orange(t, c, A, B, a, b):
+    """A blood orange slice (Dexter's breakfast) spins in and lands with a burst of juice; its segments open
+    onto the next shot and the camera dives into the fruit."""
+    cx, cy, R0 = W / 2, H * 0.45, 0.40 * W
+    if t < c:
+        p = clamp((t - a) / (c - a)); land = 0.58
+        if p < land:
+            u = eout(p / land); x = lerp(W * 1.45, cx, u); y = lerp(H * 0.95, cy, u); rot = lerp(-3.6, 0.0, u); R = R0 * lerp(0.55, 1.0, u); sx = sy = 1.0
+        else:
+            k = (p - land) / (1 - land); x, y, rot, R = cx, cy, 0.0, R0 * (1 + 0.04 * k)
+            sq = math.exp(-k * 5) * math.cos(k * 14); sx, sy = 1 + 0.08 * sq, 1 - 0.07 * sq
+        f = layer(A, t) * (1 - 0.25 * ease(p / 0.5))
+        f = draw_orange(f, x, y, R, rot, sx, sy)
+        if p > land:                                                                # juice spray
+            k = (p - land) * (c - a); rng = np.random.default_rng(12); can = np.zeros((H, W, 3), np.float32); al = np.zeros((H, W), np.float32)
+            for _ in range(26):
+                ang = rng.uniform(0, 2 * np.pi); sp = rng.uniform(900, 2400); rr = rng.uniform(5, 16)
+                px = cx + math.cos(ang) * (R * 0.95 + sp * k); py = cy + math.sin(ang) * (R * 0.95 + sp * k) + 2600 * k * k
+                cv2.circle(al, (int(px), int(py)), int(rr), 1.0, -1, cv2.LINE_AA)
+                cv2.circle(can, (int(px - rr * .3), int(py - rr * .3)), max(1, int(rr * .3)), (0.9, 0.9, 1.0), -1, cv2.LINE_AA)
+            al = al * clamp(1 - k / 0.3); f = f * (1 - al[..., None]) + np.float32([0.04, 0.03, 0.55]) * al[..., None] + can * al[..., None]
+        return f
+    u = clamp((t - c) / (b - c)); R = R0 * 1.04 * math.exp(math.log(14.0) * ein(u)); rot = lerp(0, 0.5, ease(u))
+    fb = layer(B, t, 1 + 0.25 * (1 - eout(u)))
+    f = draw_orange(layer(A, c - 1e-3) * 0.75, cx, cy, R, rot, window=fb, open_u=u * 2.2)
+    k = ease(clamp((u - 0.75) / 0.25))
+    return f * (1 - k) + fb * k + 0.4 * (1 - eout(u / 0.12))
+
+
+# M99 syringe, blackout and waking blink
+def draw_syringe(f, tip, ang, plunge, alpha=1.0):
+    """A glass syringe pointing at `tip` from direction `ang` (radians, toward the plunger), plunger at `plunge` (0 full..1 empty)."""
+    eu = np.array([math.cos(ang), math.sin(ang)]); ev = np.array([-eu[1], eu[0]])
+    X = XX - tip[0]; Y = YY - tip[1]; u = X * eu[0] + Y * eu[1]; v = X * ev[0] + Y * ev[1]; av = np.abs(v)
+    Ln, Lh, Lb, Wb = 330.0, 42.0, 640.0, 62.0
+    ub0 = Ln + Lh; ub1 = ub0 + Lb; us = lerp(ub1 - 70, ub0 + 50, plunge)
+    def box(u0, u1, hw): return ss(-0.7, 0.7, u - u0) * ss(0.7, -0.7, u - u1) * ss(0.7, -0.7, av - hw)
+    out = f.copy()
+    shape = np.clip(box(0, ub1 + 22, Wb + 4) + box(ub1, ub1 + 22, 130) + box(us, us + 620, 16), 0, 1)
+    shd = cv2.GaussianBlur(np.roll(np.roll(shape, 26, 0), 18, 1), (0, 0), 12) * 0.35 * alpha
+    out *= (1 - shd[..., None])
+    def lay(m, col):
+        nonlocal out
+        m = (m * alpha)[..., None]; out = out * (1 - m) + col * m
+    # plunger rod + thumb disc + rubber stopper
+    rod = box(us + 28, us + 600, 15); lay(rod, (0.80 + 0.12 * (1 - av / 15))[..., None] * np.float32([0.95, 0.96, 0.97]))
+    lay(box(us + 600, us + 620, 78), np.float32([0.88, 0.89, 0.90]) - 0.12 * ss(40, 78, av)[..., None])
+    stop = box(us, us + 28, Wb - 6)
+    lay(stop, np.float32([0.05, 0.05, 0.06]) + (0.10 * (np.exp(-((u - us - 7) / 2.5) ** 2) + np.exp(-((u - us - 20) / 2.5) ** 2)))[..., None])
+    # liquid (amber M99) between the hub and the stopper, then the glass barrel over everything
+    liq = box(ub0 + 8, us, Wb - 7)
+    lay(liq * 0.62, np.float32([0.22, 0.58, 0.88]) + (0.25 * np.exp(-((u - us + 5) / 3) ** 2))[..., None])
+    glass = box(ub0, ub1, Wb)
+    walls = glass * ss(Wb - 9, Wb - 3, av)
+    hi = glass * (0.55 * np.exp(-((v + Wb * 0.55) / 7) ** 2) + 0.35 * np.exp(-((v - Wb * 0.72) / 2.5) ** 2))
+    out = out * (1 - (glass * 0.10 * alpha)[..., None]) + (glass * 0.10 * alpha)[..., None] * np.float32([0.95, 0.97, 0.98])
+    lay(walls * 0.55, np.float32([0.85, 0.88, 0.90]))
+    out = out + ((hi + walls * 0.15) * alpha)[..., None]
+    ticks = glass * ss(-0.5, 0.5, -(v + Wb * 0.25)) * ss(-Wb - 1, -Wb + 3, v)
+    tk = np.abs(((u - ub0 - 40) % 42) - 21) > 19.6; tick_long = (((u - ub0 - 40) // 42) % 5 == 0)
+    lay(ticks * tk * np.where(tick_long, 1.0, ss(-Wb * 0.62, -Wb * 0.58, v)) * (u > ub0 + 30) * (u < ub1 - 30), np.float32([0.10, 0.10, 0.12]))
+    lay(box(ub1, ub1 + 22, 130), np.float32([0.90, 0.91, 0.92]) - 0.15 * ss(100, 130, av)[..., None])     # finger flange
+    hub = ss(-0.7, 0.7, u - Ln) * ss(0.7, -0.7, u - ub0) * ss(0.7, -0.7, av - (10 + 14 * np.clip((u - Ln) / Lh, 0, 1)))
+    lay(hub * 0.9, np.float32([0.86, 0.90, 0.92]))
+    wn = 3.6 * np.clip(u / 26, 0.05, 1); needle = ss(-0.6, 0.6, u) * ss(0.6, -0.6, u - Ln) * ss(0.6, -0.6, av - wn)
+    lay(needle, (0.55 + 0.4 * np.exp(-((v + 1.0) / 1.2) ** 2))[..., None] * np.float32([0.95, 0.96, 1.0]))
+    return out
+
+
+def _woozy(f, k, t):
+    if k <= 0.01: return f
+    r = np.sqrt((XX - W / 2) ** 2 + (YY - H * 0.45) ** 2)
+    sw = k * 0.22 * np.exp(-(r / (0.7 * H)) ** 2) * math.sin(t * 4.0)
+    ca, sa = np.cos(sw), np.sin(sw)
+    X = XX - W / 2; Y = YY - H * 0.45
+    g = cv2.remap(f, X * ca - Y * sa + W / 2, X * sa + Y * ca + H * 0.45, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    dx = int(36 * k * (0.6 + 0.4 * math.sin(t * 9)))
+    g = 0.5 * (np.roll(g, dx, 1) + np.roll(g, -dx, 1))
+    g = blur(g, 9 * k)
+    return g * (1 - 0.55 * k * np.clip(r / (0.75 * H), 0, 1.4)[..., None] ** 2)
+
+
+def _lids(f, o, inside_glow=0.0):
+    """Eyelids: o = openness 0..1. Closed lids are dark, with blood-red light glowing through near the edge."""
+    if o >= 0.999: return f
+    xn = (XX - W / 2) / (W * 0.62); yc = H * 0.45
+    half = o * H * 0.60 * np.clip(1 - xn * xn, 0, 1) ** 0.55
+    d = np.abs(YY - yc) - half
+    lid = ss(-26, 26, d)
+    col = np.float32([0.008, 0.008, 0.03]) + (np.exp(-np.clip(d, 0, None) / 90.0) * (0.10 + inside_glow))[..., None] * np.float32([0.10, 0.10, 0.85])
+    return f * (1 - lid[..., None]) + col * lid[..., None]
+
+
+def t_syringe(t, c, A, B, a, b):
+    """The M99 syringe is pushed at the viewer, the plunger goes down, the world swims and the eyes close;
+    then the eyes blink open on the next shot."""
+    T = (W * 0.50, H * 0.43); ang = math.radians(58)
+    if t < c:
+        p = (t - a) / (c - a)                                        # 0..1 over the pre-cut part
+        D = 1500 * (1 - eout(clamp(p / 0.38)))
+        tip = (T[0] + math.cos(ang) * D, T[1] + math.sin(ang) * D)
+        plunge = ease(clamp((p - 0.42) / 0.40))
+        f = layer(A, t)
+        hit = clamp((p - 0.38) / 0.4)
+        if 0 < hit < 1:                                              # the needle touches the lens: a ripple
+            r = np.sqrt((XX - T[0]) ** 2 + (YY - T[1]) ** 2); rr = hit * 900; amp = 14 * (1 - hit)
+            dd = amp * np.exp(-((r - rr) / 60) ** 2) * np.sin((r - rr) / 14)
+            f = cv2.remap(f, XX + dd * (XX - T[0]) / (r + 1), YY + dd * (YY - T[1]) / (r + 1), cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        f = draw_syringe(f, tip, ang, plunge)
+        f = _woozy(f, ease(clamp((p - 0.55) / 0.45)), t)
+        return _lids(f, 1 - ease(clamp((p - 0.84) / 0.16)))
+    u = t - c
+    o = 0.0
+    if u < 0.10: o = 0.35 * eout(u / 0.10)
+    elif u < 0.17: o = lerp(0.35, 0.08, ease((u - 0.10) / 0.07))
+    else: o = lerp(0.08, 1.0, eout((u - 0.17) / (b - c - 0.17)))
+    f = _woozy(layer(B, t, 1 + 0.06 * (1 - o)), (1 - o) * 0.8, t)
+    return _lids(f, o)
+
+
 # Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
 # c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
 # so the same transition works at any tempo and position.
@@ -1183,6 +1522,10 @@ TRANSITIONS = {
     'emblem':    (lambda c, o: (c - .60, c + .36), lambda t, c, A, B, o: t_emblem(t, c, A, B, c - .60, c + .36)),
     'emblem_real': (lambda c, o: (c - .80, c + .32), lambda t, c, A, B, o: t_emblem_real(t, c, A, B, c - .80, c + .32)),
     'strike':    (lambda c, o: (c - .22, c + .30), lambda t, c, A, B, o: t_strike(t, c, A, B, c - .22, c + .30)),
+    'ink':       (lambda c, o: (c - .35, c + .30), lambda t, c, A, B, o: t_ink(t, c, A, B, c - .35, c + .30)),
+    'slices':    (lambda c, o: (c - .14, c + .30), lambda t, c, A, B, o: t_slices(t, c, A, B, c - .14, c + .30)),
+    'orange':    (lambda c, o: (c - .42, c + .42), lambda t, c, A, B, o: t_orange(t, c, A, B, c - .42, c + .42)),
+    'syringe':   (lambda c, o: (c - .78, c + .45), lambda t, c, A, B, o: t_syringe(t, c, A, B, c - .78, c + .45)),
     'knife':     (lambda c, o: (c - .30, c + .34), lambda t, c, A, B, o: t_knife(t, c, A, B, c - .30, c + .34)),
     'scope':     (lambda c, o: (c - .40, c + .38), lambda t, c, A, B, o: t_scope(t, c, A, B, c - .40, c + .38, o.get('px', 0.5), o.get('py', 0.5))),
     'plastic':   (lambda c, o: (c - .30, c + .40), lambda t, c, A, B, o: t_plastic(t, c, A, B, c - .30, c + .40)),
@@ -1234,6 +1577,9 @@ def base_index(t):
 
 
 def frame(t):
+    import config as _c, typo
     for a, b, fn in TRANS:
-        if a <= t < b: return fn(t)
-    return layer(base_index(t), t)
+        if a <= t < b: f = fn(t); break
+    else:
+        f = layer(base_index(t), t)
+    return typo.overlay(f, t, getattr(_c, 'TEXT', None), W, H)

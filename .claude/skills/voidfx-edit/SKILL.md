@@ -67,6 +67,16 @@ What it is:
 - Faces are smaller in frame than in the Dexter standard (41% against 55%), because speed shots are wider.
 Ask the user, early, for a reference of the quality they're after when starting a new edit of this kind.
 
+**Flagship candidate (built 2026-11-10, awaiting the user's verdict): `edits/less_i_know`, Dexter × "The Less I Know The Better".**
+The user asked for the best Dexter edit yet, one that sets a new standard. If they approve it, make it the Dexter standard in place of Hold On (update `new_edit.py` TEMPLATES and the slot roles). What it added beyond Hold On:
+- **Sharper footage:** ML upscaling at extract time (`extract.py --sr`, Real-ESRGAN general-x4v3 on CPU, about 3 min per shot). Weights go in `media/models/` (see `edit/sr.py`).
+- **Kinetic lyric typography** (`TEXT` in the config, drawn by `edit/typo.py`). Word timing comes from vocal-stem onsets (`rea-video stems` on the section, then onset peaks). Entrances: type, pop, slide, forever (slow letters with widening tracking on a held note), glitch, impact (a huge word slams in with a flash and colour split). Exits: fade, cut, blur, scatter. White on a black stroke with soft shadow; keywords in red. This overrides "no captions" only when the user asks for references with lyrics, as voidfx's own Passenger edit has.
+- **Black-and-white grade with selective red:** `sat=0`, `rk=1`, `rth=0.22` (strict red key: only blood, red light and the red string keep colour, not skin; orange is rejected). Raise `rth` on a shot whose skin turns pink.
+- **Section:** bridge into chorus, 10 bars (`sections.py --start S --bars 10`), the same stretch the voidfx reference uses (`beatgrid.py --ref` found it at correlation 0.95).
+- **New drawn transitions:** `ink` (black ink blooms in from the edges with droplets and a wet rim, then parts onto the next shot), `orange` (a drawn blood-orange slice spins in, lands with a squash and a juice spray, then its segments open onto the next shot as the camera dives in), `slices` (knife cuts slash down the frame, then the strips fall away), `syringe` (a drawn M99 syringe is pushed at the viewer, the plunger goes down, the world swims, the eyelids close with red glowing through, and the next shot blinks awake).
+- **New overlays:** `dust` (light-catching motes in 3 depth layers), `glint` (4-point star glints on specular highlights, pulsing on hits), `ghost` (glowing outline doubles drifting off the subject, the voidfx signature), `trails` (psychedelic frame echoes).
+- **Sound for every new piece:** ink splats, juice, knife shings, syringe tick, rubber squeak, heartbeat and woozy downer; ticks, shimmer, zaps and an impact boom on the lyrics.
+
 **For another character:** keep the slot structure, rhythm, arc and big-hit placement. Swap the Dexter-signature transitions (knife, scope, plastic, polaroid) for shape transitions built from that character's own signature objects.
 
 **Reproducing the standard:** `bash scenepacks/fetch.sh dexter`, then put the song at `media/hold_on.mp3` (it isn't in the Drive manifest, so the user must supply it again), then `bash edit/build.sh edits/hold_on`.
@@ -221,6 +231,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 - 720p scene packs get upscaled about 2.7× in the 9:16 crop and look soft. Ask for a 1080p or 4K pack when quality matters.
 - The graphics (fronds, smoke, blood, water) are procedural approximations of After Effects-style assets. The leaf wipe and blood spatter are the most stylized.
 
+- Most packs repeat about 60% of frames (24 fps material in a 60 fps file). `--sr` reuses one upscale per unique source frame.
 - Packs at 30 or 24 fps are converted to 60 fps by repeating frames, so playback speed is right but slow motion looks steppy. Prefer 60 fps packs for slow, flowing shots.
 
 ## When the user gives feedback
@@ -228,6 +239,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-10: The user asked for the best Dexter edit yet, "above and beyond", with multiple custom effects, animations, graphics and transitions, using voidfx references and The Less I Know The Better. Built `edits/less_i_know` (see "Flagship candidate"). It is the first edit with lyric typography, a black-and-white selective-red grade, and ML upscaling.
 - 2026-11-10: **The user made Flash × Slaughter House v3 the standard for speedster / powered-character edits**, while noting it is still not at the quality they're pursuing (see "Second standard"). `new_edit.py --from flash` scaffolds from it.
 - 2026-11-10: Flash edit v3. The user disliked the gold light sweep over Barry's face on the final hold (removed everywhere; `ripple` replaces it) and the bolt left in the middle after `strike` (a bug: it now burns out within about 0.1 s and the torn edges fade). They then asked for the emblem to be **drawn as a high-quality animated graphic** instead of tracking the real one, which led to `draw_emblem` and the new `emblem`. Takeaway: for character symbols, the user prefers a crafted, well-animated graphic (draw-on, pop-in, strike, glint, dive) over effects pasted onto footage. QA now scans every frame for invalid pixels (NaN shows as a black frame).
 - 2026-11-10: Flash edit revision (v2). The user liked the transitions' structure but not how the animations looked. Changes: the emblem transition must use the **real emblem in the footage**, with the effect drawn on it and the transition coming out of it (not a drawn graphic); the Speed Force tunnel and the wandering arcs on the last hold were too loose (replaced with `boltsplit`); the eye lightning was too much (now a subtle gleam). The user asked for animation wherever there is dead space, which led to bump, rgbhit, echo, sweep and crisper lightning. General preference: **anchor effects to real objects in the shot, keep them tight and crisp, and fill holds with motion tied to the beat.**

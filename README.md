@@ -6,6 +6,7 @@ A beat-synced vertical fan edit rebuilt in code from a reference edit's style.
 - `.claude/skills/voidfx-edit/SKILL.md`: the house editing style (the default for every new edit) and the workflow for building one.
 - `edit/tools/`: `beatgrid.py` (tempo, half-beat grid and section for any song) and `catalog.py` (shot detection and contact sheets for any scene pack).
 - `edits/hold_on/config.py`: **the standard** (Dexter × Hold On v3), the template for every new edit.
+- `edits/less_i_know/config.py`: Dexter × The Less I Know The Better, the flagship candidate (ML-upscaled footage, kinetic lyrics, black-and-white with selective red, ink, orange, slices and syringe transitions).
 - `edits/flash/config.py`: **the speedster standard** (Flash × Slaughter House v3), the template for powered-character edits (`new_edit.py --from flash`). Approved as adequate, not yet at the target quality. Start one with `python edit/tools/new_edit.py <name> --song ... --section ...` and build with `bash edit/build.sh edits/<name>`.
 - `edit/`: the shared renderer, plus the first edit's config. `config.py` is the whole edit plan (clips, half-beat lengths, transition names), `timing.py` turns it into cut times, `timeline.py` holds the transitions, `fx.py` the effect primitives and procedural graphics, `audio.py` the soundtrack.
 

@@ -2,6 +2,7 @@
 
   python extract.py            # all shots (parallel, one process per core)
   python extract.py 3 7        # only these shots, e.g. after changing their src, framing or grade
+  python extract.py --sr [ids] # ML-upscale (Real-ESRGAN, see sr.py) the frames that reach the screen; slow, sequential
 
 For each shot this decodes src - PRE .. end + POST, tracks the face, crops a 9:16 window, upscales
 it (bicubic + unsharp mask), applies the shot's grade, and stores high-quality 4:4:4 JPEG
@@ -14,6 +15,7 @@ import json, os, subprocess, sys
 from multiprocessing import Pool
 import numpy as np, cv2
 from config import *
+sys.path.insert(1, os.path.dirname(os.path.abspath(__file__)))
 
 FACE_MODEL = os.path.expanduser('~/.cache/rea-video/models/face_detection_yunet_2023mar.onnx')
 JPEG = [cv2.IMWRITE_JPEG_QUALITY, 97, cv2.IMWRITE_JPEG_SAMPLING_FACTOR, cv2.IMWRITE_JPEG_SAMPLING_FACTOR_444]
@@ -58,8 +60,15 @@ def track(fr, s, SW, SH):
     return x, int(good.sum())
 
 
-def one(i):
-    cv2.setNumThreads(1)
+SR_PRE, SR_POST = 27, 30                     # frames around the slot that transitions can show
+
+
+def _write(path, img):
+    tmp = path + '.tmp.jpg'; cv2.imwrite(tmp, img, JPEG); os.replace(tmp, path)   # atomic: previews never read half a file
+
+
+def one(i, use_sr=False):
+    cv2.setNumThreads(1 if not use_sr else 2)
     from fx import grade_u8                   # imported here so workers don't need clips/meta.json
     s = SHOTS[i]; path = s.get('pack', SCENEPACK); SW, SH = probe(path)
     fr = read(path, s['src'] - PRE, (s['end'] - s['start']) + PRE + POST, SW, SH); n = len(fr)
@@ -68,18 +77,36 @@ def one(i):
     ch = SH / s['z']; cw = ch * W / H         # full-height 9:16 window, tightened by z
     cx = np.clip(x * SW, cw / 2, SW - cw / 2); cy = np.clip(s.get('cy', .5) * SH, ch / 2, SH - ch / 2)
     d = os.path.join('clips', '%02d' % i); os.makedirs(d, exist_ok=True)
-    for f in os.listdir(d): os.remove(os.path.join(d, f))
+    for f in os.listdir(d):
+        if not f.endswith('.jpg') or not f[:4].isdigit() or int(f[:4]) >= n: os.remove(os.path.join(d, f))
+    k0 = int(round(PRE * FPS)); k1 = int(round((PRE + s['end'] - s['start']) * FPS))
+    sr_lo, sr_hi = (max(0, k0 - SR_PRE), min(n - 1, k1 + SR_POST)) if use_sr else (1, 0)
+    if use_sr:                                # one source region covering every crop position in the range
+        rx0 = int(max(0, np.floor(cx[sr_lo:sr_hi + 1].min() - cw / 2) - 2)); rx1 = int(min(SW, np.ceil(cx[sr_lo:sr_hi + 1].max() + cw / 2) + 2))
+        ry0 = int(max(0, np.floor(cy - ch / 2) - 2)); ry1 = int(min(SH, np.ceil(cy + ch / 2) + 2))
+        sc = W / cw / 4; prev = None; nsr = 0
     small = []
     for k in range(n):
-        M = np.float32([[W / cw, 0, -(cx[k] - cw / 2) * W / cw], [0, H / ch, -(cy - ch / 2) * H / ch]])
-        im = cv2.warpAffine(fr[k], M, (W, H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
-        bl = cv2.GaussianBlur(im, (0, 0), 2.2); im = cv2.addWeighted(im, 1.45, bl, -0.45, 0)
+        if sr_lo <= k <= sr_hi:
+            reg = fr[k][ry0:ry1, rx0:rx1]; key = cv2.resize(reg, (64, 64), interpolation=cv2.INTER_AREA).astype(np.float32)
+            if prev is None or np.abs(key - prev[0]).mean() > 0.6:       # repeated source frames reuse the last result
+                up = sr.upscale4(reg); nsr += 1
+                big = cv2.resize(up, (int(round(up.shape[1] * sc)), int(round(up.shape[0] * sc))), interpolation=cv2.INTER_AREA)
+                prev = (key, big)
+            big = prev[1]; ax = big.shape[1] / (4 * (rx1 - rx0)); ay = big.shape[0] / (4 * (ry1 - ry0))
+            f_ = (W / cw) / (4 * ax); g_ = (H / ch) / (4 * ay)
+            M = np.float32([[f_, 0, (rx0 - (cx[k] - cw / 2)) * W / cw], [0, g_, (ry0 - (cy - ch / 2)) * H / ch]])
+            im = cv2.warpAffine(big, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+            bl = cv2.GaussianBlur(im, (0, 0), 1.6); im = cv2.addWeighted(im, 1.18, bl, -0.18, 0)
+        else:
+            M = np.float32([[W / cw, 0, -(cx[k] - cw / 2) * W / cw], [0, H / ch, -(cy - ch / 2) * H / ch]])
+            im = cv2.warpAffine(fr[k], M, (W, H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+            bl = cv2.GaussianBlur(im, (0, 0), 2.2); im = cv2.addWeighted(im, 1.45, bl, -0.45, 0)
         small.append(cv2.resize(im, (54, 96), interpolation=cv2.INTER_AREA).astype(np.float32))
         g = grade_u8(im, s)
-        cv2.imwrite(os.path.join(d, '%04d.jpg' % k), g, JPEG)
+        _write(os.path.join(d, '%04d.jpg' % k), g)
     # usable range: stop at hard cuts inside the source clip
     dif = np.array([np.abs(small[k + 1] - small[k]).mean() for k in range(n - 1)]) if n > 1 else np.zeros(0)
-    k0 = int(round(PRE * FPS)); k1 = int(round((PRE + s['end'] - s['start']) * FPS))
     med = np.median(dif) if len(dif) else 0
     cuts = [k + 1 for k in range(n - 1) if dif[k] > 28 and dif[k] > 6 * med]
     lo = max([c for c in cuts if c <= k0] + [0]); hi = min([c for c in cuts if c > k0] + [n]) - 1
@@ -88,7 +115,8 @@ def one(i):
     if hi < k1: warn += ' WARNING: clip ends %.2f s before its slot does (frozen frame)' % ((k1 - hi) / FPS)
     if lo > k0: warn += ' WARNING: clip starts %.2f s late (frozen frame)' % ((lo - k0) / FPS)
     if nfaces < 4 and s.get('track', True): warn += ' note: no face tracked, crop fixed at x=%.2f' % s['x']
-    return i, dict(n=n, lo=lo, hi=hi, k0=k0, k1=k1, graded=True, faces=nfaces, cuts=cuts), warn
+    if use_sr: warn += ' (ML-upscaled %d unique frames in %d..%d)' % (nsr, sr_lo, sr_hi)
+    return i, dict(n=n, lo=lo, hi=hi, k0=k0, k1=k1, graded=True, faces=nfaces, cuts=cuts, sr=bool(use_sr)), warn
 
 
 def sheet(meta):
@@ -110,13 +138,23 @@ def sheet(meta):
 if __name__ == '__main__':
     if not os.path.exists(FACE_MODEL):
         sys.exit('face model missing: %s (see the voidfx-edit skill for where to get it)' % FACE_MODEL)
-    only = [int(x) for x in sys.argv[1:]] or list(range(len(SHOTS)))
+    args = [a for a in sys.argv[1:] if a != '--sr']; use_sr = '--sr' in sys.argv[1:]
+    only = [int(x) for x in args] or list(range(len(SHOTS)))
     mp = 'clips/meta.json'
-    meta = json.load(open(mp)) if os.path.exists(mp) and sys.argv[1:] else {}
+    meta = json.load(open(mp)) if os.path.exists(mp) and (args or use_sr) else {}
     os.makedirs('clips', exist_ok=True)
-    with Pool(min(len(only), os.cpu_count() or 4)) as pool:
-        for i, m, warn in pool.imap_unordered(one, sorted(only, key=lambda i: -(SHOTS[i]['end'] - SHOTS[i]['start']))):
-            meta[str(i)] = m
-            print('%2d %-11s %3d frames, usable %3d..%3d, slot %3d..%3d%s' % (i, SHOTS[i]['name'], m['n'], m['lo'], m['hi'], m['k0'], m['k1'], warn), flush=True)
-    json.dump(meta, open(mp, 'w'))
+    report = lambda i, m, warn: print('%2d %-11s %3d frames, usable %3d..%3d, slot %3d..%3d%s' % (i, SHOTS[i]['name'], m['n'], m['lo'], m['hi'], m['k0'], m['k1'], warn), flush=True)
+    if use_sr:
+        import sr
+        path = globals().get('SR_MODEL')
+        if not sr.available(path): sys.exit('--sr needs torch and the weights at SR_MODEL (%s); see edit/sr.py' % path)
+        sr.load(path)
+        for i in only:                        # sequential: torch already uses every core
+            i, m, warn = one(i, True); meta[str(i)] = m; report(i, m, warn)
+            json.dump(meta, open(mp + '.tmp', 'w')); os.replace(mp + '.tmp', mp)
+    else:
+        with Pool(min(len(only), os.cpu_count() or 4)) as pool:
+            for i, m, warn in pool.imap_unordered(one, sorted(only, key=lambda i: -(SHOTS[i]['end'] - SHOTS[i]['start']))):
+                meta[str(i)] = m; report(i, m, warn)
+    json.dump(meta, open(mp + '.tmp', 'w')); os.replace(mp + '.tmp', mp)
     sheet(meta); print('framing check: out/sheets/clips.jpg')

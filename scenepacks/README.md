@@ -32,6 +32,7 @@ References (finished edits to study, not footage):
 | File | What | Length |
 |---|---|---|
 | voidfx_passengers_love_song.mp4 | voidfx edit, 1080×1920 60 fps | 0:23 |
+| (analysed) voidfx_passengers_love_song.mp4 | uses The Less I Know The Better 2:07.6-2:30.4; black and white with red lyric keywords, ghost outlines, extreme close-ups, 52 cuts a minute | |
 | flash_wonderwall_ref.mp4 | Flash edit (Wonderwall), 720×1280 30 fps; user-uploaded, **not in the manifest** (not re-downloadable) | 0:22 |
 
 Notes:

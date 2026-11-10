@@ -142,6 +142,39 @@ def buzz(dur=0.45):
     return y / np.abs(y).max()
 
 
+def tick(dur=0.08, f0=2400):
+    """Soft glassy tick for text entrances."""
+    n = int(dur * SR); u = np.arange(n) / SR
+    y = np.sin(2 * np.pi * f0 * u) * np.exp(-u * 60) + 0.5 * np.sin(2 * np.pi * f0 * 1.5 * u) * np.exp(-u * 80)
+    return y / np.abs(y).max()
+
+
+def heartbeat():
+    """Two low thumps (lub-dub)."""
+    out = np.zeros(int(0.5 * SR))
+    for t0, g in ((0.0, 1.0), (0.17, 0.7)):
+        b = boom(0.25, 70, 38) * g; i = int(t0 * SR); out[i:i + len(b)] += b[:len(out) - i]
+    return out / np.abs(out).max()
+
+
+def squeak(dur=0.35):
+    """Rubber plunger squeak: a wobbling resonant glide."""
+    n = int(dur * SR); u = np.arange(n) / SR
+    f = 900 + 500 * u / dur + 60 * np.sin(2 * np.pi * 23 * u)
+    y = np.sin(2 * np.pi * np.cumsum(f) / SR) * (0.5 + 0.5 * np.sin(2 * np.pi * 31 * u)) * np.sin(np.pi * u / dur)
+    y = sg.lfilter(*sg.butter(2, [600 / (SR / 2), 3500 / (SR / 2)], 'band'), y)
+    return y / np.abs(y).max()
+
+
+def downer(dur=0.9):
+    """Woozy pitch-down whoosh (sedation)."""
+    n = int(dur * SR); u = np.arange(n) / SR
+    f = 420 * np.exp(-u * 2.2) + 50
+    y = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.sin(np.pi * u / dur) ** 0.7
+    y += 0.5 * sg.lfilter(*sg.butter(2, 700 / (SR / 2)), rng.standard_normal(n)) * np.sin(np.pi * u / dur)
+    return y / np.abs(y).max()
+
+
 # ---- SFX follow the plan: each transition type has its sound, placed relative to its cut ----
 def sfx_for(name, c, o, up):
     if name == 'leaf': put(whoosh(0.34, 700, 5200) if up else whoosh(0.34, 5200, 800), c - 0.20, gain=0.085)
@@ -183,6 +216,19 @@ def sfx_for(name, c, o, up):
     elif name == 'knife':
         put(whoosh(0.30, 600, 4200, peak=0.85), c - 0.30, pan=0.4, gain=0.07); put(shing(), c - 0.12, pan=0.2, gain=0.11)
         put(boom(0.35, 110, 50), c, gain=0.08)
+    elif name == 'ink':
+        put(whoosh(0.40, 180, 1200, q=0.7, peak=0.7), c - 0.36, gain=0.09); put(splat(0.14), c - 0.30, pan=-0.3, gain=0.07)
+        put(splat(0.12), c - 0.20, pan=0.4, gain=0.06); put(whoosh(0.30, 1200, 300, peak=0.2), c, gain=0.06)
+    elif name == 'orange':
+        put(whoosh(0.30, 500, 3200, peak=0.8), c - 0.42, pan=0.5, gain=0.08); put(splat(0.20), c - 0.18, gain=0.12)
+        put(whoosh(0.25, 4000, 9000, q=0.6, peak=0.2), c - 0.17, gain=0.04); put(whoosh(0.40, 3000, 600, peak=0.15), c, gain=0.07)
+    elif name == 'slices':
+        for k in range(5): put(shing(0.35), c - 0.14 + 0.018 * k, pan=-0.6 + 0.3 * k, gain=0.035)
+        put(whoosh(0.30, 2000, 400, peak=0.2), c, gain=0.08); put(boom(0.3, 120, 50), c, gain=0.07)
+    elif name == 'syringe':
+        put(whoosh(0.30, 600, 3000, peak=0.85), c - 0.78, pan=0.5, gain=0.06); put(tick(0.12, 3200), c - 0.48, gain=0.06)
+        put(squeak(0.30), c - 0.45, gain=0.035); put(heartbeat(), c - 0.40, gain=0.16); put(downer(0.9), c - 0.40, gain=0.08)
+        put(heartbeat(), c + 0.05, gain=0.13); put(whoosh(0.35, 300, 1800, q=0.7, peak=0.6), c + 0.12, gain=0.05)
     elif name == 'shatter':
         for k in range(3): put(splat(0.03), c - 0.11 + 0.035 * k, pan=0.2 * k - 0.2, gain=0.05)
         put(glass(), c, gain=0.16); put(boom(0.35, 120, 50), c, gain=0.10)
@@ -207,6 +253,14 @@ for i, s in enumerate(SHOTS):
     if 'punch' in s and i > 0:
         big = s['punch'].get('z', 1.22) > 1.18
         put(boom(0.5, 80, 42) if big else boom(0.4, 70, 40), s['start'], gain=0.14 if big else 0.10)
+
+for line in globals().get('TEXT', []):
+    for w in line['words']:
+        tin, kind = w[0], w[2]
+        if kind in ('pop', 'slide'): put(tick(0.07, 2200 if kind == 'pop' else 1800), tin, pan=0.1, gain=0.035)
+        elif kind == 'forever': put(shimmer(0.9), tin, pan=0.2, gain=0.03)
+        elif kind == 'glitch': put(zap(0.2), tin, gain=0.04)
+        elif kind == 'impact': put(boom(0.6, 90, 40), tin, gain=0.045)   # usually stacks with a transition hit on the drop
 
 mix = music + fx
 fade = int(0.008 * SR); ramp = np.linspace(0, 1, fade)[:, None]
