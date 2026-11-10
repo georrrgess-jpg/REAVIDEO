@@ -119,11 +119,21 @@ Almost every cut is hidden. Pick transitions by what is in the clips: foliage �
 |---|---|---|---|
 | `speedlines` (`out_opts` d=±1) | the frame smears sideways into golden speed streaks, and the next shot resolves out of them | a speedster taking off; the opening | 0.36 s |
 | `phase` | Speed Force vibration: RGB-split ghost copies shake, a pop, then it phases into the next shot, with small arcs | a loud hit mid-edit | 0.40 s |
-| `emblem` | the Flash emblem (silver disc, gold rim) spins in; its bolt is a window onto the next shot; the camera dives into the bolt | the character-signature moment on the loudest early hit (the `knife` equivalent) | 0.62 s |
+| `emblem` | **built on the real chest emblem in the outgoing shot** (found by brightness, followed by template matching near it): a light sweep crosses it, lightning leaps off its rim, the camera pushes in on it, it flashes on the hit, and the next shot opens out of the emblem's own shape as the camera dives in | the signature moment on the loudest early hit; the outgoing shot must show the emblem | 0.80 s charge + 0.32 s |
 | `strike` | a lightning leader draws down the frame, then strikes; the frame tears open along the bolt with a glowing edge | a shot of throwing lightning; a loud hit | 0.52 s |
-| `tunnel` (loop) | the Speed Force tunnel: blue/gold streaks rush outward, and the centre opens onto shot 0 | **loop ending for speedsters** (the alternative to `iris`) | 0.65 s |
-| `fx=['eyes']` | eyes ignite: hot gold cores, an anamorphic flare and tiny arcs, placed on YuNet eye landmarks every frame | a cowl or face close-up, often with a punch-in | the whole shot |
-| `fx=['crackle']` / `['crackle_build']` | lightning arcs crawl over the shot; `_build` grows with the shot (put it on the riser hold before the loop) | charged-up shots; the last hold | the whole shot |
+| `boltsplit` (loop) | a lightning-bolt seam draws across the last shot and burns, then the two halves fly apart along it with motion blur, and shot 0 is behind them | **loop ending for speedsters** | 0.52 s |
+| ~~`tunnel`~~ Speed Force tunnel loop. **The user found it loose; use `boltsplit`.** | | |
+| `fx=['eyes']` | a brief, subtle gold gleam in the eyes on the hit (small core, soft glow, short glint; no arcs), on YuNet eye landmarks | a cowl close-up with a punch-in. **Keep it subtle: the user found glowing eyes with lightning too much.** | about 0.3 s |
+| `fx=['crackle']`, `['crackle_blue']` (arcs over the top of the frame, Speed Force blue) / ~~`['crackle_build']`~~ (the user disliked the loose wandering arcs on the last hold) | lightning arcs crawl over the shot; `_build` grows with the shot (put it on the riser hold before the loop) | charged-up shots; the last hold | the whole shot |
+
+Fill-the-dead-space overlays (any edit; config `KICKS` / `SNARES` are half-beat indices from `sections.py`):
+- `fx=['bump']`: a +4.5% zoom bump on each strong kick inside the shot (shot 0 holds it through the loop tail, so the seam matches).
+- `fx=['rgbhit']`: a colour-split kick on each snare.
+- `fx=['echo']`: gold speedster afterimages of earlier frames (running or flying shots).
+- `fx=['sweep']`: one warm light sweep across a still hold.
+Use them on holds of 3 or more half-beats that have no transition.
+
+Lightning is drawn crisp: a white-hot core, a tight inner glow and a soft outer glow, with low displacement. Avoid thin wandering arcs.
 
 Grade option `yk` (yellow keep) keeps gold, orange and lightning saturated in a muted grade, the way `rk` does for red. The Flash look is `sat .45, rk 1.0, yk 1.0`.
 
@@ -194,6 +204,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-10: Flash edit revision (v2). The user liked the transitions' structure but not how the animations looked. Changes: the emblem transition must use the **real emblem in the footage**, with the effect drawn on it and the transition coming out of it (not a drawn graphic); the Speed Force tunnel and the wandering arcs on the last hold were too loose (replaced with `boltsplit`); the eye lightning was too much (now a subtle gleam). The user asked for animation wherever there is dead space, which led to bump, rgbhit, echo, sweep and crisper lightning. General preference: **anchor effects to real objects in the shot, keep them tight and crisp, and fill holds with motion tied to the beat.**
 - 2026-11-10: Third edit, The Flash × "SLAUGHTER HOUSE" (`edits/flash`). The user asked for the standard's style with the edit's own Flash flair (lightning, emblem, eyes), using elements of a reference edit (`media/references/flash_wonderwall_ref.mp4`, user-supplied, not in the Drive manifest) without copying it. The kit above was added. Choices: section = first drop + its riser bar (the riser launches the loop back into the drop), rather than the last chorus; no lyric captions, although the reference had them (the style excludes text). Footage is from all seven Flash packs; median sharpness 663, faces 41% of frame height (lower than the standard on purpose: speed and lightning shots).
 - 2026-11-10: **The user approved Dexter × Hold On v3 and made it the standard for future edits** (see The standard above; `tools/new_edit.py` scaffolds from it).
 - 2026-11-09: Style adopted as the default for all future edits, based on the Dexter × Doomsday voidfx reference (first build: `edit/`, `dexter_doomsday_edit_v1.mp4`).

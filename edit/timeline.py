@@ -74,7 +74,9 @@ def fringe(f):
 
 
 def layer(i, t, ez=1.0):
-    s = SHOTS[i]; f = shot(i, t, ez)
+    s = SHOTS[i]
+    if 'bump' in s.get('fx', ()): ez *= 1 + bump_amount(t, s)
+    f = shot(i, t, ez)
     for name in s.get('fx', ()):
         if name == 'streaks': f = streaks(f, t, t0=s['end'] - 0.65)          # glass light streaks, end on the wipe
         elif name == 'fringe': f = fringe(f)                                 # macro: red/cyan fringing
@@ -86,7 +88,12 @@ def layer(i, t, ez=1.0):
             f = light_leak(f, t)
             f = bubbles(f, t, ease((t - (s['end'] - 0.50)) / 0.35), small=True, n=55, t0=s['end'] - 0.45)
         elif name == 'eyes': f = eyes_fx(f, i, t, s)
-        elif name == 'crackle': f = crackle_fx(f, i, t, s)
+        elif name == 'crackle': f = crackle_fx(f, i, t, s, amp_scale=0.7)
+        elif name == 'crackle_blue': f = crackle_fx(f, i, t, s, glow=BLUE_GLOW, region=(0.15, 0.02, 0.85, 0.30), amp_scale=0.9)
+        elif name == 'bump': pass
+        elif name == 'rgbhit': f = rgbhit_fx(f, t, s)
+        elif name == 'echo': f = echo_fx(f, i, t, s)
+        elif name == 'sweep': f = sweep_fx(f, t, s)
         elif name == 'crackle_build': f = crackle_fx(f, i, t, s, build=True)
         else: raise ValueError('unknown fx %r on shot %d' % (name, i))
     return f
@@ -652,7 +659,7 @@ def t_knife(t, c, A, B, a, b):
 GOLD_CORE = np.float32([0.80, 0.97, 1.00]); GOLD_GLOW = np.float32([0.08, 0.50, 1.00]); BLUE_GLOW = np.float32([1.00, 0.62, 0.25])
 
 
-def bolt_path(p0, p1, rng, depth=7, disp=0.22):
+def bolt_path(p0, p1, rng, depth=6, disp=0.14):
     """Midpoint-displacement lightning between two points; returns an (N,2) polyline."""
     pts = [np.float64(p0), np.float64(p1)]
     for d in range(depth):
@@ -664,7 +671,7 @@ def bolt_path(p0, p1, rng, depth=7, disp=0.22):
     return np.array(pts)
 
 
-def bolt_tree(p0, p1, rng, branches=4, disp=0.22, depth=7):
+def bolt_tree(p0, p1, rng, branches=4, disp=0.14, depth=6):
     main = bolt_path(p0, p1, rng, depth, disp); segs = [(main, 1.0)]
     for _ in range(branches):
         k = rng.integers(len(main) // 6, len(main) * 5 // 6); s0 = main[k]
@@ -676,18 +683,19 @@ def bolt_tree(p0, p1, rng, branches=4, disp=0.22, depth=7):
 
 
 def draw_bolts(segs, width=3.0, glow=GOLD_GLOW, core=GOLD_CORE, amp=1.0, q=2):
-    """Additive glowing lightning: thin hot core + two blurred glow layers (drawn at 1/q res for the glow)."""
+    """Additive lightning: white-hot core, tight inner glow, wide soft glow (glows drawn at 1/q res)."""
     if amp <= 0.01 or not segs: return None
     c = np.zeros((H, W), np.uint8); g = np.zeros((H // q, W // q), np.uint8)
     for pts, w in segs:
         P = np.round(pts * 4).astype(np.int32)
-        cv2.polylines(c, [P], False, 255, max(1, int(width * w)), cv2.LINE_AA, shift=2)
+        cv2.polylines(c, [P], False, 255, max(1, int(round(width * w))), cv2.LINE_AA, shift=2)
         Pq = np.round(pts / q * 4).astype(np.int32)
-        cv2.polylines(g, [Pq], False, 255, max(1, int(width * w * 3 / q)), cv2.LINE_AA, shift=2)
-    cf = cv2.GaussianBlur(c.astype(np.float32) / 255, (0, 0), 0.8)
+        cv2.polylines(g, [Pq], False, 255, max(1, int(round(width * w * 2.2 / q))), cv2.LINE_AA, shift=2)
+    cf = c.astype(np.float32) / 255
     gf = g.astype(np.float32) / 255
-    g1 = cv2.resize(cv2.GaussianBlur(gf, (0, 0), 6 / q), (W, H)); g2 = cv2.resize(cv2.GaussianBlur(gf, (0, 0), 28 / q), (W, H))
-    return amp * (cf[..., None] * core * 1.4 + g1[..., None] * glow * 1.1 + g2[..., None] * glow * 0.7)
+    g1 = cv2.resize(cv2.GaussianBlur(gf, (0, 0), 3.5 / q), (W, H)); g2 = cv2.resize(cv2.GaussianBlur(gf, (0, 0), 22 / q), (W, H))
+    white = np.float32([1.0, 1.0, 1.0])
+    return amp * (cf[..., None] * (white * 0.6 + core * 0.9) + g1[..., None] * glow * 1.5 + g2[..., None] * glow * 0.75)
 
 
 def add(f, layer_):
@@ -710,43 +718,88 @@ def _landmarks(i, k):
 
 
 def eyes_fx(f, i, t, s):
-    """Barry's eyes ignite with Speed Force lightning: hot cores, anamorphic flare, tiny arcs."""
+    """A brief gold gleam in Barry's eyes on the hit (subtle: small core, soft glow, short anamorphic glint)."""
+    u = t - s['start']; amp = ease(u / 0.06) * math.exp(-max(0.0, u - 0.08) / 0.22)
+    if amp < 0.02: return f
     k = round((PRE + t - s['start']) * FPS); m = META[i]; k = int(min(max(k, m['lo']), m['hi']))
     lm = None
     for kk in (k, k - 1, k - 2, k + 1, k - 4, k + 3):
         lm = _landmarks(i, kk)
         if lm: break
     if not lm: return f
-    amp = ease((t - s['start']) / 0.16) * (0.9 + 0.1 * math.sin(t * 90))
-    z = max(lerp(s['push'][0], s['push'][1], (t - s['start']) / (s['end'] - s['start'])), 1.0)
-    cx0, cy0 = W / 2, H * 0.42; fw = lm[2] * z
-    lay = np.zeros((H, W, 3), np.float32); rng = np.random.default_rng(int(t * FPS / 2))
-    segs = []
+    z = max(lerp(s['push'][0], s['push'][1], u / (s['end'] - s['start'])), 1.0)
+    cx0, cy0 = W / 2, H * 0.42; fw = lm[2] * z; lay = np.zeros((H, W, 3), np.float32)
     for e in lm[:2]:
-        x, y = cx0 + (e[0] - cx0) * z, cy0 + (e[1] - cy0) * z
-        r = max(3.0, fw * 0.035)
+        x, y = cx0 + (e[0] - cx0) * z, cy0 + (e[1] - cy0) * z; r = max(3.0, fw * 0.018)
         d2 = (XX - x) ** 2 + (YY - y) ** 2
-        lay += np.exp(-d2 / (2 * r * r))[..., None] * GOLD_CORE * 2.2
-        lay += np.exp(-d2 / (2 * (r * 4) ** 2))[..., None] * GOLD_GLOW * 0.9
-        lay += (np.exp(-((XX - x) / (fw * 0.9)) ** 2 - ((YY - y) / (r * 0.7)) ** 2) * 0.6)[..., None] * GOLD_GLOW     # flare streak
-        for _ in range(2):
-            ang = rng.uniform(0, 2 * np.pi); ln = fw * rng.uniform(0.12, 0.3)
-            segs.append((bolt_path((x, y), (x + ln * math.cos(ang), y + ln * math.sin(ang)), rng, 5, 0.3), 0.5))
-    return add(f + lay * amp, draw_bolts(segs, 2.0, amp=amp * 0.8))
+        lay += np.exp(-d2 / (2 * r * r))[..., None] * GOLD_CORE * 1.3
+        lay += np.exp(-d2 / (2 * (r * 3.5) ** 2))[..., None] * GOLD_GLOW * 0.45
+        lay += (np.exp(-((XX - x) / (fw * 0.35)) ** 2 - ((YY - y) / (r * 0.5)) ** 2) * 0.25)[..., None] * GOLD_GLOW
+    return f + lay * amp
 
 
-def crackle_fx(f, i, t, s, build=False):
+def crackle_fx(f, i, t, s, build=False, glow=GOLD_GLOW, region=None, amp_scale=1.0):
     """Lightning arcs crawling over the shot (re-struck every 3 frames); with build=True they grow toward the end."""
     u = (t - s['start']) / (s['end'] - s['start'])
     amp = (0.15 + 0.85 * ein(u)) if build else 0.8
     rng = np.random.default_rng(int(t * FPS / 3) + 17 * i); segs = []
     n = 2 + int((5 if build else 3) * (u if build else 1))
     for _ in range(n):
+        if region is not None:                                   # arcs jumping across a region (e.g. the speed cap)
+            x0, y0, x1, y1 = region
+            p0 = (W * rng.uniform(x0, x1), H * rng.uniform(y0, y1)); ang = rng.uniform(0, 2 * np.pi); ln = W * rng.uniform(0.12, 0.3)
+            segs += bolt_tree(p0, (p0[0] + ln * math.cos(ang), p0[1] + ln * math.sin(ang)), rng, branches=1, depth=6)
+            continue
         side = rng.integers(4)
         x0, y0 = (rng.uniform(0, W), H * rng.uniform(0.55, 1.0)) if side < 2 else ((0 if side == 2 else W), H * rng.uniform(0.2, 0.9))
         x1, y1 = W * rng.uniform(0.25, 0.75), H * rng.uniform(0.35, 0.8)
-        segs += bolt_tree((x0, y0), (x0 + (x1 - x0) * 0.6, y0 + (y1 - y0) * 0.6), rng, branches=2, disp=0.28, depth=6)
-    return add(f, draw_bolts(segs, 3.0, amp=amp))
+        segs += bolt_tree((x0, y0), (x0 + (x1 - x0) * 0.6, y0 + (y1 - y0) * 0.6), rng, branches=2, depth=6)
+    flick = 0.75 + 0.25 * math.sin(t * 157)
+    return add(f, draw_bolts(segs, 3.2, glow=glow, amp=amp * amp_scale * flick))
+
+
+# ---- beat-driven overlays (KICKS / SNARES: half-beat indices from the section analysis, in config.py)
+def _hits(name):
+    import config as _c
+    return [GRID0 + k * HALF for k in getattr(_c, name, [])]
+
+
+def bump_amount(t, s):
+    """Zoom bump on each strong kick inside the shot: +4.5% that settles in ~0.1 s."""
+    z = 0.0
+    if t < s['start'] and any(abs(tk - s['start']) < 1e-6 for tk in _hits('KICKS')):
+        return 0.045                                     # loop tail of shot 0: hold the downbeat bump so the seam matches
+    for tk in _hits('KICKS'):
+        if s['start'] - 1e-6 <= tk <= t: z = max(z, 0.045 * math.exp(-(t - tk) / 0.09))
+    return z
+
+
+def rgbhit_fx(f, t, s):
+    """Colour-split kick on each snare inside the shot: channels jump apart and snap back."""
+    a = 0.0
+    for tk in _hits('SNARES'):
+        if s['start'] - 1e-6 <= tk <= t: a = max(a, math.exp(-(t - tk) / 0.07))
+    sp = int(18 * a)
+    if sp < 2: return f
+    f = f.copy(); f[..., 2] = np.roll(f[..., 2], sp, 1); f[..., 0] = np.roll(f[..., 0], -sp, 1)
+    return f
+
+
+def echo_fx(f, i, t, s):
+    """Speedster afterimages: earlier frames trail behind in gold (screen-blended, fading)."""
+    out = f
+    for k, (dt, al) in enumerate(((0.07, 0.55), (0.15, 0.38), (0.25, 0.24))):
+        g = shot(i, t - dt) * np.float32([0.35, 0.75, 1.15])
+        out = 1 - (1 - out) * (1 - np.clip(g * al, 0, 1))
+    return out
+
+
+def sweep_fx(f, t, s):
+    """A single warm light sweep crosses the shot (diagonal band + anamorphic glint at its hot spot)."""
+    u = (t - s['start']) / (s['end'] - s['start']); pos = lerp(-0.4, 1.4, ease(u))
+    d = (XX / W * 0.8 + YY / H * 0.45) - pos * 1.25
+    band = np.exp(-(d / 0.05) ** 2) * 0.45 + np.exp(-(d / 0.16) ** 2) * 0.18
+    return f + band[..., None] * np.float32([0.35, 0.72, 1.0])
 
 
 # ---- transitions
@@ -790,49 +843,88 @@ def t_phase(t, c, A, B, a, b):
     return add(f, draw_bolts(segs, 2.5, amp=env))
 
 
-_BOLT = np.array([(0.10, -1.0), (0.62, -1.0), (0.22, -0.15), (0.55, -0.15), (-0.30, 1.0), (0.0, 0.10), (-0.35, 0.10)]) * 0.78
+def _emblem_ref(i, k_ref):
+    """Detect the emblem once on a clean reference frame: hull, centre, radius, mask, and a grey template."""
+    key = ('embref', i)
+    if key in _lazy: return _lazy[key]
+    best = None
+    for k in [k_ref] + [k_ref - d for d in range(3, 40, 3)]:
+        img = clip_frame(i, k); hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        m = ((hsv[..., 1] < 70) & (hsv[..., 2] > 165)).astype(np.uint8) * 255; m[:int(0.5 * H)] = 0
+        m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((7, 7), np.uint8))
+        for c in cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]:
+            A_ = cv2.contourArea(c); (x, y), r = cv2.minEnclosingCircle(c)
+            if A_ > 3000 and A_ / (np.pi * r * r) > 0.45 and (best is None or A_ > best[0]):   # round, solid: the disc, not lightning
+                best = (A_, k, c, x, y, r, m)
+        if best: break
+    _, k, c, x, y, r, m = best
+    hull = cv2.convexHull(c)[:, 0, :].astype(np.float64); M = cv2.moments(c); cen = np.array([M['m10'] / M['m00'], M['m01'] / M['m00']])
+    g = cv2.cvtColor(clip_frame(i, k), cv2.COLOR_BGR2GRAY); q = 4
+    x0, y0 = int(max(0, x - r)), int(max(0, y - r)); x1, y1 = int(min(W, x + r)), int(min(H, y + r))
+    tmpl = cv2.resize(g[y0:y1, x0:x1], ((x1 - x0) // q, (y1 - y0) // q))
+    disc = np.zeros((H, W), np.uint8); cv2.drawContours(disc, [c], -1, 255, -1)
+    _lazy[key] = dict(hull=hull, cen=cen, r=r, tl=np.array([x0, y0]), tmpl=tmpl, q=q, mask=disc > 0)
+    return _lazy[key]
+
+
+def _emblem_geo(i, k, k_ref):
+    """Follow the reference emblem into frame k by template matching (lightning over it doesn't fool this)."""
+    key = ('emb', i, k)
+    if key in _lazy: return _lazy[key]
+    ref = _emblem_ref(i, k_ref); q = ref['q']
+    g = cv2.resize(cv2.cvtColor(clip_frame(i, k), cv2.COLOR_BGR2GRAY), (W // q, H // q))
+    th, tw = ref['tmpl'].shape; x0, y0 = ref['tl'] // q
+    sx0, sy0 = max(0, x0 - W // q // 4), max(0, y0 - H // q // 10)          # search only near the emblem (not the white face)
+    win = g[sy0:min(H // q, y0 + th + H // q // 10), sx0:min(W // q, x0 + tw + W // q // 4)]
+    res = cv2.matchTemplate(win, ref['tmpl'], cv2.TM_CCOEFF_NORMED); _, sc, _, loc = cv2.minMaxLoc(res)
+    d = (np.array(loc) + [sx0, sy0]) * q - ref['tl'] if sc > 0.3 else np.zeros(2)
+    mask = np.roll(np.roll(ref['mask'], int(d[1]), 0), int(d[0]), 1)
+    out = (ref['hull'] + d, ref['cen'] + d, ref['r'], mask)
+    _lazy[key] = out
+    return out
 
 
 def t_emblem(t, c, A, B, a, b):
-    """The Flash emblem slams in spinning; its lightning bolt is a window onto the next shot; the camera dives into the bolt."""
-    R0 = 0.30 * W
-    if t < c:
-        u = eout((t - a) / (c - a)); R = R0 * lerp(0.15, 1.0, u); ang = lerp(-2.2, 0.0, u)
-        cx, cy = W / 2, H * 0.42; P = np.array([0.0, 0.0]); fa = layer(A, t)
+    """Built on the real chest emblem: it charges (rim glow, light sweep, arcs off its edge, camera pushes in),
+    flashes on the hit, and the next shot opens out of the emblem itself as the camera dives into it."""
+    s = SHOTS[A]; k = round((PRE + min(t, c) - s['start']) * FPS); m = META[A]; k = int(min(max(k, m['lo']), m['hi']))
+    k_ref = int(min(max(round((PRE + c - s['start']) * FPS), m['lo']), m['hi']))
+    hull, cen, rad, wmask = _emblem_geo(A, k, k_ref)
+    zp = max(lerp(s['push'][0], s['push'][1], (min(t, c) - s['start']) / (s['end'] - s['start'])), 1.0)
+    cx0, cy0 = W / 2, H * 0.42
+    toF = lambda p: np.stack([cx0 + (p[..., 0] - cx0) * zp, cy0 + (p[..., 1] - cy0) * zp], -1)    # clip -> frame (shot push)
+    E = toF(cen); hullF = toF(hull); radF = rad * zp
+    charge = clamp((t - a) / (c - a))
+    if t < c: Z = 1 + 0.35 * ein(charge); e = 0.0
     else:
-        u = clamp((t - c) / (b - c)); e = ein(u)
-        P = np.array([0.16, -0.55]) * 0.78 * ease(u * 1.4)                           # pan to the centre of the bolt's wide top
-        R = R0 * math.exp(math.log(16.0) * e); ang = 0.0; cx, cy = W / 2, H * 0.42; fa = layer(A, t)
-    ca, sa = math.cos(ang), math.sin(ang)
-    def tf(pts):
-        p = (np.asarray(pts, np.float64) - P) * R
-        return np.stack([cx + p[:, 0] * ca - p[:, 1] * sa, cy + p[:, 0] * sa + p[:, 1] * ca], 1)
-    def mask(pts):
-        m = np.zeros((H, W), np.uint8); q = np.clip(np.round(tf(pts) * 4), -2 ** 30, 2 ** 30).astype(np.int32)
-        cv2.fillPoly(m, [q], 255, cv2.LINE_AA, shift=2); return m.astype(np.float32) / 255
-    th = np.linspace(0, 2 * np.pi, 120)
-    disc = mask(np.stack([np.cos(th), np.sin(th)], 1)); ring_in = mask(np.stack([np.cos(th), np.sin(th)], 1) * 0.90)
-    bolt = mask(_BOLT)
-    lx = ((XX - cx) * ca + (YY - cy) * sa) / R + P[0]; ly = (-(XX - cx) * sa + (YY - cy) * ca) / R + P[1]
-    shadow = cv2.GaussianBlur(np.roll(np.roll(disc, int(min(R, 900) * 0.10), 0), int(min(R, 900) * 0.06), 1), (0, 0), 20) * 0.6
-    f = fa * (1 - shadow[..., None])
-    silver = (0.62 + 0.30 * ss(1.0, -1.0, lx + ly))[..., None] * np.float32([0.92, 0.94, 0.97])   # brushed silver face
-    gold = (0.45 + 0.45 * ss(-1, 1, -lx - ly))[..., None] * np.float32([0.10, 0.62, 0.95])        # gold rim
-    face = silver * ring_in[..., None] + gold * (1 - ring_in[..., None])
-    f = f * (1 - disc[..., None]) + face * disc[..., None]
-    fb = layer(B, t, 1 + 0.15 * (1 - clamp((t - a) / (b - a))))
-    f = f * (1 - bolt[..., None]) + fb * bolt[..., None]
-    edge = np.clip(cv2.dilate(bolt, np.ones((5, 5), np.uint8)) - bolt, 0, 1) if R < 3000 else np.zeros_like(bolt)
-    f = f + edge[..., None] * GOLD_GLOW * 1.6
-    sweep = np.exp(-((lx - ly - lerp(-2.5, 2.5, clamp((t - a) / (c - a)))) / 0.18) ** 2) * disc * (1 - bolt) * 0.6
-    f = f + sweep[..., None]
-    if t < c + 0.08:                                                                   # arcs around the rim
+        u = clamp((t - c) / (b - c)); Z = 1.35 * math.exp(math.log(math.hypot(W, H) / radF * 1.25 / 1.35) * ein(u ** 0.85)); e = ease(u)
+    T = E.copy()                                                  # zoom about the emblem itself: never exposes the frame edge
+    M = np.float32([[Z, 0, T[0] - Z * E[0]], [0, Z, T[1] - Z * E[1]]])
+    fa = cv2.warpAffine(layer(A, min(t, c - 1e-3) if t >= c else t), M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    hullS = hullF * Z + (T - Z * E)
+    poly = np.zeros((H, W), np.uint8); cv2.fillPoly(poly, [np.clip(np.round(hullS * 4), -2 ** 30, 2 ** 30).astype(np.int32)], 255, cv2.LINE_AA, shift=2)
+    pm = poly.astype(np.float32) / 255
+    rim = cv2.GaussianBlur(np.clip(cv2.dilate(pm, np.ones((9, 9), np.uint8)) - cv2.erode(pm, np.ones((9, 9), np.uint8)), 0, 1), (0, 0), 3)
+    if t < c:
+        f = fa
+        # light sweep across the emblem's own white surface
+        wm = cv2.warpAffine(cv2.resize(wmask.astype(np.float32), (W, H)) if wmask.shape != (H, W) else wmask.astype(np.float32), np.float32([[zp, 0, cx0 - zp * cx0], [0, zp, cy0 - zp * cy0]]), (W, H))
+        wm = cv2.warpAffine(wm, M, (W, H))
+        sw = np.exp(-(((XX - YY * 0.6) - lerp(T[0] - radF * Z * 1.6 - 0.6 * T[1], T[0] + radF * Z * 1.6 - 0.6 * T[1], charge)) / (radF * Z * 0.22)) ** 2)
+        f = f + (sw * wm * 0.75)[..., None] * np.float32([0.85, 0.95, 1.0])
+        f = f + (rim * (0.5 + 1.3 * charge))[..., None] * GOLD_GLOW + cv2.GaussianBlur(rim, (0, 0), 18)[..., None] * GOLD_GLOW * 1.2 * charge
         rng = np.random.default_rng(int(t * FPS / 2)); segs = []
-        for _ in range(4):
-            a0 = rng.uniform(0, 2 * np.pi); p0 = (cx + R * math.cos(a0), cy + R * math.sin(a0)); a1 = a0 + rng.uniform(-0.5, 0.5)
-            segs.append((bolt_path(p0, (cx + R * 1.45 * math.cos(a1), cy + R * 1.45 * math.sin(a1)), rng, 6, 0.3), 0.7))
-        f = add(f, draw_bolts(segs, 3.0, amp=0.9))
-    return f
+        for _ in range(2 + int(5 * charge)):                     # arcs leaping off the emblem's rim
+            p0 = hullS[rng.integers(len(hullS))]; d = p0 - T; d = d / (np.hypot(*d) + 1e-9)
+            ang = math.atan2(d[1], d[0]) + rng.uniform(-0.7, 0.7); ln = radF * Z * rng.uniform(0.8, 2.2)
+            segs += bolt_tree(p0, (p0[0] + ln * math.cos(ang), p0[1] + ln * math.sin(ang)), rng, branches=1, depth=6)
+        f = add(f, draw_bolts(segs, 3.2, amp=0.5 + 0.8 * charge))
+        return f + 0.9 * ein(clamp((t - (c - 0.05)) / 0.05))     # flash into the hit
+    u = clamp((t - c) / (b - c))
+    fb = layer(B, t, 1 + 0.25 * (1 - eout(u)))
+    f = fa * (1 - pm[..., None]) + fb * pm[..., None]
+    f = f + (rim * (1 - u))[..., None] * GOLD_GLOW * 1.8 + cv2.GaussianBlur(rim, (0, 0), 24)[..., None] * GOLD_GLOW * (1 - u)
+    return f + 0.9 * (1 - eout(u / 0.18))
 
 
 _STRIKE = {}
@@ -898,6 +990,43 @@ def t_tunnel(t, A, B, a, mid, end):
     return f
 
 
+_SPLIT = {}
+
+
+def t_boltsplit(t, A, B, a, c, end):
+    """Loop ending: a lightning-bolt seam flashes across the last shot, the two halves fly apart along it,
+    and the first shot is behind them."""
+    if t >= end: return layer(B, t - DUR)
+    if 'side' not in _SPLIT:
+        zz = np.array([(0.80, -0.05), (0.38, 0.40), (0.64, 0.46), (0.22, 1.05)]) * [W, H]
+        line = []
+        for p, q in zip(zz, zz[1:]): line += list(bolt_path(p, q, np.random.default_rng(int(p[0])), 5, 0.05))
+        line = np.array(line); _SPLIT['line'] = line
+        poly = np.vstack([line, [[W + 400, H + 400], [W + 400, -400]]])
+        m = np.zeros((H, W), np.uint8); cv2.fillPoly(m, [np.round(poly * 4).astype(np.int32)], 255, cv2.LINE_AA, shift=2)
+        _SPLIT['side'] = m.astype(np.float32) / 255
+        d = np.full((H, W), 255, np.uint8); cv2.polylines(d, [np.round(line * 4).astype(np.int32)], False, 0, 3, cv2.LINE_8, shift=2)
+        _SPLIT['dist'] = cv2.distanceTransform(d, cv2.DIST_L2, 5)
+    side, dist, line = _SPLIT['side'], _SPLIT['dist'], _SPLIT['line']
+    fa = layer(A, t)
+    if t < c:                                                     # the seam draws itself down the frame and burns brighter
+        u = clamp((t - a) / (c - a)); n = max(2, int(len(line) * eout(u / 0.6)))
+        seam = np.exp(-(dist / 6) ** 2) * (1 if u > 0.6 else 0) * 0.9
+        f = fa + seam[..., None] * GOLD_CORE + cv2.GaussianBlur(seam, (0, 0), 14)[..., None] * GOLD_GLOW * (0.8 + u)
+        return add(f, draw_bolts([(line[:n], 1.0)], 4.5, amp=0.8 + 0.6 * u))
+    u = clamp((t - c) / (end - c)); e = ein(u ** 0.9)
+    off = e * W * 1.15; k = int(1 + 120 * math.sin(math.pi * min(1, u * 1.1))) | 1
+    shiftL = np.float32([[1, 0, -off], [0, 1, -off * 0.35]]); shiftR = np.float32([[1, 0, off], [0, 1, off * 0.35]])
+    L = cv2.warpAffine(fa * (1 - side[..., None]), shiftL, (W, H)); mL = cv2.warpAffine(1 - side, shiftL, (W, H))
+    R = cv2.warpAffine(fa * side[..., None], shiftR, (W, H)); mR = cv2.warpAffine(side, shiftR, (W, H))
+    if k > 1: L = cv2.blur(L, (k, 1)); R = cv2.blur(R, (k, 1)); mL = cv2.blur(mL, (k, 1)); mR = cv2.blur(mR, (k, 1))
+    fb = layer(B, t - DUR, 1 + 0.18 * (1 - eout(u)))
+    m = np.clip(mL + mR, 0, 1)[..., None]
+    f = fb * (1 - m) + (L + R)
+    edges = (np.abs(cv2.Sobel(mL, cv2.CV_32F, 1, 0, ksize=3)) + np.abs(cv2.Sobel(mR, cv2.CV_32F, 1, 0, ksize=3)))
+    return f + np.clip(edges, 0, 1)[..., None] * GOLD_GLOW * 1.6 * (1 - u) + 0.7 * (1 - eout(u / 0.2))
+
+
 # Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
 # c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
 # so the same transition works at any tempo and position.
@@ -924,7 +1053,7 @@ TRANSITIONS = {
     'shatter':   (lambda c, o: (c - .12, c + .34), lambda t, c, A, B, o: t_shatter(t, c, A, B, c - .12, c + .34, o.get('cx', 0.5), o.get('cy', 0.40))),
     'speedlines': (lambda c, o: (c - .16, c + .20), lambda t, c, A, B, o: t_speedlines(t, c, A, B, c - .16, c + .20, o.get('d', 1))),
     'phase':     (lambda c, o: (c - .20, c + .20), lambda t, c, A, B, o: t_phase(t, c, A, B, c - .20, c + .20)),
-    'emblem':    (lambda c, o: (c - .30, c + .32), lambda t, c, A, B, o: t_emblem(t, c, A, B, c - .30, c + .32)),
+    'emblem':    (lambda c, o: (c - .80, c + .32), lambda t, c, A, B, o: t_emblem(t, c, A, B, c - .80, c + .32)),
     'strike':    (lambda c, o: (c - .22, c + .30), lambda t, c, A, B, o: t_strike(t, c, A, B, c - .22, c + .30)),
     'knife':     (lambda c, o: (c - .30, c + .34), lambda t, c, A, B, o: t_knife(t, c, A, B, c - .30, c + .34)),
     'scope':     (lambda c, o: (c - .40, c + .38), lambda t, c, A, B, o: t_scope(t, c, A, B, c - .40, c + .38, o.get('px', 0.5), o.get('py', 0.5))),
@@ -933,7 +1062,7 @@ TRANSITIONS = {
 }
 
 
-LOOPS = ('iris', 'tunnel')
+LOOPS = ('iris', 'tunnel', 'boltsplit')
 
 
 def build_trans():
@@ -955,6 +1084,9 @@ def build_trans():
     last = n - 1; lp = SHOTS[-1].get('out')
     if lp == 'iris':
         a, fall, end = _iris_times(CUTS[-1]); out.append((a, DUR + 1, lambda t: t_iris(t, last, 0, a, fall, end)))
+    elif lp == 'boltsplit':
+        c = CUTS[-1]; a, cc, end = c - 0.40, c - 0.12, c + 0.12
+        out.append((a, DUR + 1, lambda t: t_boltsplit(t, last, 0, a, cc, end)))
     elif lp == 'tunnel':
         c = CUTS[-1]; a, mid, end = c - 0.55, c - 0.22, c + 0.10
         out.append((a, DUR + 1, lambda t: t_tunnel(t, last, 0, a, mid, end)))

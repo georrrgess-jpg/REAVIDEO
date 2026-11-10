@@ -168,9 +168,12 @@ def sfx_for(name, c, o, up):
     elif name == 'phase':
         put(buzz(0.45), c - 0.22, gain=0.08); put(zap(0.25), c - 0.02, gain=0.05)
     elif name == 'emblem':
-        put(whoosh(0.32, 500, 3800, peak=0.85), c - 0.32, gain=0.07); put(zap(0.4), c - 0.06, gain=0.07); put(boom(0.45, 120, 45), c, gain=0.11)
+        put(buzz(0.8), c - 0.80, gain=0.05); put(whoosh(0.5, 400, 4200, peak=0.9), c - 0.50, gain=0.07)
+        put(zap(0.4), c - 0.06, gain=0.08); put(boom(0.45, 120, 45), c, gain=0.12)
     elif name == 'strike':
         put(zap(0.25), c - 0.22, gain=0.05); put(thunder(), c, gain=0.17)
+    elif name == 'boltsplit':
+        put(zap(0.3), c - 0.40, gain=0.06); put(whoosh(0.35, 800, 6000, peak=0.6), c - 0.15, gain=0.09); put(boom(0.4, 130, 50), c - 0.12, gain=0.10)
     elif name == 'tunnel':
         put(whoosh(0.62, 250, 6500, q=0.8, peak=0.9), c - 0.55, gain=0.10); put(zap(0.3), c - 0.05, gain=0.06)
     elif name == 'knife':
@@ -194,6 +197,7 @@ def sfx_for(name, c, o, up):
 for i, s in enumerate(SHOTS):
     o = s.get('out_opts', {}); name = s.get('out', 'cut'); c = CUTS[i + 1]
     sfx_for(name, c, o, up=math.cos(math.radians(o.get('ang', -38))) > 0)
+    if 'crackle_blue' in s.get('fx', ()): put(zap(s['end'] - s['start']), s['start'], gain=0.03)
     if 'crackle_build' in s.get('fx', ()): put(zap(s['end'] - s['start']), s['start'], gain=0.035)
     if 'streaks' in s.get('fx', ()): put(shimmer(0.62), s['end'] - 0.62, pan=0.3, gain=0.030)
     if 'punch' in s and i > 0:
