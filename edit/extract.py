@@ -89,10 +89,14 @@ def one(i, use_sr=False):
     for k in range(n):
         if sr_lo <= k <= sr_hi:
             reg = fr[k][ry0:ry1, rx0:rx1]; key = cv2.resize(reg, (64, 64), interpolation=cv2.INTER_AREA).astype(np.float32)
-            if prev is None or np.abs(key - prev[0]).mean() > 0.6:       # repeated source frames reuse the last result
+            # reuse only for true repeats (24 fps material in a 60 fps file): compare with the PREVIOUS source frame,
+            # not the last upscaled one, or slow movement accumulates under the threshold and stutters
+            if prev is None or np.abs(key - prev[0]).mean() > 0.10:
                 up = sr.upscale4(reg); nsr += 1
                 big = cv2.resize(up, (int(round(up.shape[1] * sc)), int(round(up.shape[0] * sc))), interpolation=cv2.INTER_AREA)
                 prev = (key, big)
+            else:
+                prev = (key, prev[1])
             big = prev[1]; ax = big.shape[1] / (4 * (rx1 - rx0)); ay = big.shape[0] / (4 * (ry1 - ry0))
             f_ = (W / cw) / (4 * ax); g_ = (H / ch) / (4 * ay)
             M = np.float32([[f_, 0, (rx0 - (cx[k] - cw / 2)) * W / cw], [0, g_, (ry0 - (cy - ch / 2)) * H / ch]])
