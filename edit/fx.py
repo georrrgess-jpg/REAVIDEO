@@ -66,6 +66,9 @@ def grade(img, s):
     l = (0.114 * b + 0.587 * g + 0.299 * r)[..., None]
     wr = np.clip((r - np.maximum(g, b)) * 5, 0, 1)[..., None]      # keep reds alive in a muted grade
     se = s['sat'] + (max(s['sat'], s['rk']) - s['sat']) * wr
+    if 'yk' in s:                                                    # optionally keep golds / lightning alive too
+        wy = (np.clip((np.minimum(r, g) - b) * 4 - 0.15, 0, 1) * np.clip(r * 2 - 0.4, 0, 1))[..., None] * (1 - wr)
+        se = se + (max(s['sat'], s['yk']) - s['sat']) * wy
     f = l + (f - l) * se
     f = (f - 0.5) * s['con'] + 0.5
     f *= np.float32(s['tint']) * s['gain']
@@ -78,7 +81,7 @@ _luts = {}
 
 def grade_u8(img, s):
     """grade() for 8-bit frames via a full 256^3 lookup table built once per grade (identical output, ~10x faster)."""
-    key = (s['sat'], s['rk'], s['con'], tuple(s['tint']), s['gain'])
+    key = (s['sat'], s['rk'], s['con'], tuple(s['tint']), s['gain'], s.get('yk'))
     if key not in _luts:
         if len(_luts) > 2: _luts.pop(next(iter(_luts)))
         v = np.arange(256, dtype=np.uint8); lut = np.empty((256 * 256 * 256, 3), np.uint8)

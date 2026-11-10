@@ -54,13 +54,16 @@ def main():
     def chroma(s): return np.array([pc[:, int((s + k * P) / dt2):int((s + (k + 1) * P) / dt2)].mean(1) for k in range(32)])
     def sim(A, B):
         A = A - A.mean(1, keepdims=True); B = B - B.mean(1, keepdims=True); return float((A * B).sum() / np.sqrt((A * A).sum() * (B * B).sum()))
-    thr = 0.5 * max(lv); k0 = next(k for k, v in enumerate(lv) if v > thr)
-    starts = [db + k * bar for k in range(k0, nb - 7, 8)]
-    last = max(s for s in starts if seg(low, s) > thr)
+    # phrases start where the bass first jumps in; sections are 8 bars from there
+    top = max(lv); k0 = next((k for k in range(1, nb) if lv[k] - lv[k - 1] > 0.3 * top), next(k for k, v in enumerate(lv) if v > 0.5 * top))
+    starts = [db + k * bar for k in range(k0 % 8, nb - 7, 8)]
+    full = lambda s: np.mean([seg(low, s + j * bar) for j in range(8)]) >= 0.75 * top   # drums and bass most of the way (not a fade or breakdown)
+    cands = [s for s in starts if full(s)] or starts
+    last = max(cands)
     ch = {s: chroma(s) for s in starts}
-    chorus = [s for s in starts if sim(ch[s], ch[last]) > 0.85]
+    chorus = [s for s in cands if sim(ch[s], ch[last]) > 0.85]
     print('\n8-bar sections (similarity to the last full section):')
-    for s in starts: print('  %3d:%04.1f  %.2f %s' % (s // 60, s % 60, sim(ch[s], ch[last]), '<- chorus' if s in chorus else ''))
+    for s in starts: print('  %3d:%04.1f  %.2f %s' % (s // 60, s % 60, sim(ch[s], ch[last]), ('<- chorus' if s in chorus else '<- full drums' if s in cands else '')))
     start = a.start if a.start is not None else max(chorus)
     # refine to the nearest half-beat with a fine phase search around the section
     y = load(a.song, max(0, start - 8), a.bars * bar + 16); hop = 64; d3 = hop / SR

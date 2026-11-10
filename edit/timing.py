@@ -3,7 +3,7 @@
 Hard cuts, blurs, whips and punch-ins sit exactly on the grid point. Wipes are placed slightly
 late (SHIFT) so the motion starts on the beat and lands just after it, as in the reference.
 """
-SHIFT = {'glass': 0.13, 'slidewipe': 0.035, 'blood': -0.038, 'iris': 0.077, 'confetti': 0.05, 'plastic': 0.05}
+SHIFT = {'glass': 0.13, 'slidewipe': 0.035, 'blood': -0.038, 'iris': 0.077, 'confetti': 0.05, 'plastic': 0.05, 'emblem': 0.0, 'strike': 0.0, 'tunnel': 0.077}
 LONG_HOLD = 6
 
 

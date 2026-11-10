@@ -115,6 +115,33 @@ def shing(dur=0.9):
     return y / np.abs(y).max()
 
 
+def zap(dur=0.35):
+    """Electric crackle: dense clicks through a resonant band, fast decay."""
+    n = int(dur * SR); u = np.arange(n) / SR; y = np.zeros(n)
+    for _ in range(int(dur * 260)):
+        i = rng.integers(0, n - 200); y[i:i + 200] += rng.standard_normal(200) * np.exp(-np.arange(200) / rng.uniform(8, 40)) * rng.uniform(0.2, 1)
+    y = sg.lfilter(*sg.butter(2, [1200 / (SR / 2), 9500 / (SR / 2)], 'band'), y) * np.exp(-u * 5)
+    y += 0.25 * np.sign(np.sin(2 * np.pi * 120 * u)) * np.exp(-u * 9)          # mains hum bite
+    return y / np.abs(y).max()
+
+
+def thunder(dur=1.2):
+    """Lightning strike: sharp crack then low rumble."""
+    n = int(dur * SR); u = np.arange(n) / SR
+    crack = sg.lfilter(*sg.butter(2, 1500 / (SR / 2), 'high'), rng.standard_normal(n)) * np.exp(-u * 30)
+    rumble = sg.lfilter(*sg.butter(2, 180 / (SR / 2)), rng.standard_normal(n)) * np.exp(-u * 2.8) * 6
+    y = crack + rumble; return y / np.abs(y).max()
+
+
+def buzz(dur=0.45):
+    """Speed Force vibration: noise amplitude-modulated at ~55 Hz with a pitch wobble."""
+    n = int(dur * SR); u = np.arange(n) / SR
+    y = sg.lfilter(*sg.butter(2, [300 / (SR / 2), 4000 / (SR / 2)], 'band'), rng.standard_normal(n))
+    y *= (0.5 + 0.5 * np.sin(2 * np.pi * 55 * u)) * np.sin(np.pi * u / dur) ** 0.8
+    y += 0.4 * np.sin(2 * np.pi * np.cumsum(90 + 40 * np.sin(2 * np.pi * 7 * u)) / SR) * np.sin(np.pi * u / dur)
+    return y / np.abs(y).max()
+
+
 # ---- SFX follow the plan: each transition type has its sound, placed relative to its cut ----
 def sfx_for(name, c, o, up):
     if name == 'leaf': put(whoosh(0.34, 700, 5200) if up else whoosh(0.34, 5200, 800), c - 0.20, gain=0.085)
@@ -136,6 +163,16 @@ def sfx_for(name, c, o, up):
         put(whoosh(d + 0.04, f0, f1), c - d / 2 - 0.02, gain=0.09 if big else 0.06)
     elif name == 'red':
         put(whoosh(0.34, 250, 2600, peak=0.92), c - 0.33, gain=0.09); put(boom(), c, gain=0.26)
+    elif name == 'speedlines':
+        put(whoosh(0.40, 900, 7000, peak=0.45), c - 0.20, pan=0.5 * o.get('d', 1), gain=0.10); put(zap(0.2), c - 0.05, gain=0.04)
+    elif name == 'phase':
+        put(buzz(0.45), c - 0.22, gain=0.08); put(zap(0.25), c - 0.02, gain=0.05)
+    elif name == 'emblem':
+        put(whoosh(0.32, 500, 3800, peak=0.85), c - 0.32, gain=0.07); put(zap(0.4), c - 0.06, gain=0.07); put(boom(0.45, 120, 45), c, gain=0.11)
+    elif name == 'strike':
+        put(zap(0.25), c - 0.22, gain=0.05); put(thunder(), c, gain=0.17)
+    elif name == 'tunnel':
+        put(whoosh(0.62, 250, 6500, q=0.8, peak=0.9), c - 0.55, gain=0.10); put(zap(0.3), c - 0.05, gain=0.06)
     elif name == 'knife':
         put(whoosh(0.30, 600, 4200, peak=0.85), c - 0.30, pan=0.4, gain=0.07); put(shing(), c - 0.12, pan=0.2, gain=0.11)
         put(boom(0.35, 110, 50), c, gain=0.08)
@@ -157,6 +194,7 @@ def sfx_for(name, c, o, up):
 for i, s in enumerate(SHOTS):
     o = s.get('out_opts', {}); name = s.get('out', 'cut'); c = CUTS[i + 1]
     sfx_for(name, c, o, up=math.cos(math.radians(o.get('ang', -38))) > 0)
+    if 'crackle_build' in s.get('fx', ()): put(zap(s['end'] - s['start']), s['start'], gain=0.035)
     if 'streaks' in s.get('fx', ()): put(shimmer(0.62), s['end'] - 0.62, pan=0.3, gain=0.030)
     if 'punch' in s and i > 0:
         big = s['punch'].get('z', 1.22) > 1.18

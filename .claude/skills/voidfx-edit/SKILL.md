@@ -113,6 +113,20 @@ Almost every cut is hidden. Pick transitions by what is in the clips: foliage �
 | `iris` blood drop falls and swells into a lens showing clip 1 | **always the last transition: the loop** | 0.7 s |
 | `cut` plain hard cut | 3–4 in the second half | 0 |
 
+**The Flash kit** (first used in `edits/flash`). Lightning is drawn procedurally (`bolt_path`, `bolt_tree`, `draw_bolts`: gold core and glow; `BLUE_GLOW` for Speed Force blue).
+
+| name | what | use for | length |
+|---|---|---|---|
+| `speedlines` (`out_opts` d=±1) | the frame smears sideways into golden speed streaks, and the next shot resolves out of them | a speedster taking off; the opening | 0.36 s |
+| `phase` | Speed Force vibration: RGB-split ghost copies shake, a pop, then it phases into the next shot, with small arcs | a loud hit mid-edit | 0.40 s |
+| `emblem` | the Flash emblem (silver disc, gold rim) spins in; its bolt is a window onto the next shot; the camera dives into the bolt | the character-signature moment on the loudest early hit (the `knife` equivalent) | 0.62 s |
+| `strike` | a lightning leader draws down the frame, then strikes; the frame tears open along the bolt with a glowing edge | a shot of throwing lightning; a loud hit | 0.52 s |
+| `tunnel` (loop) | the Speed Force tunnel: blue/gold streaks rush outward, and the centre opens onto shot 0 | **loop ending for speedsters** (the alternative to `iris`) | 0.65 s |
+| `fx=['eyes']` | eyes ignite: hot gold cores, an anamorphic flare and tiny arcs, placed on YuNet eye landmarks every frame | a cowl or face close-up, often with a punch-in | the whole shot |
+| `fx=['crackle']` / `['crackle_build']` | lightning arcs crawl over the shot; `_build` grows with the shot (put it on the riser hold before the loop) | charged-up shots; the last hold | the whole shot |
+
+Grade option `yk` (yellow keep) keeps gold, orange and lightning saturated in a muted grade, the way `rk` does for red. The Flash look is `sat .45, rk 1.0, yk 1.0`.
+
 Other overlays: `fx=['leak_bubbles']` (red light leak and drifting particles) on a long hold before the ending.
 
 Follow the reference's arc:
@@ -180,6 +194,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-10: Third edit, The Flash × "SLAUGHTER HOUSE" (`edits/flash`). The user asked for the standard's style with the edit's own Flash flair (lightning, emblem, eyes), using elements of a reference edit (`media/references/flash_wonderwall_ref.mp4`, user-supplied, not in the Drive manifest) without copying it. The kit above was added. Choices: section = first drop + its riser bar (the riser launches the loop back into the drop), rather than the last chorus; no lyric captions, although the reference had them (the style excludes text). Footage is from all seven Flash packs; median sharpness 663, faces 41% of frame height (lower than the standard on purpose: speed and lightning shots).
 - 2026-11-10: **The user approved Dexter × Hold On v3 and made it the standard for future edits** (see The standard above; `tools/new_edit.py` scaffolds from it).
 - 2026-11-09: Style adopted as the default for all future edits, based on the Dexter × Doomsday voidfx reference (first build: `edit/`, `dexter_doomsday_edit_v1.mp4`).
 - 2026-11-10: The user rejected the glass `shatter` too and asked for a creative transition themed to the character (not blood, not forensic), such as a shape that selects an object and pans into it. It was replaced with `knife`, and the user generally likes the edit's quality. For new edits, prefer character-signature objects used as shape windows or masks.

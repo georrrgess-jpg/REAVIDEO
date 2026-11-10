@@ -32,6 +32,7 @@ References (finished edits to study, not footage):
 | File | What | Length |
 |---|---|---|
 | voidfx_passengers_love_song.mp4 | voidfx edit, 1080×1920 60 fps | 0:23 |
+| flash_wonderwall_ref.mp4 | Flash edit (Wonderwall), 720×1280 30 fps; user-uploaded, **not in the manifest** (not re-downloadable) | 0:22 |
 
 Notes:
 - **Resolution:** every pack is really 1280×720, whatever its title says. Expect the 9:16 crop to look soft (about 2.7× upscale).
