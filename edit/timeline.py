@@ -94,6 +94,7 @@ def layer(i, t, ez=1.0):
         elif name == 'rgbhit': f = rgbhit_fx(f, t, s)
         elif name == 'echo': f = echo_fx(f, i, t, s)
         elif name == 'sweep': f = sweep_fx(f, t, s)
+        elif name == 'ripple': f = ripple_fx(f, t, s)
         elif name == 'crackle_build': f = crackle_fx(f, i, t, s, build=True)
         else: raise ValueError('unknown fx %r on shot %d' % (name, i))
     return f
@@ -884,7 +885,7 @@ def _emblem_geo(i, k, k_ref):
     return out
 
 
-def t_emblem(t, c, A, B, a, b):
+def t_emblem_real(t, c, A, B, a, b):
     """Built on the real chest emblem: it charges (rim glow, light sweep, arcs off its edge, camera pushes in),
     flashes on the hit, and the next shot opens out of the emblem itself as the camera dives into it."""
     s = SHOTS[A]; k = round((PRE + min(t, c) - s['start']) * FPS); m = META[A]; k = int(min(max(k, m['lo']), m['hi']))
@@ -949,10 +950,10 @@ def t_strike(t, c, A, B, a, b):
     w = (40 + 1700 * ein(u ** 0.8)) * (0.85 + 0.3 * cv2.resize(_STRIKE['noise'], (W, H)))
     m = ss(w + 8, w - 8, dist)[..., None]
     f = layer(A, t) * (1 - m) + layer(B, t, 1 + 0.12 * (1 - u)) * m
-    rim = np.exp(-((dist - w) / 10) ** 2) * (1 - u)
-    f = f + rim[..., None] * GOLD_GLOW * 1.8 + 0.85 * (1 - eout(u / 0.25))          # torn glowing edge + strike flash
+    rim = np.exp(-((dist - w) / 10) ** 2) * (1 - ease(u / 0.6))
+    f = f + rim[..., None] * GOLD_GLOW * 1.8 + 0.85 * (1 - eout(u / 0.25))          # torn glowing edges + strike flash
     segs = [(main, 1.0)] + [(bolt_path(main[k], main[k] + rng.normal(0, 220, 2), rng, 5, 0.3), 0.5) for k in rng.integers(0, len(main), 5)]
-    return add(f, draw_bolts(segs, 7.0, amp=1.4 * (1 - ease(u))))
+    return add(f, draw_bolts(segs, 7.0, amp=1.4 * (1 - ease(u / 0.35))))           # bolt burns out fast (no leftover)
 
 
 _TUN = {}
@@ -1027,6 +1028,132 @@ def t_boltsplit(t, A, B, a, c, end):
     return f + np.clip(edges, 0, 1)[..., None] * GOLD_GLOW * 1.6 * (1 - u) + 0.7 * (1 - eout(u / 0.2))
 
 
+# ------------------------------------------------------------ drawn Flash emblem (procedural, crisp at any scale)
+_EBOLT = np.array([(0.66, -1.10), (-0.42, 0.17), (-0.16, 0.17), (-0.66, 1.10), (0.42, -0.17), (0.16, -0.17)])
+_GOLD = (np.float32([0.04, 0.26, 0.50]), np.float32([0.12, 0.60, 0.92]), np.float32([0.62, 0.92, 1.00]))
+_LIGHT = np.array([-0.55, -0.70, 0.45]); _LIGHT = _LIGHT / np.linalg.norm(_LIGHT)
+
+
+def _gold(nx, ny, nz, spec_band=None):
+    lam = np.clip(nx * _LIGHT[0] + ny * _LIGHT[1] + nz * _LIGHT[2], 0, 1)
+    hz = _LIGHT + np.array([0, 0, 1.0]); hz = hz / np.linalg.norm(hz)
+    spec = np.clip(nx * hz[0] + ny * hz[1] + nz * hz[2], 0, 1) ** 40
+    d, m, l = _GOLD
+    col = d + (m - d) * np.clip(lam * 1.3, 0, 1)[..., None] + (l - m) * np.clip(lam * 1.6 - 0.7, 0, 1)[..., None]
+    col = col + spec[..., None] * 0.9
+    if spec_band is not None: col = col + spec_band[..., None] * np.float32([0.7, 0.9, 1.0])
+    return col
+
+
+def draw_emblem(f, cx, cy, R, rot, ring_u=1.0, disc_u=1.0, bolt_u=1.0, glint=None, Pshift=(0.0, 0.0), window=None, alpha=1.0):
+    """Composite the Flash emblem over f. ring_u: ring draw-on (0-1); disc_u: disc pop; bolt_u: bolt strike-in;
+    glint: position of a specular sweep (-1.5..1.5) or None; window: an image shown inside the bolt (the dive)."""
+    ca, sa = math.cos(rot), math.sin(rot)
+    ext = 1.5 * R
+    x0, x1 = int(max(0, cx - ext - 60)), int(min(W, cx + ext + 60)); y0, y1 = int(max(0, cy - ext - 60)), int(min(H, cy + ext + 60))
+    if x1 <= x0 or y1 <= y0: return f
+    X = XX[y0:y1, x0:x1] - cx; Y = YY[y0:y1, x0:x1] - cy
+    lx = (X * ca + Y * sa) / R + Pshift[0]; ly = (-X * sa + Y * ca) / R + Pshift[1]
+    r = np.sqrt(lx * lx + ly * ly) + 1e-6; e = 1.2 / R
+    out = f.copy(); sub_ = out[y0:y1, x0:x1]
+    def to_screen(pts):
+        p = np.asarray(pts) - np.asarray(Pshift)
+        return np.stack([cx + R * (p[:, 0] * ca - p[:, 1] * sa) - x0, cy + R * (p[:, 0] * sa + p[:, 1] * ca) - y0], 1)
+    # bolt (slides in along its own axis from the top-right)
+    off = (1 - bolt_u) * 2.6; bdir = np.array([0.55, -0.84])
+    bpoly = to_screen(_EBOLT + bdir * off)
+    bm = np.zeros(sub_.shape[:2], np.uint8)
+    cv2.fillPoly(bm, [np.clip(np.round(bpoly * 4), -2 ** 30, 2 ** 30).astype(np.int32)], 255, cv2.LINE_AA, shift=2)
+    bmf = bm.astype(np.float32) / 255 * (bolt_u > 0)
+    # ring with draw-on
+    th = (np.arctan2(lx, -ly) / (2 * np.pi)) % 1.0                     # 0 at top, clockwise
+    ring = ss(1.0 + e, 1.0 - e, r) * ss(0.84 - e, 0.84 + e, r) * ss(ring_u + 0.004, ring_u - 0.004, th) * (ring_u > 0)
+    sc = np.clip((r - 0.84) / 0.16, 0, 1); slope = -np.cos(np.pi * sc) * 0.85
+    nx, ny = slope * lx / r, slope * ly / r; nz = np.sqrt(np.clip(1 - nx * nx - ny * ny, 0.05, 1))
+    band = None if glint is None else np.exp(-((lx + ly * 0.8 - glint) / 0.07) ** 2) * 0.9
+    ring_col = _gold(nx, ny, nz, band)
+    # disc (pearl, recessed under the ring)
+    dr = 0.84 * (0.0 if disc_u <= 0 else (1 + 0.10 * math.sin(math.pi * min(1, disc_u)) * (disc_u < 1)) * min(1, eout(disc_u) * 1.0))
+    disc = ss(dr + e, dr - e, r) * (disc_u > 0)
+    pearl = np.float32([0.86, 0.90, 0.93]) * (0.82 + 0.18 * ss(1.0, -0.6, lx + ly))[..., None]
+    pearl = pearl * (1 - 0.40 * ss(0.62, 0.84, r))[..., None]                 # inner shadow under the rim
+    if band is not None: pearl = pearl + band[..., None] * 0.35
+    # drop shadow + soft outer glow
+    shape = np.clip(np.maximum(np.maximum(ring, disc), bmf), 0, 1)
+    shd = cv2.GaussianBlur(np.roll(np.roll(shape, int(min(0.07 * R, 60)), 0), int(min(0.05 * R, 45)), 1), (0, 0), float(np.clip(0.06 * R, 2, 40))) * 0.55 * alpha if R < 2500 else np.zeros_like(shape)
+    sub_ *= (1 - shd[..., None])
+    sub_[:] = sub_ * (1 - disc[..., None] * alpha) + pearl * disc[..., None] * alpha
+    sub_[:] = sub_ * (1 - ring[..., None] * alpha) + ring_col * ring[..., None] * alpha
+    # bolt: bevelled gold, or a window with a gold rim during the dive
+    if bmf.max() > 0:
+        dist = cv2.distanceTransform(cv2.copyMakeBorder(bm, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0), cv2.DIST_L2, 5)[1:-1, 1:-1]; bw = max(2.0, 0.07 * R)
+        gx = cv2.Sobel(dist, cv2.CV_32F, 1, 0, ksize=3); gy = cv2.Sobel(dist, cv2.CV_32F, 0, 1, ksize=3); gn = np.sqrt(gx * gx + gy * gy) + 1e-6
+        s_ = np.clip(dist / bw, 0, 1); k = (1 - s_) * 0.85
+        bnx, bny = -gx / gn * k, -gy / gn * k
+        bnx, bny = bnx * ca + bny * sa, -bnx * sa + bny * ca          # into emblem-local orientation for consistent lighting
+        bnz = np.sqrt(np.clip(1 - bnx * bnx - bny * bny, 0.05, 1))
+        bcol = _gold(bnx, bny, bnz, band) * 1.05
+        outline = np.clip(cv2.dilate(bmf, np.ones((5, 5), np.uint8)) - bmf, 0, 1) * disc     # dark seam where the bolt sits on the disc
+        sub_[:] = sub_ * (1 - outline[..., None] * 0.5 * alpha)
+        if window is not None:
+            rimw = max(2.0, min(bw, 14.0)); rimm = (dist < rimw).astype(np.float32) * bmf
+            win = window[y0:y1, x0:x1]
+            sub_[:] = sub_ * (1 - bmf[..., None]) + (win * (1 - rimm[..., None]) + bcol * rimm[..., None]) * bmf[..., None]
+        else:
+            sub_[:] = sub_ * (1 - bmf[..., None] * alpha) + bcol * bmf[..., None] * alpha
+    # spark at the ring's drawing head
+    if 0 < ring_u < 1:
+        a_ = ring_u * 2 * np.pi; hx, hy = 0.92 * math.sin(a_), -0.92 * math.cos(a_)
+        p = to_screen([(hx, hy)])[0]; d2 = (XX[y0:y1, x0:x1] - x0 - p[0]) ** 2 + (YY[y0:y1, x0:x1] - y0 - p[1]) ** 2
+        sub_[:] += (np.exp(-d2 / (2 * (0.05 * R) ** 2)) * 1.6)[..., None] * GOLD_CORE + (np.exp(-d2 / (2 * (0.18 * R) ** 2)) * 0.7)[..., None] * GOLD_GLOW
+    return out
+
+
+def t_emblem(t, c, A, B, a, b):
+    """Drawn emblem: the gold ring draws itself on, the pearl disc pops in, the bevelled bolt strikes down into place,
+    a glint crosses the metal, then the camera dives through the bolt into the next shot."""
+    cx, cy, R0 = W / 2, H * 0.44, 0.36 * W
+    if t < c:
+        p = clamp((t - a) / (c - a))
+        fa = layer(A, t, 1 + 0.06 * p) * (1 - 0.35 * ease(p / 0.3))
+        ring_u = eout(clamp(p / 0.40)); disc_u = clamp((p - 0.18) / 0.25); bolt_u = ein(clamp((p - 0.40) / 0.20))
+        R = R0 * (1 + 0.05 * ease(clamp((p - 0.6) / 0.4))); rot = math.radians(lerp(-14, 0, eout(p)))
+        glint = lerp(-1.8, 1.8, ease(clamp((p - 0.62) / 0.36))) if p > 0.62 else None
+        f = draw_emblem(fa, cx, cy, R, rot, ring_u, disc_u, bolt_u, glint)
+        land = clamp((p - 0.60) / 0.12)
+        if 0 < land < 1:                                              # the strike lands: flash + a quick ring of arcs
+            f = f + 0.55 * (1 - land)
+            rng = np.random.default_rng(int(t * FPS)); segs = []
+            for _ in range(6):
+                ang = rng.uniform(0, 2 * np.pi); p0 = (cx + R * math.cos(ang), cy + R * math.sin(ang))
+                segs.append((bolt_path(p0, (cx + R * 1.5 * math.cos(ang + rng.uniform(-.3, .3)), cy + R * 1.5 * math.sin(ang + rng.uniform(-.3, .3))), rng, 5, 0.12), 0.7))
+            f = add(f, draw_bolts(segs, 3.5, amp=1.2 * (1 - land)))
+        return f + 0.6 * ein(clamp((t - (c - 0.04)) / 0.04))
+    u = clamp((t - c) / (b - c)); e = ein(u)
+    P = np.array([0.0, 0.0])                                      # dive into the bolt's wide centre
+    R = R0 * 1.05 * math.exp(math.log(30.0) * e); rot = math.radians(lerp(0, -62, ease(u)))   # turn its long axis upright
+    fa = layer(A, c - 1e-3, 1.06) * 0.65
+    fb = layer(B, t, 1 + 0.2 * (1 - eout(u)))
+    f = draw_emblem(fa, cx, cy, R, rot, 1.0, 1.0, 1.0, None, Pshift=P, window=fb)
+    k = ease(clamp((u - 0.78) / 0.22))                             # settle fully onto the next shot
+    return f * (1 - k) + fb * k + 0.6 * (1 - eout(u / 0.15))
+
+
+# ------------------------------------------------------------ Speed Force shockwave ripples on hits
+def ripple_fx(f, t, s, cx=0.5, cy=0.42):
+    hits = [tk for tk in _hits('SNARES') + _hits('KICKS') if s['start'] - 1e-6 <= tk <= t and t - tk < 0.45]
+    if not hits: return f
+    u = (t - s['start']) / (s['end'] - s['start']); gain = 0.5 + 0.7 * u
+    X = XX - cx * W; Y = YY - cy * H; r = np.sqrt(X * X + Y * Y) + 1e-6
+    disp = np.zeros((H, W), np.float32); edge = np.zeros((H, W), np.float32)
+    for tk in hits:
+        rr = (t - tk) * 2600; dec = math.exp(-(t - tk) / 0.22) * gain
+        g = np.exp(-((r - rr) / 55) ** 2) * dec
+        disp += 22 * g * np.sin((r - rr) / 18); edge += np.exp(-((r - rr) / 6) ** 2) * dec
+    g2 = cv2.remap(f, XX + disp * X / r, YY + disp * Y / r, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    return g2 + edge[..., None] * BLUE_GLOW * 0.35
+
+
 # Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
 # c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
 # so the same transition works at any tempo and position.
@@ -1053,7 +1180,8 @@ TRANSITIONS = {
     'shatter':   (lambda c, o: (c - .12, c + .34), lambda t, c, A, B, o: t_shatter(t, c, A, B, c - .12, c + .34, o.get('cx', 0.5), o.get('cy', 0.40))),
     'speedlines': (lambda c, o: (c - .16, c + .20), lambda t, c, A, B, o: t_speedlines(t, c, A, B, c - .16, c + .20, o.get('d', 1))),
     'phase':     (lambda c, o: (c - .20, c + .20), lambda t, c, A, B, o: t_phase(t, c, A, B, c - .20, c + .20)),
-    'emblem':    (lambda c, o: (c - .80, c + .32), lambda t, c, A, B, o: t_emblem(t, c, A, B, c - .80, c + .32)),
+    'emblem':    (lambda c, o: (c - .60, c + .36), lambda t, c, A, B, o: t_emblem(t, c, A, B, c - .60, c + .36)),
+    'emblem_real': (lambda c, o: (c - .80, c + .32), lambda t, c, A, B, o: t_emblem_real(t, c, A, B, c - .80, c + .32)),
     'strike':    (lambda c, o: (c - .22, c + .30), lambda t, c, A, B, o: t_strike(t, c, A, B, c - .22, c + .30)),
     'knife':     (lambda c, o: (c - .30, c + .34), lambda t, c, A, B, o: t_knife(t, c, A, B, c - .30, c + .34)),
     'scope':     (lambda c, o: (c - .40, c + .38), lambda t, c, A, B, o: t_scope(t, c, A, B, c - .40, c + .38, o.get('px', 0.5), o.get('py', 0.5))),

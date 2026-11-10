@@ -49,11 +49,11 @@ SHOTS = [
  # -- bars 6-7: punch on the 12.0 s hit, red flash on the loudest kick (13.6 s), punch on 14.1 s
  dict(name='suit_sparks', beats=4, out='cut',   pack=F,  src=133.85, x=.50, push=(1.00, 1.07), fx=['crackle', 'bump'], **g(1.35)),
  dict(name='grin_dark',   beats=2, out='whip', out_opts={'d': -1}, punch={}, pack=F, src=56.55, x=.44, push=(1.00, 1.05), **g(1.4)),
- dict(name='laugh',       beats=4, out='red', fx=['bump', 'sweep'], pack=E5, src=241.60, x=.60, push=(1.00, 1.06), **g(1.35)),
+ dict(name='laugh',       beats=4, out='red', fx=['bump'], pack=E5, src=241.60, x=.60, push=(1.00, 1.06), **g(1.35)),
  dict(name='earpiece',    beats=2, out='cut', fx=['rgbhit'], pack=F,  src=69.60,  x=.50, push=(1.00, 1.05), **g(1.0)),
  # -- bar 8 (the riser): cold blue, then warm Barry while the lightning builds, Speed Force tunnel loop
  dict(name='speed_cap',   beats=4, out='dip', fx=['crackle_blue', 'bump'], punch={'dur': 0.18, 'z': 1.14, 'flash': 0.10}, pack=G, src=55.00, x=.54, push=(1.00, 1.06), **g(1.5, tint=(1.06, 1.0, .95))),
- dict(name='warm_hold',   beats=5, out='boltsplit', fx=['sweep', 'rgbhit'], pack=E5, src=221.50, x=.31, push=(1.00, 1.08), **g(1.6)),
+ dict(name='warm_hold',   beats=5, out='boltsplit', fx=['ripple'], pack=E5, src=221.50, x=.31, push=(1.00, 1.08), **g(1.6)),
 ]
 for s in SHOTS: s.setdefault('z', 1.0)
 

@@ -168,6 +168,10 @@ def sfx_for(name, c, o, up):
     elif name == 'phase':
         put(buzz(0.45), c - 0.22, gain=0.08); put(zap(0.25), c - 0.02, gain=0.05)
     elif name == 'emblem':
+        put(whoosh(0.26, 2500, 7000, peak=0.6), c - 0.60, gain=0.05); put(shimmer(0.3), c - 0.55, gain=0.03)
+        put(boom(0.3, 140, 60), c - 0.24, gain=0.09); put(zap(0.25), c - 0.24, gain=0.07)
+        put(shimmer(0.25), c - 0.20, pan=0.3, gain=0.03); put(whoosh(0.36, 600, 5200, peak=0.2), c, gain=0.08)
+    elif name == 'emblem_real':
         put(buzz(0.8), c - 0.80, gain=0.05); put(whoosh(0.5, 400, 4200, peak=0.9), c - 0.50, gain=0.07)
         put(zap(0.4), c - 0.06, gain=0.08); put(boom(0.45, 120, 45), c, gain=0.12)
     elif name == 'strike':
