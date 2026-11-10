@@ -45,6 +45,28 @@ retune grade and gain per shot.
 - Every transition previewed with `render.py sheet` before the final.
 - Avoid what the user rejected (glass light-streak glow, floating slides, water, glass shatter); see the preference log.
 
+**Second standard: speedster / superpower edits (user-approved 2026-11-10, with a caveat).**
+`edits/flash/config.py`, The Flash × "SLAUGHTER HOUSE" v3, is the standard for edits about powered
+characters (speed, lightning, energy). Start one with:
+```bash
+python edit/tools/new_edit.py <name> --song media/<song>.mp3 --section media/<name>_section.json --from flash
+```
+The template includes the beat lists (`KICKS`, `SNARES`) taken from the new section.
+
+What it is:
+- **Section:** the first drop plus its riser bar, 8 bars (64 half-beats); the riser launches the loop back into the drop. Use this instead of the last chorus when the song is a drop-based track (phonk, EDM).
+- **Rhythm:** first cut at 4, then 2-2-2-4-2-4-2-4-2-2-3-3-2-2-2-4-2-4-2-4-5 half-beats.
+- **Transition order:** speedlines → whip → blur → spin → **emblem** (drawn, animated) → whip → cut → **phase** → cut → cut → punch + eye gleam + vertical whip → blur → cut → blur → **strike** → cut → cut → punch + whip → **red** → cut → punch + dip → **boltsplit** loop.
+- **Fill:** bumps on kicks, colour hits on snares, gold afterimages on running and flying shots, blue arcs on the tech shot, shockwave ripples on the riser hold.
+- **Grade:** muted with red and gold kept (sat .45, rk 1.0, yk 1.0); dark shots lifted (gain 1.3–1.6).
+
+**Caveat (the user's words: adequate, "still not quite up to the quality I'm pursuing").** Treat it as the minimum, not the target. Every new powered-character edit should try to go beyond it, and say how. Known gaps to work on:
+- Sources are 720p, upscaled 2.7×. Ask for 1080p or 4K packs.
+- Effects are procedural: lightning, speed lines and ripples are cleaner than before but not at After Effects asset quality. Push toward richer graphics (layered glows, motion blur on graphics, depth and parallax, particles that interact with the footage) and crafted, drawn animations like the emblem, which the user preferred.
+- Sound effects are synthesized and their level is unverified by ear. Ask the user to check the mix.
+- Faces are smaller in frame than in the Dexter standard (41% against 55%), because speed shots are wider.
+Ask the user, early, for a reference of the quality they're after when starting a new edit of this kind.
+
 **For another character:** keep the slot structure, rhythm, arc and big-hit placement. Swap the Dexter-signature transitions (knife, scope, plastic, polaroid) for shape transitions built from that character's own signature objects.
 
 **Reproducing the standard:** `bash scenepacks/fetch.sh dexter`, then put the song at `media/hold_on.mp3` (it isn't in the Drive manifest, so the user must supply it again), then `bash edit/build.sh edits/hold_on`.
@@ -206,6 +228,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-10: **The user made Flash × Slaughter House v3 the standard for speedster / powered-character edits**, while noting it is still not at the quality they're pursuing (see "Second standard"). `new_edit.py --from flash` scaffolds from it.
 - 2026-11-10: Flash edit v3. The user disliked the gold light sweep over Barry's face on the final hold (removed everywhere; `ripple` replaces it) and the bolt left in the middle after `strike` (a bug: it now burns out within about 0.1 s and the torn edges fade). They then asked for the emblem to be **drawn as a high-quality animated graphic** instead of tracking the real one, which led to `draw_emblem` and the new `emblem`. Takeaway: for character symbols, the user prefers a crafted, well-animated graphic (draw-on, pop-in, strike, glint, dive) over effects pasted onto footage. QA now scans every frame for invalid pixels (NaN shows as a black frame).
 - 2026-11-10: Flash edit revision (v2). The user liked the transitions' structure but not how the animations looked. Changes: the emblem transition must use the **real emblem in the footage**, with the effect drawn on it and the transition coming out of it (not a drawn graphic); the Speed Force tunnel and the wandering arcs on the last hold were too loose (replaced with `boltsplit`); the eye lightning was too much (now a subtle gleam). The user asked for animation wherever there is dead space, which led to bump, rgbhit, echo, sweep and crisper lightning. General preference: **anchor effects to real objects in the shot, keep them tight and crisp, and fill holds with motion tied to the beat.**
 - 2026-11-10: Third edit, The Flash × "SLAUGHTER HOUSE" (`edits/flash`). The user asked for the standard's style with the edit's own Flash flair (lightning, emblem, eyes), using elements of a reference edit (`media/references/flash_wonderwall_ref.mp4`, user-supplied, not in the Drive manifest) without copying it. The kit above was added. Choices: section = first drop + its riser bar (the riser launches the loop back into the drop), rather than the last chorus; no lyric captions, although the reference had them (the style excludes text). Footage is from all seven Flash packs; median sharpness 663, faces 41% of frame height (lower than the standard on purpose: speed and lightning shots).
