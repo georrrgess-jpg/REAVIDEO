@@ -1493,6 +1493,230 @@ def t_syringe(t, c, A, B, a, b):
     return _lids(f, o)
 
 
+# ============================================================ Blue-sky kit (The Flash x Mr. Blue Sky)
+_SUNK = {}
+
+
+def _hexagon(cx, cy, r, rot=0.3):
+    return np.array([[cx + r * math.cos(rot + k * math.pi / 3), cy + r * math.sin(rot + k * math.pi / 3)] for k in range(6)])
+
+
+def draw_sun(f, sx, sy, R, rot, rays, flare=1.0):
+    """Drawn sun: white-hot disc, warm corona, 16 tapered rotating rays (two lengths), an anamorphic streak
+    and hexagonal lens ghosts on the line through the frame centre. Additive light."""
+    q = 2; h, w = H // q, W // q
+    X = (XX[::q, ::q] - sx) / R; Y = (YY[::q, ::q] - sy) / R; r = np.sqrt(X * X + Y * Y) + 1e-6; th = np.arctan2(Y, X)
+    disc = ss(1.02, 0.96, r); corona = np.exp(-(np.clip(r - 1, 0, None) / 1.4) ** 1.2)
+    n = 16; ang = (th - rot) % (2 * np.pi / n) - math.pi / n                 # angle to the nearest ray axis
+    k = np.floor(((th - rot) % (2 * np.pi)) / (2 * np.pi / n)).astype(int)
+    length = np.where(k % 2 == 0, 7.5, 4.5) * rays
+    width = 0.20 * np.clip(1 - (r - 1) / np.maximum(length, 1e-3), 0, 1)     # tapered toward the tip
+    ray = ss(width + 0.015, width - 0.015, np.abs(ang) * r / np.maximum(r, 1)) * (r > 0.95) * (r < 1 + length)
+    ray = cv2.GaussianBlur(ray.astype(np.float32), (0, 0), 1.2)
+    light = (disc * 1.6)[..., None] * np.float32([0.92, 0.98, 1.0]) \
+        + (corona * 0.55)[..., None] * np.float32([0.45, 0.82, 1.0]) \
+        + (ray * 0.75 * np.clip(1.2 - (r - 1) / (length + 1e-3), 0, 1))[..., None] * np.float32([0.55, 0.88, 1.0])
+    streak = np.exp(-((YY[::q, ::q] - sy) / (R * 0.10)) ** 2) * np.exp(-((XX[::q, ::q] - sx) / (W * 0.9)) ** 2) * 0.6
+    light = light + streak[..., None] * np.float32([1.0, 0.85, 0.6])           # cool-blue anamorphic streak
+    out = f + cv2.resize(light, (W, H)) * flare
+    # lens ghosts along the axis from the sun through the frame centre
+    g = np.zeros((h, w, 3), np.float32)
+    for pos, size, col in ((0.55, 0.20, (0.55, 0.75, 1.0)), (1.25, 0.11, (1.0, 0.65, 0.4)), (1.55, 0.34, (0.6, 1.0, 0.7)), (1.9, 0.07, (1.0, 0.9, 0.9))):
+        gx = sx + (W / 2 - sx) * pos; gy = sy + (H * 0.45 - sy) * pos
+        poly = _hexagon(gx / q, gy / q, size * R * 2.2 / q)
+        m = np.zeros((h, w), np.uint8); cv2.fillPoly(m, [np.round(poly * 4).astype(np.int32)], 255, cv2.LINE_AA, shift=2)
+        mf = m.astype(np.float32) / 255
+        rim = np.clip(mf - cv2.erode(mf, np.ones((5, 5), np.uint8)), 0, 1)
+        g += (mf * 0.10 + rim * 0.12)[..., None] * np.float32(col)
+    return out + cv2.resize(cv2.GaussianBlur(g, (0, 0), 1.5), (W, H)) * flare
+
+
+def t_sunburst(t, c, A, B, a, b, sx=0.80, sy=0.13):
+    """The sun rises out of the sky in the corner, its rays spin out, the light floods the frame white,
+    and the next shot develops out of the glare."""
+    SX, SY = sx * W, sy * H
+    if t < c:
+        p = clamp((t - a) / (c - a)); e = eout(p)
+        f = layer(A, t, 1 + 0.04 * p) * (1 + 0.35 * ease(p))
+        f = draw_sun(f, SX, SY + 160 * (1 - e), 60 + 90 * e, t * 1.6, 0.3 + 0.9 * e, 0.6 + 0.6 * e)
+        wr = ein(clamp((p - 0.72) / 0.28)) * 1.6 * math.hypot(W, H)                # white flood from the sun outward
+        d = np.sqrt((XX - SX) ** 2 + (YY - SY) ** 2)
+        return f + (ss(wr + 220, wr - 220, d) * 1.2)[..., None]
+    u = clamp((t - c) / (b - c))
+    f = layer(B, t, 1 + 0.12 * (1 - eout(u))) * (1 + 0.6 * (1 - eout(u)))
+    f = draw_sun(f, SX, SY, 150, t * 1.6, 1.2, 1.1 * (1 - ease(u)))
+    return f + (1 - eout(u / 0.45)) * 1.1
+
+
+def _cloud_bank():
+    """Cumulus bank: many billows of mixed size; shaded as a height field lit from the upper left,
+    bright tops, blue-grey bellies, ambient occlusion in the folds, silver lining on the edges."""
+    if 'cloud' not in _SUNK:
+        q = 2; w, h = int(W * 2.6) // q, int(H * 1.0) // q; r = np.random.default_rng(23)
+        Hh = np.zeros((h, w), np.float32)
+        for _ in range(260):                                                     # big billows low, small ones on top
+            cx = r.uniform(0.16, 0.84) * w; big = r.random() < 0.35
+            rad = (r.uniform(0.09, 0.16) if big else r.uniform(0.03, 0.08)) * h * (1.5 - abs(cx / w - 0.5)) * min(1.0, (0.5 - abs(cx / w - 0.5)) / 0.12)
+            cy = h * (0.56 + (0.10 if big else -0.02) + 0.17 * r.normal())
+            yy0, yy1, xx0, xx1 = int(max(0, cy - rad)), int(min(h, cy + rad)), int(max(0, cx - rad)), int(min(w, cx + rad))
+            if yy1 <= yy0 or xx1 <= xx0: continue
+            Y, X = np.mgrid[yy0:yy1, xx0:xx1].astype(np.float32)
+            d2 = 1 - ((X - cx) ** 2 + (Y - cy) ** 2) / rad ** 2
+            Hh[yy0:yy1, xx0:xx1] = np.maximum(Hh[yy0:yy1, xx0:xx1], np.sqrt(np.clip(d2, 0, 1)) * rad / h * 6)
+        n = fbm(h, w, 5, 24, 18); n2 = fbm(h, w, 4, 25, 60)
+        Hh = Hh + 0.10 * (n - 0.5) * (Hh > 0.02) + 0.04 * (n2 - 0.5) * (Hh > 0.02)
+        xw = np.linspace(0, 1, w, dtype=np.float32)[None, :]
+        dens = ss(0.02, 0.10, Hh)
+        Hs = cv2.GaussianBlur(Hh, (0, 0), 1.5)
+        gy, gx = np.gradient(Hs * 60)
+        nrm = np.sqrt(gx * gx + gy * gy + 1); nx, ny, nz = -gx / nrm, -gy / nrm, 1 / nrm
+        L = np.array([-0.55, -0.75, 0.45]); L /= np.linalg.norm(L)
+        lam = np.clip(nx * L[0] + ny * L[1] + nz * L[2], 0, 1)
+        ao = np.clip(Hs / (cv2.GaussianBlur(Hs, (0, 0), 25) + 1e-3), 0.4, 1.3) ** 0.6   # folds darker than crowns
+        vert = np.linspace(1.0, 0.0, h, dtype=np.float32)[:, None]                 # bellies (lower) bluer and darker
+        lit = (0.45 + 0.65 * lam) * ao * (0.82 + 0.25 * vert)
+        hi = np.float32([0.93, 0.98, 1.0]); sh = np.float32([0.78, 0.62, 0.50])    # warm-white light, blue-grey shadow (BGR)
+        k = np.clip(lit, 0, 1.2)[..., None]
+        col = sh * (1 - np.clip(k, 0, 1)) + hi * np.clip(k, 0, 1) + np.clip(k - 1, 0, 0.2) * 0.8
+        rimm = np.clip(dens - cv2.erode(dens, np.ones((5, 5), np.uint8)), 0, 1)
+        col = col + cv2.GaussianBlur(rimm, (0, 0), 1.5)[..., None] * 0.35
+        _SUNK['cloud'] = (cv2.resize(np.clip(col, 0, 1.3).astype(np.float32), (w * q, h * q), interpolation=cv2.INTER_CUBIC),
+                          cv2.resize(dens.astype(np.float32), (w * q, h * q), interpolation=cv2.INTER_CUBIC))
+    return _SUNK['cloud']
+
+
+def t_clouds(t, c, A, B, a, b):
+    """A sunlit cumulus bank rolls across the frame (front layer fast, back layer slower and hazier);
+    the next shot is behind it."""
+    col, dens = _cloud_bank(); cw = col.shape[1]
+    u = clamp((t - a) / (b - a)); e = 0.25 * u + 0.75 * ease(u)
+    fa, fb = layer(A, t), layer(B, t)
+    edge = lerp(-0.25 * W, 1.25 * W, e) + 70 * np.sin(np.arange(H, dtype=np.float32) / 130 + t * 3)[:, None]
+    m = ss(60, -60, XX - edge)[..., None]                                        # B left of the bank's middle
+    f = fa * (1 - m) + fb * m
+    for sp, sc, haze in ((0.85, 0.85, 0.35), (1.0, 1.0, 0.0)):                   # back layer, then front layer
+        eb = e if sp == 1.0 else 0.15 * u + 0.85 * ease(clamp(u * 1.08))
+        x0 = int(lerp(-cw * sc - 0.1 * W, W + 0.1 * W, eb)); y0 = int(H * (0.5 - 0.5 * sc))
+        Mx = np.float32([[sc, 0, x0], [0, sc, y0]])
+        cl = cv2.warpAffine(col, Mx, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        al = cv2.warpAffine(dens, Mx, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)[..., None]
+        cl = cl * (1 - haze) + np.float32([0.95, 0.85, 0.75]) * haze
+        f = f * (1 - al * (0.85 if haze else 1.0)) + cl * al * (0.85 if haze else 1.0)
+    return f
+
+
+def t_runby(t, c, A, B, a, b, y0=0.52):
+    """The Flash runs across the frame as a lightning comet: white-hot head, red-gold tail, lightning
+    crackling in the wake, wind smear behind him; the next shot is revealed in his wake."""
+    u = clamp((t - a) / (b - a)); e = 0.15 * u + 0.85 * ease(u)
+    hx = lerp(-0.35 * W, 1.35 * W, e); slope = -0.12
+    yh = lambda x: H * y0 + slope * (x - W / 2) + 30 * np.sin(x / 140.0)
+    hy = float(yh(np.float32(hx)))
+    fa, fb = layer(A, t), layer(B, t)
+    path_y = yh(np.arange(W, dtype=np.float32))[None, :]
+    dy = YY - path_y; behind = hx - XX                                            # >0 behind the head
+    m = ss(-40, 40, behind - 60 - 50 * np.sin(YY / 90 + t * 9))[..., None]
+    base = fa * (1 - m) + fb * m
+    wake = np.exp(-(dy / (H * 0.10)) ** 2) * np.exp(-np.clip(behind, 0, None) / (W * 0.5)) * (behind > -60)
+    sm = cv2.blur(base, (151, 1))                                                 # wind smear in the wake
+    base = base * (1 - wake[..., None] * 0.85) + sm * (wake[..., None] * 0.85)
+    tail = np.exp(-(dy / (9 + 0.03 * np.clip(behind, 0, None))) ** 2) * np.exp(-np.clip(behind, 0, None) / (W * 0.45)) * (behind > -20)
+    core = np.exp(-(dy / 7) ** 2) * np.exp(-np.clip(behind, 0, None) / (W * 0.18)) * (behind > -10)
+    head = np.exp(-(((XX - hx) / 46) ** 2 + (dy / 20) ** 2))
+    light = (tail * 0.9)[..., None] * np.float32([0.05, 0.25, 1.0]) + (tail * 0.5 + core)[..., None] * np.float32([0.25, 0.75, 1.0]) \
+        + (head * 2.2 + core * 0.8)[..., None] * np.float32([0.85, 0.97, 1.0])
+    f = base + light
+    rng = np.random.default_rng(int(t * FPS / 2)); segs = []
+    for _ in range(5):                                                            # lightning crackling along the wake
+        x1 = hx - rng.uniform(0.05, 0.9) * W; x2 = x1 - rng.uniform(80, 300)
+        if x1 < -50 or x1 > W + 50: continue
+        segs += bolt_tree((x1, float(yh(np.float32(x1))) + rng.normal(0, 20)), (x2, float(yh(np.float32(x2))) + rng.normal(0, 90)), rng, branches=1, depth=6)
+    return add(f, draw_bolts(segs, 3.0, amp=1.0))
+
+
+# clock with lightning-bolt hands
+def _clock_face(Rs=700):
+    if 'face' in _SUNK: return _SUNK['face']
+    S = 2 * Rs + 40; c = S / 2
+    yy, xx = np.mgrid[0:S, 0:S].astype(np.float32); r = np.sqrt((xx - c) ** 2 + (yy - c) ** 2) / Rs
+    face = np.stack([0.80 + 0.12 * (1 - r), 0.90 + 0.06 * (1 - r), 0.95 + 0.03 * (1 - r)], -1).astype(np.float32)   # warm ivory
+    a = ss(1.0, 0.995, r).astype(np.float32)
+    bez = ss(0.88, 0.90, r) * ss(1.0, 0.995, r)
+    lam = np.clip(((xx - c) * -0.6 + (yy - c) * -0.8) / (Rs * r + 1e-3), -1, 1) * np.where(r > 0.94, 1, -1)
+    gold = np.float32([0.10, 0.55, 0.92]) * (0.55 + 0.45 * lam[..., None]) + (np.clip(lam, 0, 1) ** 8 * 0.6)[..., None]
+    face = face * (1 - bez[..., None]) + gold * bez[..., None]
+    img = (np.clip(face, 0, 1) * 255).astype(np.uint8); ink = (25, 22, 20)
+    for k in range(60):                                                           # minute and hour ticks
+        th = k * math.pi / 30; r0 = 0.80 if k % 5 == 0 else 0.84; r1 = 0.87
+        p0 = (int(c + Rs * r0 * math.sin(th)), int(c - Rs * r0 * math.cos(th))); p1 = (int(c + Rs * r1 * math.sin(th)), int(c - Rs * r1 * math.cos(th)))
+        cv2.line(img, p0, p1, ink, 9 if k % 5 == 0 else 3, cv2.LINE_AA)
+    nums = ['XII', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI']
+    for k, s in enumerate(nums):
+        th = k * math.pi / 6; px, py = c + Rs * 0.67 * math.sin(th), c - Rs * 0.67 * math.cos(th)
+        sc = 2.4; (tw, thh), _ = cv2.getTextSize(s, cv2.FONT_HERSHEY_TRIPLEX, sc, 5)
+        cv2.putText(img, s, (int(px - tw / 2), int(py + thh / 2)), cv2.FONT_HERSHEY_TRIPLEX, sc, ink, 5, cv2.LINE_AA)
+    cv2.circle(img, (int(c), int(c)), int(Rs * 0.5), (90, 150, 200), 3, cv2.LINE_AA)       # inner gold ring
+    f = img.astype(np.float32) / 255 * a[..., None]
+    _SUNK['face'] = (np.dstack([f, a]), Rs)
+    return _SUNK['face']
+
+
+_HAND = np.array([(0.0, 0.0), (0.10, -0.42), (0.035, -0.40), (0.12, -0.92), (-0.06, -0.36), (0.01, -0.38), (-0.07, 0.0)])
+
+
+def draw_clock(f, cx, cy, R, ang_h, ang_m, ang_s, open_r=0.0, window=None, swirl=0.0):
+    face, Rs = _clock_face(); sc = R / Rs; S = face.shape[0]
+    M = np.float32([[sc, 0, cx - sc * S / 2], [0, sc, cy - sc * S / 2]])
+    lay = cv2.warpAffine(face, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    shd = cv2.GaussianBlur(np.roll(np.roll(lay[..., 3], int(min(0.06 * R, 50)), 0), int(min(0.04 * R, 35)), 1), (0, 0), float(np.clip(0.05 * R, 2, 40))) * 0.55 if R < 2500 else 0
+    out = f * (1 - (shd[..., None] if R < 2500 else 0))
+    out = out * (1 - lay[..., 3:4]) + lay[..., :3]
+    if window is not None and open_r > 0:                                        # the face opens from the centre onto `window`
+        d = np.sqrt((XX - cx) ** 2 + (YY - cy) ** 2) / R
+        if swirl:
+            th = swirl * np.clip(1 - d / max(open_r, 1e-3), 0, 1) ** 2
+            ca, sa = np.cos(th), np.sin(th); X, Y = XX - cx, YY - cy
+            window = cv2.remap(window, X * ca - Y * sa + cx, X * sa + Y * ca + cy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        m = ss(open_r + 0.01, open_r - 0.01, d)[..., None]
+        rim = np.exp(-((d - open_r) / 0.012) ** 2)[..., None] * np.float32([0.25, 0.75, 1.0])
+        out = out * (1 - m) + window * m + rim * (open_r < 0.88)
+    if open_r < 0.85:                                                             # lightning-bolt hands (gold), red second hand
+        for ang, L, wdt, col in ((ang_h, 0.45, 1.25, (0.10, 0.62, 0.95)), (ang_m, 0.70, 1.0, (0.10, 0.62, 0.95)), (ang_s, 0.80, 0.35, (0.10, 0.10, 0.85))):
+            ca, sa = math.cos(ang), math.sin(ang); P = _HAND * [wdt, L / 0.92]
+            pts = np.stack([cx + R * (P[:, 0] * ca - P[:, 1] * sa), cy + R * (P[:, 0] * sa + P[:, 1] * ca)], 1)
+            mk = np.zeros((H, W), np.uint8); cv2.fillPoly(mk, [np.clip(np.round(pts * 4), -2 ** 30, 2 ** 30).astype(np.int32)], 255, cv2.LINE_AA, shift=2)
+            mf = mk.astype(np.float32)[..., None] / 255
+            out = out * (1 - mf) + np.float32(col) * mf + np.clip(mf - cv2.erode(mf[..., 0], np.ones((5, 5), np.uint8))[..., None], 0, 1) * 0.35
+        hub = np.exp(-(((XX - cx) ** 2 + (YY - cy) ** 2) / (2 * (0.035 * R) ** 2)))
+        out = out * (1 - np.clip(hub * 3, 0, 1)[..., None]) + (np.clip(hub * 3, 0, 1))[..., None] * np.float32([0.15, 0.6, 0.9])
+    return out
+
+
+def t_clock(t, A, B, a, op, end):
+    """Loop ending: a clock with lightning-bolt hands pops in over the last shot, its hands spin backwards
+    faster and faster (time rewinds), the world swirls, then the face opens and the camera falls through
+    it into the first shot."""
+    if t >= end: return layer(B, t - DUR)
+    cx, cy = W / 2, H * 0.44
+    p = clamp((t - a) / (end - a))
+    spin = -(2 * np.pi) * (0.4 * (t - a) + 6.0 * (t - a) ** 2.2)                 # accelerating backwards
+    fa = layer(A, t)
+    sw = 1.4 * ein(clamp((t - a) / (op - a)))                                      # the world swirls around the clock
+    if sw > 0.01:
+        X, Y = XX - cx, YY - cy; d = np.sqrt(X * X + Y * Y) / (0.9 * H); th = sw * np.exp(-d * 1.4)
+        ca, sa = np.cos(th), np.sin(th)
+        fa = cv2.remap(fa, X * ca - Y * sa + cx, X * sa + Y * ca + cy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        fa = fa * (1 - 0.35 * ease(sw / 1.4))
+    if t < op:
+        k = clamp((t - a) / 0.16); pop = eout(k) * (1 + 0.12 * math.sin(math.pi * k))
+        R = 0.40 * W * pop
+        return draw_clock(fa, cx, cy, max(R, 1.0), spin / 12, spin, spin * 6) if R > 2 else fa
+    u = clamp((t - op) / (end - op))
+    R = 0.40 * W * math.exp(math.log(5.2) * ein(u))
+    fb = layer(B, t - DUR, 1 + 0.25 * (1 - eout(u)))
+    return draw_clock(fa, cx, cy, R, spin / 12, spin, spin * 6, open_r=0.05 + 0.95 * eout(u ** 0.8), window=fb, swirl=2.0 * (1 - u))
+
+
 # Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
 # c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
 # so the same transition works at any tempo and position.
@@ -1526,6 +1750,9 @@ TRANSITIONS = {
     'slices':    (lambda c, o: (c - .14, c + .30), lambda t, c, A, B, o: t_slices(t, c, A, B, c - .14, c + .30)),
     'orange':    (lambda c, o: (c - .42, c + .42), lambda t, c, A, B, o: t_orange(t, c, A, B, c - .42, c + .42)),
     'syringe':   (lambda c, o: (c - .78, c + .45), lambda t, c, A, B, o: t_syringe(t, c, A, B, c - .78, c + .45)),
+    'sunburst':  (lambda c, o: (c - .32, c + .30), lambda t, c, A, B, o: t_sunburst(t, c, A, B, c - .32, c + .30, o.get('sx', 0.80), o.get('sy', 0.13))),
+    'clouds':    (lambda c, o: (c - .32, c + .32), lambda t, c, A, B, o: t_clouds(t, c, A, B, c - .32, c + .32)),
+    'runby':     (lambda c, o: (c - .26, c + .26), lambda t, c, A, B, o: t_runby(t, c, A, B, c - .26, c + .26, o.get('y', 0.52))),
     'knife':     (lambda c, o: (c - .30, c + .34), lambda t, c, A, B, o: t_knife(t, c, A, B, c - .30, c + .34)),
     'scope':     (lambda c, o: (c - .40, c + .38), lambda t, c, A, B, o: t_scope(t, c, A, B, c - .40, c + .38, o.get('px', 0.5), o.get('py', 0.5))),
     'plastic':   (lambda c, o: (c - .30, c + .40), lambda t, c, A, B, o: t_plastic(t, c, A, B, c - .30, c + .40)),
@@ -1533,7 +1760,7 @@ TRANSITIONS = {
 }
 
 
-LOOPS = ('iris', 'tunnel', 'boltsplit')
+LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock')
 
 
 def build_trans():
@@ -1555,6 +1782,9 @@ def build_trans():
     last = n - 1; lp = SHOTS[-1].get('out')
     if lp == 'iris':
         a, fall, end = _iris_times(CUTS[-1]); out.append((a, DUR + 1, lambda t: t_iris(t, last, 0, a, fall, end)))
+    elif lp == 'clock':
+        c = CUTS[-1]; a, op, end = c - 0.80, c - 0.30, c + 0.12
+        out.append((a, DUR + 1, lambda t: t_clock(t, last, 0, a, op, end)))
     elif lp == 'boltsplit':
         c = CUTS[-1]; a, cc, end = c - 0.40, c - 0.12, c + 0.12
         out.append((a, DUR + 1, lambda t: t_boltsplit(t, last, 0, a, cc, end)))

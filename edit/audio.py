@@ -175,6 +175,20 @@ def downer(dur=0.9):
     return y / np.abs(y).max()
 
 
+def chime(dur=1.4, f0=880):
+    """Clock chime: inharmonic bell partials with long decay."""
+    n = int(dur * SR); u = np.arange(n) / SR
+    y = sum(a * np.sin(2 * np.pi * f0 * r * u) * np.exp(-u * d) for r, a, d in ((1.0, 1.0, 2.5), (2.0, 0.5, 3.5), (2.76, 0.35, 5), (5.4, 0.2, 8)))
+    return y / np.abs(y).max()
+
+
+def wind(dur=0.7):
+    """Soft rolling wind: low-passed noise with a slow swell."""
+    n = int(dur * SR); u = np.linspace(0, 1, n)
+    y = sg.lfilter(*sg.butter(2, 900 / (SR / 2)), rng.standard_normal(n)) * np.sin(np.pi * u) ** 1.2
+    return y / np.abs(y).max()
+
+
 # ---- SFX follow the plan: each transition type has its sound, placed relative to its cut ----
 def sfx_for(name, c, o, up):
     if name == 'leaf': put(whoosh(0.34, 700, 5200) if up else whoosh(0.34, 5200, 800), c - 0.20, gain=0.085)
@@ -216,6 +230,15 @@ def sfx_for(name, c, o, up):
     elif name == 'knife':
         put(whoosh(0.30, 600, 4200, peak=0.85), c - 0.30, pan=0.4, gain=0.07); put(shing(), c - 0.12, pan=0.2, gain=0.11)
         put(boom(0.35, 110, 50), c, gain=0.08)
+    elif name == 'sunburst':
+        put(shimmer(0.7), c - 0.32, pan=0.5, gain=0.04); put(whoosh(0.45, 300, 6000, q=0.7, peak=0.85), c - 0.40, gain=0.07); put(boom(0.4, 110, 50), c, gain=0.06)
+    elif name == 'clouds':
+        put(wind(0.75), c - 0.38, pan=-0.3, gain=0.10); put(whoosh(0.6, 250, 1200, q=0.6, peak=0.5), c - 0.30, gain=0.05)
+    elif name == 'runby':
+        put(whoosh(0.40, 600, 7000, peak=0.6), c - 0.24, gain=0.11); put(zap(0.35), c - 0.10, pan=0.4, gain=0.06)
+    elif name == 'clock':
+        for k in range(10): put(tick(0.05, 2600), c - 0.80 + 0.5 * (k / 10) ** 0.6, pan=0.2, gain=0.05)
+        put(whoosh(0.5, 4000, 300, q=0.7, peak=0.3), c - 0.30, gain=0.08); put(chime(1.2, 880), c - 0.05, gain=0.035)
     elif name == 'ink':
         put(whoosh(0.40, 180, 1200, q=0.7, peak=0.7), c - 0.36, gain=0.09); put(splat(0.14), c - 0.30, pan=-0.3, gain=0.07)
         put(splat(0.12), c - 0.20, pan=0.4, gain=0.06); put(whoosh(0.30, 1200, 300, peak=0.2), c, gain=0.06)
