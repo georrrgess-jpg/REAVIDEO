@@ -181,7 +181,9 @@ Duality kit (first used in `edits/new_person`, Dexter × New Person, Same Old Mi
 - `kaleido`: the frame folds into a turning 8-way kaleidoscope with colour fringes and unfolds into the next shot. Psychedelic; good for Tame Impala-style songs.
 - `tape`: layered yellow "CRIME SCENE DO NOT CROSS" tape whips in lengthwise until it covers the frame, then rips fully clear.
 - `rorschach`: a symmetric ink blot opens from the centre fold with an ink rim; the next shot is inside it.
-- `mirror`: the face folds into a perfect mirror double (two faces), a light seam splits it, and the halves swing open like perspective doors.
+- `blinds`: drawn Venetian blinds tilt shut top to bottom (lit slats, sun bars through the gaps), then tilt open onto the next shot. Noir.
+- `rewind` (loop): the whole edit plays backwards at speed with a VHS look (row jitter, tracking band, chroma bleed, scanlines) and lands exactly on frame 0. Use it when the song is about repetition.
+- ~~`mirror`~~ (the user disliked it): the face folds into a perfect mirror double (two faces), a light seam splits it, and the halves swing open like perspective doors.
 - Rhythm note: when the kick falls on odd half-beats, cut in 3-3-2 groups so every kick gets a cut.
 - Footage note: all stored packs are really 720p. The user asked for 1080p clips without AI upscaling, chose "720p, no AI" when told no 1080p exists, and asked for efficiency. Default to plain extract (no `--sr`) unless asked; ask for 1080p+ packs when quality matters.
 
@@ -255,6 +257,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-12: Feedback on New Person v1. **No shots that read as still pictures; every shot must visibly move** (a head turn, an action, a camera move), so pick shots with `tools/motion.py` (optical flow; aim for motion >= 0.6, the top half of a pack). **Faces must be framed on point**, so use `frame='auto'` (extract.py sizes the crop so the face is about 30% of the height with the eyes in the upper third, and follows the face vertically too). The mirror-doors transition is rejected; `blinds` replaces it. The blood-drop `iris` loop felt lame here; `rewind` replaced it. Prefer loops that mean something for the song.
 - 2026-11-12: Dexter × New Person, Same Old Mistakes (`edits/new_person`): the user asked for the best Dexter edit yet, with stunning unique transitions, no AI upscaling (1080p clips preferred; none exist, so 720p with plain resizing) and an efficient build. Final `dexter_new_person_edit_v1.mp4`: 18.95 s at 60 fps, 74.5 MB, built in about 1 hour with no upscaling pass.
 - 2026-11-11: The user asked for the best Flash edit yet, with custom graphics and animations, set to Mr. Blue Sky. Built `edits/blue_sky` (final `flash_blue_sky_edit_v1.mp4`: 21.65 s at 60 fps, 84.8 MB, hard cuts 4–14 ms from the beat, no frozen or black frames): a bright sunny grade (sat .78) instead of the muted speedster look, ML-upscaled footage, and the blue-sky kit above.
 - 2026-11-10: The user asked for the best Dexter edit yet, "above and beyond", with multiple custom effects, animations, graphics and transitions, using voidfx references and The Less I Know The Better. Built `edits/less_i_know` (see "Flagship candidate"). It is the first edit with lyric typography, a black-and-white selective-red grade, and ML upscaling.

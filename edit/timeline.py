@@ -1854,6 +1854,66 @@ def t_mirror(t, c, A, B, a, b):
     return out + (1 - eout(u / 0.25)) * 0.35
 
 
+# ---- Venetian blinds (noir) and the VHS rewind loop
+def t_blinds(t, c, A, B, a, b, n=13):
+    """Venetian blinds: drawn slats tilt shut from top to bottom (sun bars sliding through the gaps), then tilt
+    open from the bottom onto the next shot."""
+    pitch = H / n; k = np.floor(YY[:, :1] / pitch); v = (YY[:, :1] - (k + 0.5) * pitch) / (pitch / 2)    # -1..1 inside a slat
+    if t < c:
+        p = (t - a) / (c - a); lag = k / n * 0.45; phi = np.clip((p - lag) / 0.55, 0, 1) ** 3 * (math.pi / 2)
+        f = layer(A, t)
+    else:
+        p = (t - c) / (b - c); lag = (n - 1 - k) / n * 0.45; phi = (1 - np.clip((p - lag) / 0.55, 0, 1)) ** 3 * (math.pi / 2)
+        f = layer(B, t, 1 + 0.06 * (1 - p))
+    sphi = np.sin(phi)
+    cover = ss(sphi + 0.02, sphi - 0.02, np.abs(v)) * (sphi > 0.01)
+    shade = 0.30 + 0.62 * np.clip(np.cos(phi - math.radians(35)), 0, 1)                     # lit from above
+    curve = 1 - 0.18 * (v / np.maximum(sphi, 1e-3)) ** 2
+    hi = np.exp(-((v + sphi) / 0.06) ** 2) * 0.35; lo = np.exp(-((v - sphi) / 0.10) ** 2) * 0.35
+    slat = np.float32([0.80, 0.88, 0.93]) * (shade * curve)[..., None] + hi[..., None] - lo[..., None] * 0.5
+    slat = slat + (0.04 * np.sin(XX[:1, :] / 3.0))[..., None] * 0.2                          # faint grain
+    gap = (1 - cover) * (sphi > 0.05)
+    bars = (np.exp(-((XX - (YY * 0.35) - lerp(-0.4, 1.4, clamp((t - a) / (b - a))) * W) / 260) ** 2) * 0.45)[..., None]
+    f = f * (1 - 0.45 * (sphi * (1 - cover))[..., None]) + bars * gap[..., None] * np.float32([0.55, 0.80, 1.0])   # sun through the gaps
+    shadow = np.clip(np.roll(cover, 14, 0) - cover, 0, 1) * 0.5
+    f = f * (1 - shadow[..., None])
+    return f * (1 - cover[..., None]) + slat * cover[..., None]
+
+
+def _vhs(f, k, t):
+    """VHS rewind look: jittered rows, a tracking band, chroma bleed, scanlines and noise, strength k."""
+    if k <= 0.01: return f
+    rng = np.random.default_rng(int(t * FPS))
+    rows = rng.normal(0, 1, H).astype(np.float32); rows = np.convolve(rows, np.ones(9) / 9, 'same') * 26 * k
+    band = (lerp(1.1, -0.1, (t * 3.1) % 1.0)) * H
+    bandm = np.exp(-((np.arange(H) - band) / 40) ** 2).astype(np.float32)
+    rows = rows + bandm * 90 * k
+    mx = (XX + rows[:, None]).astype(np.float32)
+    g = cv2.remap(f, mx, YY, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    sp = int(10 * k); g = g.copy(); g[..., 2] = np.roll(g[..., 2], sp, 1); g[..., 0] = np.roll(g[..., 0], -sp, 1)
+    l = luma(g)[..., None]; g = l + (g - l) * (1 - 0.35 * k)
+    g = g * (1 - 0.18 * k * ((np.arange(H) % 4) < 2)[:, None, None])
+    g = g + (bandm[:, None] * rng.random((H, W)).astype(np.float32) * 0.6 * k)[..., None]
+    g = g + rng.normal(0, 0.035 * k, (H // 4, W // 4)).astype(np.float32).repeat(4, 0).repeat(4, 1)[..., None]
+    return g
+
+
+def t_rewind(t, a, end):
+    """Loop ending: the whole edit rewinds at speed like a VHS tape (tracking noise, chroma bleed) and lands
+    exactly on the first frame. Same old mistakes, again."""
+    if t >= end: return layer(0, t - DUR)
+    u = clamp((t - a) / (end - a)); e = 0.15 * u + 0.85 * ease(u)
+    tau = a * (1 - e); dt_ = a * 0.012
+    acc = None
+    for j in range(3):                                                                         # motion blur over the rewind
+        fr_ = frame(max(0.0, min(a - 1e-3, tau + j * dt_)))
+        acc = fr_ if acc is None else acc + fr_
+    f = acc / 3
+    k = math.sin(math.pi * u) ** 0.5
+    f = _vhs(f, k, t) * (1 + 0.25 * k)
+    return f
+
+
 # Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
 # c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
 # so the same transition works at any tempo and position.
@@ -1890,6 +1950,7 @@ TRANSITIONS = {
     'sunburst':  (lambda c, o: (c - .32, c + .30), lambda t, c, A, B, o: t_sunburst(t, c, A, B, c - .32, c + .30, o.get('sx', 0.80), o.get('sy', 0.13))),
     'clouds':    (lambda c, o: (c - .32, c + .32), lambda t, c, A, B, o: t_clouds(t, c, A, B, c - .32, c + .32)),
     'runby':     (lambda c, o: (c - .26, c + .26), lambda t, c, A, B, o: t_runby(t, c, A, B, c - .26, c + .26, o.get('y', 0.52))),
+    'blinds':    (lambda c, o: (c - .36, c + .40), lambda t, c, A, B, o: t_blinds(t, c, A, B, c - .36, c + .40)),
     'kaleido':   (lambda c, o: (c - .45, c + .40), lambda t, c, A, B, o: t_kaleido(t, c, A, B, c - .45, c + .40)),
     'tape':      (lambda c, o: (c - .34, c + .30), lambda t, c, A, B, o: t_tape(t, c, A, B, c - .34, c + .30)),
     'rorschach': (lambda c, o: (c - .30, c + .45), lambda t, c, A, B, o: t_rorschach(t, c, A, B, c - .30, c + .45)),
@@ -1901,7 +1962,7 @@ TRANSITIONS = {
 }
 
 
-LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock')
+LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind')
 
 
 def build_trans():
@@ -1923,6 +1984,9 @@ def build_trans():
     last = n - 1; lp = SHOTS[-1].get('out')
     if lp == 'iris':
         a, fall, end = _iris_times(CUTS[-1]); out.append((a, DUR + 1, lambda t: t_iris(t, last, 0, a, fall, end)))
+    elif lp == 'rewind':
+        c = CUTS[-1]; a, end = c - 0.50, c + 0.10
+        out.append((a, DUR + 1, lambda t: t_rewind(t, a, end)))
     elif lp == 'clock':
         c = CUTS[-1]; a, op, end = c - 0.80, c - 0.30, c + 0.12
         out.append((a, DUR + 1, lambda t: t_clock(t, last, 0, a, op, end)))

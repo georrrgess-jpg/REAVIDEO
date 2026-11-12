@@ -43,18 +43,20 @@ def read(path, a, d, SW, SH):
 def track(fr, s, SW, SH):
     if (SW, SH) not in _det:
         _det[(SW, SH)] = cv2.FaceDetectorYN.create(FACE_MODEL, '', (SW, SH), 0.55, 0.3, 50)
-    det = _det[(SW, SH)]; n = len(fr); xs = np.full(n, np.nan)
+    det = _det[(SW, SH)]; n = len(fr); xs = np.full(n, np.nan); ys = np.full(n, np.nan); hs = np.full(n, np.nan)
     for k in range(0, n, 3):
         _, faces = det.detect(fr[k])
         if faces is not None and len(faces):
             c = [(f[0] + f[2] / 2) / SW for f in faces]
             j = int(np.argmin([abs(v - s['x']) for v in c]))
-            if abs(c[j] - s['x']) < 0.16: xs[k] = c[j]
+            if abs(c[j] - s['x']) < 0.16 + (0.14 if s.get('frame') == 'auto' else 0):
+                xs[k] = c[j]; ys[k] = (faces[j][1] + faces[j][3] / 2) / SH; hs[k] = faces[j][3] / SH
     good = ~np.isnan(xs)
+    track.last = (ys, hs, good)
     if s.get('track', True) and good.sum() >= 4:
         idx = np.arange(n); x = np.interp(idx, idx[good], xs[good])
         if n > 30: x = cv2.GaussianBlur(x.reshape(-1, 1), (1, 0), 0, sigmaY=14).ravel()
-        x = 0.7 * x + 0.3 * s['x']            # stay close to the planned composition
+        if s.get('frame') != 'auto': x = 0.7 * x + 0.3 * s['x']            # stay close to the planned composition
     else:
         x = np.full(n, s['x'])
     return x, int(good.sum())
@@ -75,7 +77,16 @@ def one(i, use_sr=False):
     if n == 0: raise RuntimeError('shot %d (%s): no frames at src=%.2f in %s' % (i, s['name'], s['src'], path))
     x, nfaces = track(fr, s, SW, SH)
     ch = SH / s['z']; cw = ch * W / H         # full-height 9:16 window, tightened by z
-    cx = np.clip(x * SW, cw / 2, SW - cw / 2); cy = np.clip(s.get('cy', .5) * SH, ch / 2, SH - ch / 2)
+    cyv = np.full(n, s.get('cy', .5) * SH)
+    ys, hs, good = track.last
+    if s.get('frame') == 'auto' and good.sum() >= 4:
+        # auto framing: face about 30% of the crop height, eyes in the upper third, one steady zoom per shot
+        fh = float(np.median(hs[good])) * SH
+        ch = float(np.clip(fh / s.get('face_frac', 0.30), SH / s.get('zmax', 1.5), SH)); cw = ch * W / H
+        idx = np.arange(n); yv = np.interp(idx, idx[good], ys[good]) * SH
+        if n > 30: yv = cv2.GaussianBlur(yv.reshape(-1, 1), (1, 0), 0, sigmaY=18).ravel()
+        cyv = yv + 0.10 * ch
+    cx = np.clip(x * SW, cw / 2, SW - cw / 2); cyv = np.clip(cyv, ch / 2, SH - ch / 2)
     d = os.path.join('clips', '%02d' % i); os.makedirs(d, exist_ok=True)
     for f in os.listdir(d):
         if not f.endswith('.jpg') or not f[:4].isdigit() or int(f[:4]) >= n: os.remove(os.path.join(d, f))
@@ -83,7 +94,7 @@ def one(i, use_sr=False):
     sr_lo, sr_hi = (max(0, k0 - SR_PRE), min(n - 1, k1 + SR_POST)) if use_sr else (1, 0)
     if use_sr:                                # one source region covering every crop position in the range
         rx0 = int(max(0, np.floor(cx[sr_lo:sr_hi + 1].min() - cw / 2) - 2)); rx1 = int(min(SW, np.ceil(cx[sr_lo:sr_hi + 1].max() + cw / 2) + 2))
-        ry0 = int(max(0, np.floor(cy - ch / 2) - 2)); ry1 = int(min(SH, np.ceil(cy + ch / 2) + 2))
+        ry0 = int(max(0, np.floor(cyv[sr_lo:sr_hi + 1].min() - ch / 2) - 2)); ry1 = int(min(SH, np.ceil(cyv[sr_lo:sr_hi + 1].max() + ch / 2) + 2))
         sc = W / cw / 4; prev = None; nsr = 0
     small = []
     for k in range(n):
@@ -99,11 +110,11 @@ def one(i, use_sr=False):
                 prev = (key, prev[1])
             big = prev[1]; ax = big.shape[1] / (4 * (rx1 - rx0)); ay = big.shape[0] / (4 * (ry1 - ry0))
             f_ = (W / cw) / (4 * ax); g_ = (H / ch) / (4 * ay)
-            M = np.float32([[f_, 0, (rx0 - (cx[k] - cw / 2)) * W / cw], [0, g_, (ry0 - (cy - ch / 2)) * H / ch]])
+            M = np.float32([[f_, 0, (rx0 - (cx[k] - cw / 2)) * W / cw], [0, g_, (ry0 - (cyv[k] - ch / 2)) * H / ch]])
             im = cv2.warpAffine(big, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
             bl = cv2.GaussianBlur(im, (0, 0), 1.6); im = cv2.addWeighted(im, 1.18, bl, -0.18, 0)
         else:
-            M = np.float32([[W / cw, 0, -(cx[k] - cw / 2) * W / cw], [0, H / ch, -(cy - ch / 2) * H / ch]])
+            M = np.float32([[W / cw, 0, -(cx[k] - cw / 2) * W / cw], [0, H / ch, -(cyv[k] - ch / 2) * H / ch]])
             im = cv2.warpAffine(fr[k], M, (W, H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
             bl = cv2.GaussianBlur(im, (0, 0), 2.2); im = cv2.addWeighted(im, 1.45, bl, -0.45, 0)
         small.append(cv2.resize(im, (54, 96), interpolation=cv2.INTER_AREA).astype(np.float32))

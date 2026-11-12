@@ -189,6 +189,15 @@ def wind(dur=0.7):
     return y / np.abs(y).max()
 
 
+def rewind_whine(dur=0.6):
+    """Tape rewind: a rising, wobbling squeal with motor hiss."""
+    n = int(dur * SR); u = np.arange(n) / SR
+    f = 180 * (14 ** (u / dur)) * (1 + 0.03 * np.sin(2 * np.pi * 9 * u))
+    y = np.sin(2 * np.pi * np.cumsum(f) / SR) * 0.6 + 0.4 * sg.lfilter(*sg.butter(2, [2000 / (SR / 2), 8000 / (SR / 2)], 'band'), rng.standard_normal(n))
+    y *= np.sin(np.pi * u / dur) ** 0.5
+    return y / np.abs(y).max()
+
+
 # ---- SFX follow the plan: each transition type has its sound, placed relative to its cut ----
 def sfx_for(name, c, o, up):
     if name == 'leaf': put(whoosh(0.34, 700, 5200) if up else whoosh(0.34, 5200, 800), c - 0.20, gain=0.085)
@@ -230,6 +239,12 @@ def sfx_for(name, c, o, up):
     elif name == 'knife':
         put(whoosh(0.30, 600, 4200, peak=0.85), c - 0.30, pan=0.4, gain=0.07); put(shing(), c - 0.12, pan=0.2, gain=0.11)
         put(boom(0.35, 110, 50), c, gain=0.08)
+    elif name == 'blinds':
+        for k in range(8): put(tick(0.04, 1500 + 120 * k), c - 0.36 + 0.035 * k, pan=-0.4 + 0.1 * k, gain=0.04)
+        put(whoosh(0.30, 600, 2500, peak=0.7), c - 0.30, gain=0.05)
+        for k in range(8): put(tick(0.04, 2400 - 120 * k), c + 0.02 + 0.035 * k, pan=0.4 - 0.1 * k, gain=0.04)
+    elif name == 'rewind':
+        put(rewind_whine(0.62), c - 0.52, gain=0.07); put(tick(0.06, 1200), c - 0.53, gain=0.08); put(tick(0.06, 1000), c + 0.09, gain=0.08)
     elif name == 'kaleido':
         put(shimmer(0.8), c - 0.45, pan=-0.3, gain=0.04); put(whoosh(0.85, 300, 4000, q=0.7, peak=0.5), c - 0.45, gain=0.07)
     elif name == 'tape':
