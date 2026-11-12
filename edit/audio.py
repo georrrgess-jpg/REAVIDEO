@@ -198,6 +198,22 @@ def rewind_whine(dur=0.6):
     return y / np.abs(y).max()
 
 
+def pluck(f0=220, dur=0.5):
+    """Taut string twang: decaying harmonics with a slight pitch drop."""
+    n = int(dur * SR); u = np.arange(n) / SR; f = f0 * (1 + 0.02 * np.exp(-u * 30))
+    y = sum(np.sin(2 * np.pi * np.cumsum(f * h) / SR) * np.exp(-u * (6 + 3 * h)) / h for h in (1, 2, 3, 5))
+    return y / np.abs(y).max()
+
+
+def zipper(dur=0.25):
+    """Zip-lock seal: a fast run of clicks rising in rate."""
+    n = int(dur * SR); y = np.zeros(n); k = 0.0
+    while k < dur:
+        i = int(k * SR); m = min(120, n - i); y[i:i + m] += rng.standard_normal(m) * np.exp(-np.arange(m) / 20); k += 0.012 * (1 - 0.6 * k / dur)
+    y = sg.lfilter(*sg.butter(2, [1500 / (SR / 2), 8000 / (SR / 2)], 'band'), y)
+    return y / np.abs(y).max()
+
+
 # ---- SFX follow the plan: each transition type has its sound, placed relative to its cut ----
 def sfx_for(name, c, o, up):
     if name == 'leaf': put(whoosh(0.34, 700, 5200) if up else whoosh(0.34, 5200, 800), c - 0.20, gain=0.085)
@@ -239,6 +255,18 @@ def sfx_for(name, c, o, up):
     elif name == 'knife':
         put(whoosh(0.30, 600, 4200, peak=0.85), c - 0.30, pan=0.4, gain=0.07); put(shing(), c - 0.12, pan=0.2, gain=0.11)
         put(boom(0.35, 110, 50), c, gain=0.08)
+    elif name == 'strings':
+        for k in range(9):
+            put(splat(0.06), c - 0.55 + (0.03 + 0.32 * k / 8) * 0.55, pan=-0.6 + 0.15 * k, gain=0.045)
+            put(pluck(196 * (1 + 0.06 * k)), c - 0.55 + (0.39 + 0.32 * k / 8) * 0.55, pan=-0.6 + 0.15 * k, gain=0.035)
+        put(boom(0.35, 120, 50), c, gain=0.08); put(whoosh(0.35, 400, 4000, peak=0.2), c, gain=0.06)
+    elif name == 'bag':
+        put(whoosh(0.30, 2500, 500, peak=0.3), c - 0.45, gain=0.05); put(crinkle(0.35), c - 0.30, gain=0.07)
+        put(zipper(0.20), c - 0.10, gain=0.07); put(whoosh(0.35, 1500, 250, peak=0.3), c, gain=0.07)
+    elif name == 'crown':
+        put(whoosh(0.30, 1200, 300, peak=0.85), c - 0.38, gain=0.04); put(splat(0.25), c - 0.08, gain=0.14); put(boom(0.3, 100, 45), c - 0.08, gain=0.07)
+    elif name == 'bloodwater':
+        put(wind(0.9), c - 0.45, gain=0.07); put(bubbles(0.8, 30), c - 0.40, gain=0.07); put(boom(0.6, 60, 35), c - 0.45, gain=0.06)
     elif name == 'blinds':
         for k in range(8): put(tick(0.04, 1500 + 120 * k), c - 0.36 + 0.035 * k, pan=-0.4 + 0.1 * k, gain=0.04)
         put(whoosh(0.30, 600, 2500, peak=0.7), c - 0.30, gain=0.05)

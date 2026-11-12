@@ -1914,6 +1914,223 @@ def t_rewind(t, a, end):
     return f
 
 
+# ============================================================ Dexter kit III: strings, evidence bag, crown splash, blood in water
+BLOOD = np.float32([0.04, 0.03, 0.42]); BLOOD_HI = np.float32([0.35, 0.35, 0.95])
+
+
+def _stain(al, x, y, ang, s, rng):
+    """Drawn spatter stain: elongated drop pointing away along `ang`, tail drops and satellites."""
+    ca, sa = math.cos(ang), math.sin(ang)
+    cv2.ellipse(al, (int(x), int(y)), (int(22 * s), int(13 * s)), math.degrees(ang), 0, 360, 1.0, -1, cv2.LINE_AA)
+    for j in range(3):
+        d = (30 + 16 * j) * s; rr = (7 - 2 * j) * s
+        cv2.circle(al, (int(x + ca * d), int(y + sa * d)), max(1, int(rr)), 1.0, -1, cv2.LINE_AA)
+    for _ in range(5):
+        aa = ang + rng.normal(0, 0.6); d = rng.uniform(26, 60) * s
+        cv2.circle(al, (int(x + math.cos(aa) * d), int(y + math.sin(aa) * d)), max(1, int(rng.uniform(1.5, 4) * s)), 1.0, -1, cv2.LINE_AA)
+
+
+def t_strings(t, c, A, B, a, b, px=0.5, py=0.40):
+    """Blood-spatter string analysis: stains splat around the frame, pinned red strings shoot from each stain and
+    converge on the point of origin, the strings twang taut, then the frame bursts open from that point."""
+    P = np.array([W * px, H * py]); rng = np.random.default_rng(71); n = 9
+    O = []
+    for k in range(n):
+        ang = -math.pi / 2 + k * 2 * math.pi / n + rng.uniform(-0.18, 0.18)
+        O.append(np.clip(P + np.array([math.cos(ang) * W * rng.uniform(0.38, 0.48), math.sin(ang) * H * rng.uniform(0.30, 0.44)]), [50, 80], [W - 50, H - 80]))
+    if t < c:
+        p = (t - a) / (c - a); f = layer(A, t, 1 + 0.04 * p); hole = 0.0; ret = 0.0
+    else:
+        u = clamp((t - c) / (b - c)); p = 1.0; hole = eout(u); ret = ease(clamp(u / 0.18))
+        fb = layer(B, t, 1 + 0.18 * (1 - eout(u)))
+        rr, th = _polar(P[0], P[1])
+        R = hole * 1.25 * math.hypot(W, H) * (1 + 0.10 * np.sin(th * 7 + 1.3) + 0.06 * np.sin(th * 13))
+        m = ss(R + 12, R - 12, rr)[..., None]
+        f = layer(A, c - 1e-3, 1.04) * (1 - m) + fb * m
+        f = f + (np.exp(-((rr - R) / 18) ** 2) * (1 - u))[..., None] * BLOOD_HI * 0.9
+    stain = np.zeros((H, W), np.float32); lines = np.zeros((H, W), np.float32); hil = np.zeros((H, W), np.float32)
+    pins = []
+    for k, o in enumerate(O):
+        sk = 0.03 + 0.32 * k / (n - 1)
+        if p < sk: continue
+        pop = eout(clamp((p - sk) / 0.06)); d = P - o; ang = math.atan2(-d[1], -d[0])
+        _stain(stain, o[0], o[1], ang, 0.9 + 0.7 * pop, np.random.default_rng(k))
+        pk = eout(clamp((p - sk - 0.06) / 0.30)) * (1 - ret)
+        if pk <= 0.01: continue
+        tt = max(0.0, (p - sk - 0.36) * (c - a))                                   # time since the string went taut
+        sag = 60 * (1 - pk) + 22 * math.exp(-tt * 9) * math.sin(tt * 70) * (pk > 0.99)
+        E = o + d * pk; nrm = np.array([-d[1], d[0]]) / (np.hypot(*d) + 1e-6)
+        s_ = np.linspace(0, 1, 24)[:, None]; pts = o + (E - o) * s_ + nrm * sag * np.sin(np.pi * s_)
+        q = np.round(pts * 4).astype(np.int32)
+        cv2.polylines(lines, [q], False, 1.0, 8, cv2.LINE_AA, shift=2)
+        cv2.polylines(hil, [q + [-4, -4]], False, 1.0, 1, cv2.LINE_AA, shift=2)
+        pins.append(o)
+    stain *= (1 - ret)
+    sh = cv2.GaussianBlur(np.roll(np.roll(np.maximum(lines, stain), 10, 0), 7, 1), (0, 0), 6) * 0.45
+    f = f * (1 - sh[..., None])
+    f = f * (1 - stain[..., None]) + (BLOOD * (0.8 + 0.4 * cv2.GaussianBlur(stain, (0, 0), 3)[..., None])) * stain[..., None]
+    f = f * (1 - lines[..., None]) + np.float32([0.08, 0.07, 0.70]) * lines[..., None] + (hil * lines)[..., None] * 0.35
+    for o in (pins if ret < 0.99 else []):                                         # white map pins in the stains
+        X = XX - o[0]; Y = YY - o[1]; d2 = X * X + Y * Y
+        pin = ss(110, 70, d2)
+        f = f * (1 - pin[..., None]) + np.float32([0.88, 0.90, 0.92]) * pin[..., None] + (np.exp(-((X + 3) ** 2 + (Y + 3) ** 2) / 6) * 0.8)[..., None]
+    if p >= 0.70 and hole < 0.3:                                                   # the knot at the point of origin glows
+        g = np.exp(-(((XX - P[0]) ** 2 + (YY - P[1]) ** 2) / (2 * 26 ** 2))) * clamp((p - 0.70) / 0.3) * (1 - hole / 0.3)
+        f = f + g[..., None] * BLOOD_HI * 1.4
+    return f
+
+
+# evidence bag
+def _bag_overlay(bw, bh, head):
+    key = ('bag', bw, bh)
+    if key in _DK: return _DK[key]
+    from PIL import Image, ImageDraw, ImageFont
+    col = np.zeros((bh, bw, 3), np.float32); al = np.zeros((bh, bw), np.float32)
+    yy, xx = np.mgrid[0:bh, 0:bw].astype(np.float32)
+    n = cv2.resize(fbm(bh // 8, bw // 8, 4, 41, 4), (bw, bh), interpolation=cv2.INTER_CUBIC)
+    dg = (xx * 0.8 + yy * 0.6) / (bw + bh)
+    sheen = 0.55 * np.exp(-((dg - 0.30) / 0.05) ** 2) + 0.30 * np.exp(-((dg - 0.62) / 0.025) ** 2) + 0.10 * (n - 0.5)
+    al[:] = np.clip(0.08 + sheen * 0.6, 0, 0.6)                                                     # milky clear plastic with streaky sheen
+    col[:] = np.float32([0.97, 0.98, 1.0])
+    edge = np.minimum(np.minimum(xx, bw - 1 - xx), np.minimum(yy, bh - 1 - yy))
+    seam = ss(26, 10, edge); al = np.maximum(al, seam * 0.55)
+    img = Image.new('RGB', (bw, head), (255, 255, 255)); d = ImageDraw.Draw(img)
+    fb = ImageFont.truetype('/usr/share/fonts/opentype/inter/Inter-Black.otf', 92)
+    fr = ImageFont.truetype('/usr/share/fonts/opentype/inter/Inter-SemiBold.otf', 30)
+    d.rectangle([0, 40, bw, 170], fill=(205, 30, 34))
+    tw = d.textlength('EVIDENCE', font=fb); d.text(((bw - tw) / 2, 50), 'EVIDENCE', font=fb, fill=(255, 255, 255))
+    for k, lab in enumerate(('CASE NO.', 'ITEM', 'COLLECTED BY')):
+        y = 192 + k * 46; d.text((40, y), lab, font=fr, fill=(30, 30, 34)); d.line([(270, y + 32), (bw - 40, y + 32)], fill=(40, 40, 44), width=3)
+    d.text((300, 190), '0915-07', font=fr, fill=(40, 40, 160)); d.text((300, 236), 'SLIDE', font=fr, fill=(40, 40, 160))
+    hd = np.asarray(img).astype(np.float32)[..., ::-1] / 255
+    col[:head] = hd; al[:head] = 0.97
+    zip_ = ss(4, 0, np.abs(yy - 22)); col[zip_ > 0] = np.float32([0.75, 0.78, 0.80]); al = np.maximum(al, zip_)
+    _DK[key] = (col, al)
+    return _DK[key]
+
+
+def t_bag(t, c, A, B, a, b):
+    """The frame shrinks like a photo going into evidence, a drawn EVIDENCE bag drops around it and zips shut,
+    then the bagged evidence falls away onto the next shot."""
+    sc = 0.60; cw, ch = int(W * sc), int(H * sc); pad, head = 46, 330; bw, bh = cw + 2 * pad, ch + pad + head + 20
+    bx0, by0 = (W - bw) / 2, H * 0.53 - bh / 2 + head / 2 - 40
+    col, al = _bag_overlay(bw, bh, head)
+    if t < c:
+        p = (t - a) / (c - a)
+        k = ease(clamp(p / 0.45)); s = lerp(1.0, sc, k)
+        cx = lerp(W / 2, bx0 + pad + cw / 2, k); cy = lerp(H / 2, by0 + head + ch / 2, k); rot = 0.0; drop = 0.0
+        bag_dy = -(1 - eout(clamp((p - 0.25) / 0.45))) * (H * 1.1); seal = clamp((p - 0.78) / 0.18)
+        bg = blur(layer(B, t), 22 * (1 - 0.3 * p)) * (0.45 + 0.1 * p)
+    else:
+        u = clamp((t - c) / (b - c)); s = sc; cx = bx0 + pad + cw / 2; cy = by0 + head + ch / 2
+        drop = ein(u) * H * 1.25; rot = 14 * ein(u); bag_dy = 0.0; seal = 1.0
+        bg = blur(layer(B, t), 22 * (1 - eout(u))) * lerp(0.55, 1.0, eout(u))
+    fa = layer(A, min(t, c - 1e-3))
+    Mc = cv2.getRotationMatrix2D((W / 2, H / 2), -rot, s); Mc[0, 2] += cx - W / 2; Mc[1, 2] += cy - H / 2 + drop
+    cont = cv2.warpAffine(fa, Mc, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    cm = cv2.warpAffine(np.ones((H, W), np.float32), Mc, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    Mb = cv2.getRotationMatrix2D((bw / 2, bh / 2), -rot, 1.0)
+    Mb[0, 2] += bx0 + (cx - (bx0 + pad + cw / 2)); Mb[1, 2] += by0 + bag_dy + drop
+    if t >= c:                                                                     # rotate the bag about the same centre as the content
+        Mb = cv2.getRotationMatrix2D((bw / 2, pad + head + ch / 2 - pad), -rot, 1.0); Mb[0, 2] += bx0; Mb[1, 2] += by0 + drop
+        Mc = cv2.getRotationMatrix2D((W / 2, H / 2), -rot, s); Mc[0, 2] += cx - W / 2; Mc[1, 2] += cy - H / 2 + drop
+        cont = cv2.warpAffine(fa, Mc, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        cm = cv2.warpAffine(np.ones((H, W), np.float32), Mc, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    bc = cv2.warpAffine(col, Mb, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    ba = cv2.warpAffine(al, Mb, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    bodyshape = cv2.warpAffine(np.ones((bh, bw), np.float32), Mb, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    shape = np.maximum(cm, bodyshape)
+    sh = cv2.GaussianBlur(np.roll(np.roll(shape, 30, 0), 20, 1), (0, 0), 22) * 0.6
+    f = bg * (1 - sh[..., None])
+    f = f * (1 - cm[..., None]) + cont * cm[..., None]
+    f = f * (1 - ba[..., None]) + bc * ba[..., None]
+    if seal > 0:                                                                   # red tamper seal sweeps across the zip
+        sm = np.zeros((bh, bw), np.float32); cv2.rectangle(sm, (0, 6), (int(bw * eout(seal)), 38), 1.0, -1)
+        sw = cv2.warpAffine(sm, Mb, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        f = f * (1 - sw[..., None]) + np.float32([0.15, 0.12, 0.82]) * sw[..., None]
+    return f + (0.35 * (1 - eout(clamp((t - c) / 0.12))) if t >= c else 0)
+
+
+# crown splash
+def t_crown(t, c, A, B, a, b, px=0.5, py=0.46):
+    """A glossy blood drop falls and hits; a crown of spikes and flying droplets rises from the impact and the
+    spreading pool becomes the next shot."""
+    P = np.array([W * px, H * py]); tc = c - 0.08
+    rr, th = _polar(P[0], P[1])
+    if t < tc:
+        p = clamp((t - a) / (tc - a)); y = lerp(-180, P[1], ein(p)); v = p                 # accelerating fall
+        f = layer(A, t)
+        X = XX - P[0]; Y = YY - y; R = 46
+        tail = ss(0, -R * (1.2 + 2.2 * v), Y) * (Y < 0)
+        width = R * np.sqrt(np.clip(1 + Y / (R * (1.2 + 2.2 * v)), 0, 1))
+        drop = np.maximum(ss(R + 1.5, R - 1.5, np.sqrt(X * X + Y * Y)), (np.abs(X) < width) * tail)
+        dcol = BLOOD * (0.7 + 0.5 * ss(-R, R, -X - Y))[..., None] + (np.exp(-((X + R * .35) ** 2 + (Y + R * .35) ** 2) / (2 * 7 ** 2)) * 1.2)[..., None]
+        sh = cv2.GaussianBlur(np.roll(drop, 30, 0), (0, 0), 10) * 0.35 * p
+        return (f * (1 - sh[..., None])) * (1 - drop[..., None]) + dcol * drop[..., None]
+    u = clamp((t - tc) / (b - tc))
+    Rp = (40 + 1.3 * math.hypot(W, H) * ein(u ** 0.85)) * (1 + 0.05 * np.sin(th * 9 + 2) + 0.03 * np.sin(th * 17))
+    inside = ss(Rp + 3, Rp - 3, rr)[..., None]
+    fa, fb = layer(A, min(t, c - 1e-3) if t < c else c - 1e-3), layer(B, t, 1 + 0.15 * (1 - u))
+    fb = fb * (1 - 0.55 * (1 - eout(u))) + BLOOD * 0.55 * (1 - eout(u))                     # the pool clears from red to the shot
+    f = fa * (1 - inside) + fb * inside
+    band = np.exp(-((rr - Rp) / 26) ** 2)
+    f = f * (1 - band[..., None] * 0.9) + BLOOD * band[..., None] * 0.9 + (np.exp(-((rr - Rp + 14) / 4) ** 2) * 0.6)[..., None]
+    rng = np.random.default_rng(5); can = np.zeros((H, W), np.float32); hl = np.zeros((H, W), np.float32)
+    k = math.sin(math.pi * min(1.0, u * 1.6))
+    for j in range(20):                                                                     # crown spikes with beads
+        ang = j * 2 * math.pi / 20 + rng.uniform(-0.1, 0.1); L = rng.uniform(70, 150) * k; r0 = 40 + 1.3 * math.hypot(W, H) * ein(u ** 0.85)
+        base = P + np.array([math.cos(ang), math.sin(ang)]) * r0; tip = base + np.array([math.cos(ang), math.sin(ang)]) * L
+        nrm = np.array([-math.sin(ang), math.cos(ang)]) * 16
+        cv2.fillConvexPoly(can, np.round(np.array([base + nrm, base - nrm, tip]) * 4).astype(np.int32), 1.0, cv2.LINE_AA, shift=2)
+        cv2.circle(can, (int(tip[0]), int(tip[1])), int(10 + 6 * k), 1.0, -1, cv2.LINE_AA)
+        cv2.circle(hl, (int(tip[0] - 3), int(tip[1] - 3)), 3, 1.0, -1, cv2.LINE_AA)
+    tt = t - tc
+    for j in range(34):                                                                     # droplets flung out, falling
+        ang = rng.uniform(0, 2 * math.pi); sp = rng.uniform(900, 2600); rad = rng.uniform(5, 17)
+        x = P[0] + math.cos(ang) * sp * tt; y = P[1] + math.sin(ang) * sp * tt * 0.8 + 2200 * tt * tt
+        cv2.circle(can, (int(x), int(y)), int(rad), 1.0, -1, cv2.LINE_AA); cv2.circle(hl, (int(x - rad * .3), int(y - rad * .3)), max(1, int(rad * .28)), 1.0, -1, cv2.LINE_AA)
+    sh = cv2.GaussianBlur(np.roll(can, 16, 0), (0, 0), 8) * 0.4
+    f = f * (1 - sh[..., None])
+    f = f * (1 - can[..., None]) + BLOOD * (0.85 + 0.4 * cv2.GaussianBlur(can, (0, 0), 4)[..., None]) * can[..., None] + (hl * 0.9)[..., None]
+    return f + 0.4 * max(0.0, 1 - tt / 0.06)
+
+
+# blood in the water
+def _water_fields():
+    if 'wf' not in _DK:
+        h, w = H // 4, W // 4
+        _DK['wf'] = (tile_fbm(h, w, octaves=5, seed=81, base=4), tile_fbm(h, w, octaves=4, seed=82, base=7), tile_fbm(h, w, octaves=3, seed=83, base=3))
+    return _DK['wf']
+
+
+def t_bloodwater(t, c, A, B, a, b):
+    """The frame goes underwater (blue tint, caustic light, wobble); crimson blood clouds bloom and swirl across it,
+    then thin out onto the next shot. Dexter's ocean."""
+    N1, N2, N3 = _water_fields(); h, w = N1.shape; u = clamp((t - a) / (b - a)); wk = math.sin(math.pi * u) ** 0.6
+    src = layer(A, t) if t < c else layer(B, t)
+    wob = 9 * wk; g = cv2.remap(src, XX + wob * np.sin(YY / 45 + t * 6), YY + wob * 0.6 * np.sin(XX / 60 + t * 5), cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    tint = g * np.float32([1.10, 0.78, 0.38]) + np.float32([0.14, 0.07, 0.0])
+    f = g * (1 - wk) + tint * wk
+    o1 = int(t * 40) % h; o2 = int(t * 25) % w
+    ca = np.roll(np.roll(N2, o1, 0), o2, 1); cst = (1 - np.abs(2 * ((ca * 6 + 0.3 * np.roll(N3, -o1, 0)) % 1) - 1)) ** 10
+    f = f + cv2.resize(cst, (W, H))[..., None] * np.float32([0.45, 0.42, 0.25]) * 0.35 * wk
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    dens = np.zeros((h, w), np.float32)
+    for (sx, sy, d0) in ((0.42, 0.40, 0.0), (0.66, 0.62, 0.06), (0.30, 0.70, 0.11)):
+        gu = clamp((u - d0) / 0.55); R = 0.08 + 0.95 * eout(gu)
+        wx = xx + 18 * (np.roll(N1, int(t * 30), 0) - 0.5) * 4; wy = yy + 18 * (np.roll(N3, int(t * 22), 1) - 0.5) * 4 - 30 * u * 4 * 0.25
+        dd = np.sqrt(((wx / w) - sx) ** 2 + ((wy / h) - sy) ** 2 * 0.55) / max(R, 1e-3)
+        q = dd + 0.75 * (np.roll(N1, int(t * 12), 1) - 0.5) + 0.35 * (N2 - 0.5)
+        dens = np.maximum(dens, ss(0.95, 0.70, q) * (0.35 + 0.65 * ss(0.4, 0.8, N3)) * (gu > 0))
+    fade = 1 - ease(clamp((u - 0.62) / 0.38))
+    dens = dens * fade
+    D = cv2.resize(cv2.GaussianBlur(dens, (0, 0), 0.8), (W, H))[..., None]
+    edge = np.clip(cv2.resize(cv2.GaussianBlur(dens, (0, 0), 3), (W, H))[..., None] - D, 0, 1)
+    col = np.float32([0.03, 0.02, 0.48]) * (1 - D) + np.float32([0.015, 0.01, 0.22]) * D      # bright wispy edges, dark dense cores
+    f = f * (1 - D * 0.9) + col * D * 0.9 + edge * np.float32([0.05, 0.05, 0.6]) * 0.8
+    return bubbles(f, t, wk * 0.7, seed=9, n=22, t0=a)
+
+
 # Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
 # c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
 # so the same transition works at any tempo and position.
@@ -1950,6 +2167,10 @@ TRANSITIONS = {
     'sunburst':  (lambda c, o: (c - .32, c + .30), lambda t, c, A, B, o: t_sunburst(t, c, A, B, c - .32, c + .30, o.get('sx', 0.80), o.get('sy', 0.13))),
     'clouds':    (lambda c, o: (c - .32, c + .32), lambda t, c, A, B, o: t_clouds(t, c, A, B, c - .32, c + .32)),
     'runby':     (lambda c, o: (c - .26, c + .26), lambda t, c, A, B, o: t_runby(t, c, A, B, c - .26, c + .26, o.get('y', 0.52))),
+    'strings':   (lambda c, o: (c - .55, c + .38), lambda t, c, A, B, o: t_strings(t, c, A, B, c - .55, c + .38, o.get('px', 0.5), o.get('py', 0.40))),
+    'bag':       (lambda c, o: (c - .45, c + .38), lambda t, c, A, B, o: t_bag(t, c, A, B, c - .45, c + .38)),
+    'crown':     (lambda c, o: (c - .40, c + .42), lambda t, c, A, B, o: t_crown(t, c, A, B, c - .40, c + .42, o.get('px', 0.5), o.get('py', 0.46))),
+    'bloodwater': (lambda c, o: (c - .45, c + .45), lambda t, c, A, B, o: t_bloodwater(t, c, A, B, c - .45, c + .45)),
     'blinds':    (lambda c, o: (c - .36, c + .40), lambda t, c, A, B, o: t_blinds(t, c, A, B, c - .36, c + .40)),
     'kaleido':   (lambda c, o: (c - .45, c + .40), lambda t, c, A, B, o: t_kaleido(t, c, A, B, c - .45, c + .40)),
     'tape':      (lambda c, o: (c - .34, c + .30), lambda t, c, A, B, o: t_tape(t, c, A, B, c - .34, c + .30)),
