@@ -2259,7 +2259,7 @@ def idbox_fx(f, i, t, s, label='SUBJECT 01'):
         if n <= 0: continue
         tm = _text_mask(txt[:n], MONO, 38, pad=4); x = int(cx - bw)
         out = _blit(out, cv2.dilate(tm, np.ones((5, 5), np.uint8)), x, ty + j * 52, (0, 0, 0), 0.55)
-        out = _blit(out, tm, x, ty + j * 52, (0.15, 0.15, 0.95) if j else (0.95, 0.97, 1.0))
+        out = _blit(out, tm, x, ty + j * 52, (0.95, 0.97, 1.0))
     return out
 
 
@@ -2352,6 +2352,157 @@ def t_casefile(t, c, A, B, a, b):
     return base * (1 - m) + door * m + (0.25 * max(0.0, 1 - abs(t - c) / 0.05))
 
 
+# ============================================================ Dexter kit V: ID badge opener, blood-slide trophy box loop
+def _badge_sprite():
+    """Forensics ID badge at 2x (premultiplied RGBA) plus the photo-window rect (in sprite px)."""
+    if 'badge' in _DK: return _DK['badge']
+    from PIL import Image, ImageDraw
+    S = 2; bw, bh = 620 * S, 1040 * S; img = Image.new('RGBA', (bw, bh), (0, 0, 0, 0)); d = ImageDraw.Draw(img)
+    d.rounded_rectangle([0, 0, bw - 1, bh - 1], radius=40 * S, fill=(246, 246, 242, 255))
+    d.rounded_rectangle([0, 0, bw - 1, 150 * S], radius=40 * S, fill=(22, 44, 92, 255)); d.rectangle([0, 100 * S, bw, 150 * S], fill=(22, 44, 92, 255))
+    d.rectangle([bw // 2 - 70 * S, 30 * S, bw // 2 + 70 * S, 58 * S], fill=(200, 205, 215, 255))          # clip slot
+    f1 = _font_px(INTER_BLACK, 50 * S); f2 = _font_px(INTER_SEMI, 34 * S); f3 = _font_px(INTER_BLACK, 56 * S); f4 = _font_px(MONO, 30 * S)
+    tw = d.textlength('MIAMI METRO POLICE', font=f2); d.text(((bw - tw) / 2, 78 * S), 'MIAMI METRO POLICE', font=f2, fill=(240, 240, 240, 255))
+    d.rectangle([0, 150 * S, bw, 220 * S], fill=(178, 32, 38, 255))
+    tw = d.textlength('FORENSICS', font=f1); d.text(((bw - tw) / 2, 157 * S), 'FORENSICS', font=f1, fill=(255, 255, 255, 255))
+    px0, py0, pw, ph = 40 * S, 250 * S, 342 * S, 608 * S                                            # 9:16 photo window
+    d.rectangle([px0 - 6 * S, py0 - 6 * S, px0 + pw + 6 * S, py0 + ph + 6 * S], fill=(30, 30, 34, 255))
+    x = px0 + pw + 30 * S
+    for k, (txt, f, col) in enumerate((('DEXTER', f3, (20, 20, 24)), ('MORGAN', f3, (20, 20, 24)))):
+        d.text((x, 270 * S + k * 70 * S), txt, font=f, fill=col + (255,))
+    for k, line in enumerate(('BLOOD', 'SPATTER', 'ANALYST')):
+        d.text((x, 450 * S + k * 42 * S), line, font=f2, fill=(178, 32, 38, 255))
+    d.text((x, 640 * S), 'ID 4471-D', font=f4, fill=(40, 40, 44, 255)); d.text((x, 685 * S), 'EXP 09/08', font=f4, fill=(40, 40, 44, 255))
+    r = np.random.default_rng(4); bx = 40 * S
+    while bx < bw - 40 * S:                                                                        # barcode
+        w_ = int(r.choice([2, 3, 5, 7])) * S; d.rectangle([bx, 900 * S, bx + w_, 990 * S], fill=(15, 15, 18, 255)); bx += w_ + int(r.choice([2, 3, 4])) * S
+    a = np.asarray(img).astype(np.float32) / 255; rgb = a[..., :3][..., ::-1].copy(); al = a[..., 3:4]
+    _DK['badge'] = (np.dstack([rgb * al, al]), (px0, py0, pw, ph), S)
+    return _DK['badge']
+
+
+def t_badge(t, c, A, B, a, b):
+    """Dexter's lanyard ID badge drops in and swings to rest, a glint crosses the laminate, then the camera pushes
+    into the badge photo (which plays the next shot) until it fills the screen."""
+    spr, (px0, py0, pw, ph), S = _badge_sprite(); bh, bw = spr.shape[:2]
+    p = clamp((t - a) / (c + 0.30 - a)); tz = c - 0.12
+    drop = eout(clamp((t - a) / 0.30)); swing = math.radians(16) * math.exp(-(t - a) * 5.0) * math.cos((t - a) * 14) * (t >= a)
+    base_s = 0.5                                                                              # sprite px -> screen px at rest
+    z = 1.0 if t < tz else math.exp(math.log((W / (pw * base_s)) / 1.0) * ease(clamp((t - tz) / (c + 0.30 - tz))))
+    pv = np.array([W / 2, lerp(-bh * base_s - 60, H * 0.12, drop)])                       # pivot: badge top-centre
+    ang = swing * (1 - ease(clamp((t - tz) / 0.2)))
+    cphoto = np.array([px0 + pw / 2, py0 + ph / 2])                                          # photo centre in sprite px
+    s = base_s * z; ca, sa = math.cos(ang), math.sin(ang)
+    pv_rel = cphoto - np.array([bw / 2, 0]); rest = pv + s * np.array([ca * pv_rel[0] - sa * pv_rel[1], sa * pv_rel[0] + ca * pv_rel[1]])
+    k = ease(clamp((t - tz) / (c + 0.30 - tz)))
+    target = np.array([W / 2, H / 2]); shift = (target - rest) * k                              # camera centres the photo as it zooms
+    M = np.float32([[s * ca, -s * sa, 0], [s * sa, s * ca, 0]]); M[:, 2] = pv + shift - M[:, :2] @ np.array([bw / 2, 0])
+    fa = layer(A, min(t, c - 1e-3)) * (1 - 0.30 * drop) if t < c + 0.2 else None
+    lay = cv2.warpAffine(spr, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    # photo window: the next shot, mapped so that at full zoom it is the frame 1:1
+    corners = np.array([[px0, py0], [px0 + pw, py0], [px0 + pw, py0 + ph], [px0, py0 + ph]], np.float64)
+    scr = corners @ M[:, :2].T + M[:, 2]
+    P = cv2.getPerspectiveTransform(np.float32([[0, 0], [W, 0], [W, H], [0, H]]), np.float32(scr))
+    fb = layer(B, t)
+    win = cv2.warpPerspective(fb, P, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    wm = cv2.warpPerspective(np.ones((H, W), np.float32), P, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)[..., None]
+    if fa is None: fa = fb
+    strap = np.zeros((H, W), np.float32)                                                      # lanyard strap from the clip up off-screen
+    top = M[:, :2] @ np.array([bw / 2, 30 * S]) + M[:, 2]
+    for sx in (-1, 1):
+        cv2.line(strap, (int(top[0] + sx * 30 * s / base_s), int(top[1])), (int(W / 2 + sx * 150), -40), 1.0, max(2, int(34 * s)), cv2.LINE_AA)
+    sh = cv2.GaussianBlur(np.roll(np.roll(np.maximum(lay[..., 3], strap), 26, 0), 18, 1), (0, 0), 16) * 0.55
+    f = fa * (1 - sh[..., None])
+    f = f * (1 - strap[..., None]) + np.float32([0.45, 0.14, 0.08]) * strap[..., None]
+    f = f * (1 - lay[..., 3:4]) + lay[..., :3]
+    f = f * (1 - wm) + win * wm
+    X = XX - top[0]; g = np.exp(-(((X + (YY - top[1]) * 0.5) - lerp(-500, 900, clamp((t - a - 0.25) / 0.35))) / 50) ** 2)
+    f = f + (g * lay[..., 3] * 0.35 * (t < tz))[..., None]                                     # laminate glint
+    return f
+
+
+# ---- blood-slide trophy box loop
+_BOX = {}
+
+
+def _slide_sprite(k, img):
+    """Glass blood slide (landscape, 2x): drop circle on the left shows `img`; frosted label 'No. k' on the right."""
+    from PIL import Image, ImageDraw
+    S = 2; sw, sh = 860 * S, 290 * S; R = 118 * S; cx, cy = 190 * S, sh // 2
+    al = np.full((sh, sw), 0.22, np.float32); col = np.ones((sh, sw, 3), np.float32) * np.float32([0.96, 0.97, 0.98])
+    yy, xx = np.mgrid[0:sh, 0:sw].astype(np.float32)
+    edge = np.minimum(np.minimum(xx, sw - 1 - xx), np.minimum(yy, sh - 1 - yy)); al = np.maximum(al, ss(14, 2, edge) * 0.8)
+    al = al + np.exp(-(((xx * 0.4 + yy) - sh * 0.9) / 24) ** 2) * 0.25                         # glass streak
+    lab = Image.new('RGB', (330 * S, 230 * S), (236, 236, 230)); d = ImageDraw.Draw(lab)
+    d.text((26 * S, 30 * S), 'No. %02d' % (k + 1), font=_font_px(MONO, 54 * S), fill=(40, 40, 140))
+    d.line([(26 * S, 120 * S), (300 * S, 120 * S)], fill=(80, 80, 90), width=3 * S); d.text((26 * S, 140 * S), 'D.M.', font=_font_px(MONO, 40 * S), fill=(40, 40, 140))
+    lb = np.asarray(lab).astype(np.float32)[..., ::-1] / 255; ly0, lx0 = 30 * S, 500 * S
+    col[ly0:ly0 + lb.shape[0], lx0:lx0 + lb.shape[1]] = lb; al[ly0:ly0 + lb.shape[0], lx0:lx0 + lb.shape[1]] = 0.97
+    d2 = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2); drop = ss(R + 2, R - 2, d2)
+    sq = cv2.resize(img, (2 * R, 2 * R), interpolation=cv2.INTER_AREA)
+    col[cy - R:cy + R, cx - R:cx + R] = col[cy - R:cy + R, cx - R:cx + R] * (1 - drop[cy - R:cy + R, cx - R:cx + R, None]) + sq * drop[cy - R:cy + R, cx - R:cx + R, None]
+    al = np.maximum(al, drop)
+    rim = np.exp(-((d2 - R) / (4 * S)) ** 2); col = col * (1 - rim[..., None] * 0.8) + BLOOD * rim[..., None] * 0.8; al = np.maximum(al, rim * 0.9)
+    al = np.clip(al, 0, 1)
+    return np.dstack([col * al[..., None], al]), (cx, cy, R), S
+
+
+def _box_assets():
+    if 'slides' in _BOX: return _BOX
+    n = len(SHOTS); _BOX['slides'] = []
+    for k in range(n):
+        s = SHOTS[k]; fr = layer(k, (s['start'] + s['end']) / 2)
+        sq = fr[int(H * 0.42) - W // 2:int(H * 0.42) + W // 2, :] if H > W else fr
+        _BOX['slides'].append(_slide_sprite(k, sq))
+    _BOX['gap'] = 330                                                                         # screen px between slides at z=1
+    hh = _BOX['gap'] * n + 2 * H
+    wood = cv2.resize(fbm(64, 512, 5, 17, 6), (W, 1024), interpolation=cv2.INTER_CUBIC)       # rosewood grain (stretched along y)
+    wood = cv2.resize(wood, (W, hh), interpolation=cv2.INTER_LINEAR)
+    grain = 0.5 + 0.5 * np.sin(np.arange(W, dtype=np.float32)[None, :] / 9 + wood * 18)
+    base = np.stack([0.05 + 0.04 * grain, 0.08 + 0.06 * grain, 0.20 + 0.10 * grain], -1).astype(np.float32)
+    for k in range(n + 1):                                                                    # dark slot grooves between slides
+        y = int(H + k * _BOX['gap'] - _BOX['gap'] / 2); base[max(0, y - 10):y + 10] *= 0.35
+    _BOX['wood'] = base
+    return _BOX
+
+
+def t_slidebox(t, A, a, end):
+    """Loop: the last shot shrinks into the blood drop of a glass slide; pull back to Dexter's rosewood slide box, one
+    slide per shot of the edit; race up past them all to slide No. 01, and dive into its drop, which is the first shot."""
+    if t >= end: return layer(0, t - DUR)
+    bx = _box_assets(); n = len(SHOTS); gap = bx['gap']
+    u = clamp((t - a) / (end - a))
+    base_s = 0.5; spr0, (dcx, dcy, R), S = bx['slides'][0]; sh_, sw_ = spr0.shape[:2]
+    Rfull = 0.5 * math.hypot(W, H) * 1.02; zmax = Rfull / (R * base_s)
+    yk = lambda k: H + k * gap                                                                 # slide centre in world (z=1 screen units)
+    dx_off = (dcx - sw_ / 2) * base_s                                                          # drop centre offset from slide centre
+    if u < 0.25: e = ease(u / 0.25); z = math.exp(math.log(zmax) * (1 - e)); camy = yk(n - 1); camx = W / 2 + dx_off * (1 - e)
+    elif u < 0.75: e = ease((u - 0.25) / 0.50); z = 1.0 - 0.10 * math.sin(math.pi * e); camy = lerp(yk(n - 1), yk(0), e); camx = W / 2
+    else: e = ein((u - 0.75) / 0.25); z = math.exp(math.log(zmax) * e); camy = yk(0); camx = W / 2 + dx_off * e
+    speed = abs(yk(0) - yk(n - 1)) / (0.50 * (end - a)) * (0.25 <= u < 0.75) * math.sin(math.pi * clamp((u - 0.25) / 0.50))
+    # world -> screen: screen = (world - cam) * z + (W/2, H/2)
+    wood = bx['wood']; Mw = np.float32([[z, 0, W / 2 - camx * z], [0, z, H / 2 - camy * z]])
+    f = cv2.warpAffine(wood, Mw, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    for k in range(n):
+        cy_s = (yk(k) - camy) * z + H / 2
+        if abs(cy_s) > H / 2 + sh_ * base_s * z: continue
+        spr, (dcx, dcy, R), S = bx['slides'][k]
+        Ms = np.float32([[base_s * z, 0, 0], [0, base_s * z, 0]]); Ms[:, 2] = np.array([(W / 2 - camx) * z + W / 2, cy_s]) - Ms[:, :2] @ np.array([sw_ / 2, sh_ / 2])
+        lay = cv2.warpAffine(spr, Ms, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        shd = cv2.GaussianBlur(np.roll(np.roll(lay[..., 3], 14, 0), 10, 1), (0, 0), 10) * 0.5
+        f = f * (1 - shd[..., None]) * (1 - lay[..., 3:4]) + lay[..., :3]
+        if k in (0, n - 1) and z > 1.5:                                                         # live full-res frame inside the zoomed drop
+            c_ = Ms[:, :2] @ np.array([dcx, dcy]) + Ms[:, 2]; Rs = R * base_s * z
+            live = layer(k, t) if k == n - 1 else layer(0, t - DUR)
+            sc = Rs / Rfull * lerp(Rfull / (W / 2), 1.0, clamp(Rs / Rfull) ** 2); Ml = np.float32([[sc, 0, c_[0] - sc * W / 2], [0, sc, c_[1] - sc * H / 2]])
+            lv = cv2.warpAffine(live, Ml, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+            rr = np.sqrt((XX - c_[0]) ** 2 + (YY - c_[1]) ** 2); m = ss(Rs + 2, Rs - 2, rr)[..., None]
+            f = f * (1 - m) + lv * m + (np.exp(-((rr - Rs) / max(3, 0.03 * Rs)) ** 2) * 0.8)[..., None] * BLOOD * (Rs < Rfull * 0.98)
+    if speed > 50:
+        kb = int(min(61, speed / 160)) | 1; f = cv2.blur(f, (1, kb))
+    return f
+
+
 # Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
 # c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
 # so the same transition works at any tempo and position.
@@ -2388,6 +2539,7 @@ TRANSITIONS = {
     'sunburst':  (lambda c, o: (c - .32, c + .30), lambda t, c, A, B, o: t_sunburst(t, c, A, B, c - .32, c + .30, o.get('sx', 0.80), o.get('sy', 0.13))),
     'clouds':    (lambda c, o: (c - .32, c + .32), lambda t, c, A, B, o: t_clouds(t, c, A, B, c - .32, c + .32)),
     'runby':     (lambda c, o: (c - .26, c + .26), lambda t, c, A, B, o: t_runby(t, c, A, B, c - .26, c + .26, o.get('y', 0.52))),
+    'badge':     (lambda c, o: (c - .55, c + .30), lambda t, c, A, B, o: t_badge(t, c, A, B, c - .55, c + .30)),
     'photo':     (lambda c, o: (c - .55, c + .30), lambda t, c, A, B, o: t_photo(t, c, A, B, c - .55, c + .30)),
     'casefile':  (lambda c, o: (c - .38, c + .38), lambda t, c, A, B, o: t_casefile(t, c, A, B, c - .38, c + .38)),
     'strings':   (lambda c, o: (c - .55, c + .38), lambda t, c, A, B, o: t_strings(t, c, A, B, c - .55, c + .38, o.get('px', 0.5), o.get('py', 0.40))),
@@ -2406,7 +2558,7 @@ TRANSITIONS = {
 }
 
 
-LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind')
+LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox')
 
 
 def build_trans():
@@ -2428,6 +2580,9 @@ def build_trans():
     last = n - 1; lp = SHOTS[-1].get('out')
     if lp == 'iris':
         a, fall, end = _iris_times(CUTS[-1]); out.append((a, DUR + 1, lambda t: t_iris(t, last, 0, a, fall, end)))
+    elif lp == 'slidebox':
+        c = CUTS[-1]; a, end = c - 0.85, c + 0.10
+        out.append((a, DUR + 1, lambda t: t_slidebox(t, last, a, end)))
     elif lp == 'rewind':
         c = CUTS[-1]; a, end = c - 0.50, c + 0.10
         out.append((a, DUR + 1, lambda t: t_rewind(t, a, end)))

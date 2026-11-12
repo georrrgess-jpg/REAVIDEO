@@ -255,6 +255,13 @@ def sfx_for(name, c, o, up):
     elif name == 'knife':
         put(whoosh(0.30, 600, 4200, peak=0.85), c - 0.30, pan=0.4, gain=0.07); put(shing(), c - 0.12, pan=0.2, gain=0.11)
         put(boom(0.35, 110, 50), c, gain=0.08)
+    elif name == 'badge':
+        put(whoosh(0.30, 2500, 600, peak=0.5), c - 0.55, gain=0.05); put(tick(0.07, 1300), c - 0.27, gain=0.06); put(tick(0.05, 1900), c - 0.22, gain=0.04)
+        put(shimmer(0.4), c - 0.30, pan=0.3, gain=0.03); put(whoosh(0.45, 300, 3500, peak=0.85), c - 0.15, gain=0.07)
+    elif name == 'slidebox':
+        put(whoosh(0.30, 3000, 600, peak=0.2), c - 0.85, gain=0.06)
+        for k in range(14): put(tick(0.04, 3800 - 120 * k), c - 0.60 + 0.026 * k, pan=0.2, gain=0.03)
+        put(whoosh(0.30, 500, 4500, peak=0.9), c - 0.25, gain=0.07); put(tick(0.15, 4400), c + 0.05, gain=0.05)
     elif name == 'photo':
         put(tick(0.05, 3200), c - 0.50, gain=0.04); put(tick(0.05, 3600), c - 0.42, gain=0.04)
         put(shutter(), c - 0.06, gain=0.17); put(whoosh(0.3, 5000, 900, peak=0.15), c, gain=0.05)

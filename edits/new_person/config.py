@@ -28,22 +28,22 @@ def g(sat, gain, **kw): return dict(MUTED, sat=sat, rk=1.0, gain=gain, **kw)
 
 SHOTS = [
  # every shot has real movement inside it (ranked by optical flow, tools/motion.py); framing is automatic
- dict(name='sun_glasses', out='photo',                         pack=S1, src=156.90, x=.46, push=(1.00, 1.05), **g(.55, 1.0)),
- dict(name='poncho_walk', beats=3, out='whip', out_opts={'d': 1}, fx=['markers'], pack=D, src=97.60, x=.50, valid=(0, 136), push=(1.00, 1.04), **g(.55, 1.0)),
+ dict(name='sun_glasses', out='badge',                         pack=S1, src=156.90, x=.46, push=(1.00, 1.05), **g(.55, 1.0)),
+ dict(name='poncho_walk', beats=3, out='whip', out_opts={'d': 1}, pack=D, src=97.60, x=.50, valid=(0, 136), push=(1.00, 1.04), **g(.55, 1.0)),
  dict(name='lab_walk',   beats=3, out='tape', fx=['idbox'],     pack=B2, src=172.30, x=.45, push=(1.00, 1.04), **g(.50, 1.0)),
  dict(name='slide_lamp', beats=2, out='cut',                    pack=B2, src=268.60, x=.55, push=(1.00, 1.04), **g(.55, 1.3)),
- dict(name='hood_up',    beats=3, out='blur', fx=['stamp:SUSPECT'], pack=S1, src=303.40, x=.50, push=(1.00, 1.04), **g(.55, 1.0)),
+ dict(name='hood_up',    beats=3, out='blur', pack=S1, src=303.40, x=.50, push=(1.00, 1.04), **g(.55, 1.0)),
  dict(name='smirk_walk', beats=3, out='bag',                    pack=C4, src=43.60,  x=.42, push=(1.00, 1.04), **g(.50, 1.05)),
- dict(name='containers', beats=2, out='cut', fx=['markers'],   pack=S1, src=372.60, x=.42, push=(1.00, 1.04), **g(.50, 1.0)),
+ dict(name='containers', beats=2, out='cut',   pack=S1, src=372.60, x=.42, push=(1.00, 1.04), **g(.50, 1.0)),
  dict(name='car_glance', beats=3, out='blinds', fx=['idbox'],  pack=D,  src=26.60,  x=.40, push=(1.00, 1.04), **g(.50, 1.05)),
  dict(name='parade',     beats=3, out='whip', out_opts={'d': -1}, pack=D, src=361.20, x=.36, push=(1.00, 1.04), **g(.55, 1.0)),
  dict(name='hood_white', beats=2, out='cut',                    pack=B2, src=188.40, x=.46, push=(1.00, 1.04), **g(.50, 0.95)),
- dict(name='laugh',      beats=3, out='plastic', fx=['stamp:CLEARED'], pack=D,  src=38.15,  x=.55, push=(1.00, 1.04), **g(.50, 1.05)),
+ dict(name='laugh',      beats=3, out='plastic', pack=D,  src=38.15,  x=.55, push=(1.00, 1.04), **g(.50, 1.05)),
  dict(name='night_walk', beats=3, out='crown', fx=['idbox'],   pack=C4, src=81.80,  x=.45, push=(1.00, 1.04), **g(.50, 1.3)),
- dict(name='blood_hand', beats=2, out='red', fx=['stamp:GUILTY'], pack=S1, src=272.40, x=.62, push=(1.00, 1.04), **g(.60, 1.1)),
- dict(name='suburb_turn', beats=3, out='knife', fx=['markers'], pack=B2, src=281.40, x=.55, valid=(13, 112), push=(1.00, 1.04), **g(.50, 1.0)),
+ dict(name='blood_hand', beats=2, out='red', pack=S1, src=272.40, x=.62, push=(1.00, 1.04), **g(.60, 1.1)),
+ dict(name='suburb_turn', beats=3, out='knife', pack=B2, src=281.40, x=.55, valid=(13, 112), push=(1.00, 1.04), **g(.50, 1.0)),
  dict(name='look_up',    beats=3, out='casefile',                   pack=S1, src=355.80, x=.45, push=(1.00, 1.04), **g(.50, 1.25)),
- dict(name='profile_turn', beats=4, out='rewind', fx=['stamp:CASE CLOSED'], pack=S1, src=226.60, x=.40, push=(1.00, 1.05), **g(.50, 1.0)),
+ dict(name='profile_turn', beats=4, out='slidebox', pack=S1, src=226.60, x=.40, push=(1.00, 1.05), **g(.50, 1.0)),
 ]
 for s in SHOTS: s.setdefault('z', 1.0); s.setdefault('frame', 'auto')
 
