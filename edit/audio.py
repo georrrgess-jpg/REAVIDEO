@@ -398,6 +398,11 @@ def sfx_for(name, c, o, up):
     elif name == 'bulb':
         put(buzz(0.30), c - 0.32, gain=0.025); put(pop_burst(), c - 0.02, gain=0.14); put(glass(0.6), c - 0.01, gain=0.06)
         put(boom(0.4, 80, 40), c - 0.02, gain=0.08)
+    elif name == 'target':
+        put(whoosh(0.25, 300, 2200, peak=0.85), c - 0.52, gain=0.05)
+        for tp in (c - HALF, c - HALF / 2, c):
+            put(pop_burst(0.2), tp, gain=0.12); put(boom(0.25, 140, 55), tp, gain=0.07); put(rip(0.07), tp + 0.01, gain=0.03)
+        put(whoosh(0.35, 2500, 300, peak=0.2), c + 0.05, gain=0.05)
     elif name == 'spray':
         put(hiss(0.16), c - 0.40, pan=-0.3, gain=0.05); put(hiss(0.16), c - 0.22, pan=0.3, gain=0.05); put(boom(0.35, 100, 45), c, gain=0.09)
     elif name == 'vinyl':

@@ -3,7 +3,7 @@
 Hard cuts, blurs, whips and punch-ins sit exactly on the grid point. Wipes are placed slightly
 late (SHIFT) so the motion starts on the beat and lands just after it, as in the reference.
 """
-SHIFT = {'newspaper': 0.0, 'badge': 0.0, 'slidebox': 0.077, 'photo': 0.0, 'casefile': 0.0, 'strings': 0.0, 'bag': 0.0, 'crown': 0.0, 'bloodwater': 0.0, 'blinds': 0.0, 'rewind': 0.077, 'kaleido': 0.0, 'tape': 0.0, 'rorschach': 0.0, 'mirror': 0.0, 'clock': 0.077, 'sunburst': 0.0, 'clouds': 0.0, 'runby': 0.0, 'ink': 0.0, 'orange': 0.0, 'slices': 0.0, 'syringe': 0.0, 'glass': 0.13, 'slidewipe': 0.035, 'blood': -0.038, 'iris': 0.077, 'confetti': 0.05, 'plastic': 0.05, 'emblem': 0.0, 'strike': 0.0, 'tunnel': 0.077, 'boltsplit': 0.077, 'vinyl': 0.077, 'sub': 0.0, 'ducttape': 0.0, 'mugshot': 0.0, 'xslash': 0.0, 'cuffs': 0.0, 'luminol': 0.0, 'rollup': 0.0, 'bulb': 0.0, 'spray': 0.0}
+SHIFT = {'newspaper': 0.0, 'badge': 0.0, 'slidebox': 0.077, 'photo': 0.0, 'casefile': 0.0, 'strings': 0.0, 'bag': 0.0, 'crown': 0.0, 'bloodwater': 0.0, 'blinds': 0.0, 'rewind': 0.077, 'kaleido': 0.0, 'tape': 0.0, 'rorschach': 0.0, 'mirror': 0.0, 'clock': 0.077, 'sunburst': 0.0, 'clouds': 0.0, 'runby': 0.0, 'ink': 0.0, 'orange': 0.0, 'slices': 0.0, 'syringe': 0.0, 'glass': 0.13, 'slidewipe': 0.035, 'blood': -0.038, 'iris': 0.077, 'confetti': 0.05, 'plastic': 0.05, 'emblem': 0.0, 'strike': 0.0, 'tunnel': 0.077, 'boltsplit': 0.077, 'vinyl': 0.077, 'sub': 0.0, 'ducttape': 0.0, 'mugshot': 0.0, 'xslash': 0.0, 'cuffs': 0.0, 'luminol': 0.0, 'rollup': 0.0, 'bulb': 0.0, 'spray': 0.0, 'target': 0.0}
 LONG_HOLD = 6
 
 

@@ -773,12 +773,15 @@ def _hits(name):
 
 
 def bump_amount(t, s):
-    """Zoom bump on each strong kick inside the shot: +4.5% that settles in ~0.1 s."""
+    """Zoom bump on each strong kick inside the shot: +4.5% that settles in ~0.1 s.
+    config BUMP (amount) and BUMP_KICKS (which kicks; default KICKS) tune it."""
+    import config as _c
+    amt = getattr(_c, 'BUMP', 0.045); ks = _hits('BUMP_KICKS') if hasattr(_c, 'BUMP_KICKS') else _hits('KICKS'); dec = getattr(_c, 'BUMP_DECAY', 0.09)
     z = 0.0
-    if t < s['start'] and any(abs(tk - s['start']) < 1e-6 for tk in _hits('KICKS')):
-        return 0.045                                     # loop tail of shot 0: hold the downbeat bump so the seam matches
-    for tk in _hits('KICKS'):
-        if s['start'] - 1e-6 <= tk <= t: z = max(z, 0.045 * math.exp(-(t - tk) / 0.09))
+    if t < s['start'] and any(abs(tk - s['start']) < 1e-6 for tk in ks):
+        return amt                                       # loop tail of shot 0: hold the downbeat bump so the seam matches
+    for tk in ks:
+        if s['start'] - 1e-6 <= tk <= t: z = max(z, amt * math.exp(-(t - tk) / dec))
     return z
 
 
@@ -3169,6 +3172,104 @@ def t_bulb(t, c, A, B, a, b):
     return f
 
 
+# ---- shooting-range target ("then we let it pop", second time)
+_TGT_PT = 140
+
+
+def _target_assets():
+    if 'target' in _K4: return _K4['target']
+    from PIL import Image, ImageDraw
+    sw, sh = int(W * 1.04), int(H * 1.04); PT = _TGT_PT
+    img = Image.new('RGBA', (sw, sh + PT), (0, 0, 0, 0)); d = ImageDraw.Draw(img)
+    d.rectangle([0, PT, sw, PT + sh], fill=(236, 232, 221, 255)); ink = (24, 24, 26, 255)
+    d.rectangle([40, PT - 26, sw - 40, PT - 6], fill=(150, 154, 160, 255))                        # carrier bar and clips
+    for cx_ in (0.28 * sw, 0.72 * sw):
+        d.rectangle([cx_ - 34, PT - 40, cx_ + 34, PT + 70], fill=(30, 30, 33, 255)); d.rectangle([cx_ - 30, PT - 36, cx_ + 30, PT - 24], fill=(90, 92, 96, 255))
+    d.line([(sw / 2, 0), (sw / 2, PT - 26)], fill=(120, 122, 126, 255), width=6)
+    d.rectangle([0, PT, sw, PT + 150], fill=ink)
+    for txt, fn, y, col in (('MIAMI METRO POLICE', _font_px(INTER_BLACK, 66), 18, (245, 245, 245, 255)), ('FIREARMS RANGE  ·  B-27', _font_px(INTER_SEMI, 36), 100, (200, 200, 204, 255))):
+        tw = d.textlength(txt, font=fn); d.text(((sw - tw) / 2, PT + y), txt, font=fn, fill=col)
+    fm = _font_px(MONO, 38); d.text((44, PT + 168), 'LANE 07', font=fm, fill=ink); tw = d.textlength('25 YDS', font=fm); d.text((sw - 44 - tw, PT + 168), '25 YDS', font=fm, fill=ink)
+    Y = lambda v: PT + v * sh
+    d.ellipse([sw / 2 - 0.15 * sw, Y(0.17), sw / 2 + 0.15 * sw, Y(0.37)], fill=ink)                     # silhouette
+    d.rectangle([sw / 2 - 0.07 * sw, Y(0.33), sw / 2 + 0.07 * sw, Y(0.42)], fill=ink)
+    d.polygon([(0.13 * sw, Y(1.0)), (0.11 * sw, Y(0.56)), (0.24 * sw, Y(0.44)), (0.40 * sw, Y(0.40)), (0.60 * sw, Y(0.40)),
+               (0.76 * sw, Y(0.44)), (0.89 * sw, Y(0.56)), (0.87 * sw, Y(1.0))], fill=ink)
+    fr_ = _font_px(INTER_BLACK, 40)
+    for k, lab in zip(range(5, 0, -1), ('7', '8', '9', '10', 'X')):
+        rx, ry = 0.075 * sw * k, 0.055 * sh * k; cy_ = Y(0.68)
+        d.ellipse([sw / 2 - rx, cy_ - ry, sw / 2 + rx, cy_ + ry], outline=(236, 232, 221, 255), width=5)
+        d.text((sw / 2 + rx - 0.06 * sw, cy_ - 22), lab, font=fr_, fill=(236, 232, 221, 255))
+    d.ellipse([sw / 2 - 0.08 * sw, Y(0.225), sw / 2 + 0.08 * sw, Y(0.315)], outline=(236, 232, 221, 255), width=5)
+    a = np.asarray(img).astype(np.float32) / 255
+    rgb = a[..., 2::-1].copy(); al = a[..., 3].copy()
+    n = cv2.resize(fbm((sh + PT) // 16, sw // 16, 4, 23, 6), (sw, sh + PT))
+    paper = (al > 0) & (np.arange(sh + PT)[:, None] >= PT)
+    rgb[paper] *= (0.93 + 0.10 * n[paper])[:, None]
+    xx = np.arange(sw, dtype=np.float32)[None, :]
+    rgb[PT:] *= (1 - 0.10 * np.exp(-((xx - sw / 3) / 5) ** 2) - 0.08 * np.exp(-((xx - 2 * sw / 3) / 5) ** 2))[..., None]   # fold creases
+    holes = ((0.42 * sw, Y(0.58), 120, 0), (0.59 * sw, Y(0.71), 105, 1), (0.50 * sw, Y(0.27), 160, 2))
+    _K4['target'] = (rgb, al, holes)
+    return _K4['target']
+
+
+def t_target(t, c, A, B, a, b):
+    """A shooting-range target (MIAMI METRO POLICE, B-27 silhouette) is run up to camera and fills the frame;
+    POP, POP, POP: three shots punch ragged, powder-burned holes in it, the next shot showing through them,
+    then the target is yanked back down the range and the next shot is left."""
+    rgb0, al0, holes = _target_assets(); ph, pw = al0.shape; PT = _TGT_PT
+    pops = (c - HALF, c - HALF / 2, c)
+    rgb = rgb0.copy(); al = al0.copy(); shake = 0.0; flash = 0.0
+    for (hx, hy, R, k), tp in zip(holes, pops):
+        if t < tp: continue
+        dt = t - tp; g = eout(clamp(dt / 0.05)); shake += 12 * math.exp(-dt * 22) * math.cos(dt * 90 + k); flash += 0.20 * math.exp(-dt * 22)
+        x0, x1, y0, y1 = int(max(0, hx - 2.4 * R)), int(min(pw, hx + 2.4 * R)), int(max(0, hy - 2.4 * R)), int(min(ph, hy + 2.4 * R))
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32); dx, dy = xx - hx, yy - hy
+        r = np.sqrt(dx * dx + dy * dy) + 1e-3; th = np.arctan2(dy, dx)
+        jag = 1 + 0.15 * np.sin(th * 7 + 2 * k) + 0.09 * np.sin(th * 13 + 5 * k) + 0.05 * np.sin(th * 29 + k)
+        Rr = R * g * jag
+        hole = ss(Rr + 1.5, Rr - 1.5, r); burn = np.exp(-((r - Rr) / 10) ** 2) * (r > Rr - 2) * g
+        smudge = np.exp(-(r / (1.8 * R)) ** 2) * 0.5 * g
+        sub = rgb[y0:y1, x0:x1]
+        sub *= (1 - smudge)[..., None]; sub[:] = sub * (1 - burn[..., None]) + 0.05 * burn[..., None]
+        tear = np.exp(-((r - Rr - 6) / 4.5) ** 2) * g * (0.6 + 0.4 * np.sin(th * 17 + k) ** 2)            # torn white paper fibres
+        sub[:] = sub * (1 - tear[..., None]) + np.float32([0.80, 0.85, 0.88]) * tear[..., None]
+        al[y0:y1, x0:x1] *= 1 - hole
+    if t < c: s = lerp(0.12, 1.0, eout(clamp((t - a) / 0.18))); u = 0.0
+    else:
+        u = clamp((t - c - 0.05) / (b - c - 0.05)); s = 0.06 ** ease(u)
+    ky = ease(clamp((t - a) / 0.18)) if t < c else 1.0
+    ctr = (W / 2, lerp(0.42 * H, H / 2, ky) if t < c else lerp(H / 2, 0.36 * H, ease(u)))
+    rot = math.radians(5) * math.sin(u * math.pi * 1.5) * (t >= c)
+    M = cv2.getRotationMatrix2D((pw / 2, PT + (ph - PT) / 2), math.degrees(rot), s)
+    M[0, 2] += ctr[0] - pw / 2; M[1, 2] += ctr[1] - (PT + (ph - PT) / 2) + shake * s
+    pre = np.dstack([rgb * al[..., None], al]) * (1 - ss(0.65, 1.0, u))
+    lay = cv2.warpAffine(pre, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    rect = np.zeros_like(al0); rect[PT:] = 1.0
+    rm = cv2.warpAffine(rect, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    fb = layer(B, t, 1 + 0.06 * (1 - eout(u)))
+    if t < c:
+        fa = layer(A, t) * (1 - 0.4 * ky)
+        sh = cv2.GaussianBlur(np.roll(np.roll(rm, 30, 0), 18, 1), (0, 0), 24) * 0.55 * (s < 1.0)
+        under = fa * (1 - sh[..., None]) * (1 - rm[..., None]) + fb * rm[..., None]
+    else:
+        sh = cv2.GaussianBlur(np.roll(np.roll(lay[..., 3], int(30 * s), 0), int(18 * s), 1), (0, 0), 6 + 18 * s) * 0.5
+        under = fb * (1 - sh[..., None])
+    f = over(under, lay)
+    fl = np.zeros((H, W), np.float32)                                                             # paper flecks blown out of each hole
+    for (hx, hy, R, k), tp in zip(holes, pops):
+        dt = t - tp
+        if not 0 <= dt < 0.30: continue
+        p0 = M[:, :2] @ np.array([hx, hy]) + M[:, 2]; rng = np.random.default_rng(70 + k)
+        for j in range(14):
+            ang = rng.uniform(0, 2 * math.pi); sp = rng.uniform(500, 1400); sz = rng.uniform(6, 16) * (1 + 3 * dt)
+            px_, py_ = p0[0] + math.cos(ang) * sp * dt, p0[1] + math.sin(ang) * sp * dt + 900 * dt * dt; a0 = rng.uniform(0, 6) + dt * 20
+            poly = [(px_ + sz * math.cos(a0 + q * 1.9), py_ + sz * math.sin(a0 + q * 1.9)) for q in range(4)]
+            cv2.fillConvexPoly(fl, np.int32(poly), 1 - dt / 0.30, cv2.LINE_AA)
+    f = f * (1 - fl[..., None]) + np.float32([0.84, 0.88, 0.92]) * fl[..., None]
+    return f + flash
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -3283,7 +3384,7 @@ def t_vinyl(t, A, a, end):
         if tt < T2: return w * (tt - a)
         s_ = clamp((tt - T2) / (T3 - T2)); a2 = w * (T2 - a)
         return a2 - 230 * ease(s_ / 0.45) if s_ < 0.45 else a2 - 230 + 330 * ease((s_ - 0.45) / 0.55)
-    if t < T1: z = math.exp(math.log(zmax) * (1 - ease((t - a) / (T1 - a))))
+    if t < T1: z = math.exp(math.log(zmax) * (1 - eout((t - a) / (T1 - a))))
     elif t < T3: z = 1.0 - 0.03 * math.sin(math.pi * (t - T1) / (T3 - T1))
     else: z = math.exp(math.log(zmax) * ein((t - T3) / (end - T3)))
     if t < T3: ang = spin(t)
@@ -3303,7 +3404,7 @@ def t_vinyl(t, A, a, end):
     m_rec = ss(Rr + 1, Rr - 1, rw)
     smooth = ((rw > 0.955 * Rr) | (rw < 0.40 * Rr) | (np.abs(rw - 0.63 * Rr) < 3) | (np.abs(rw - 0.79 * Rr) < 3)).astype(np.float32)
     gro = 0.035 + (0.010 * np.sin(rw * 2.4) + 0.006 * np.sin(rw * 0.37)) * (1 - smooth)
-    sheen = 0.24 * np.abs(np.cos(phs - math.radians(-135))) ** 14 * (1 - 0.7 * smooth) + 0.06 * np.abs(np.cos(phs - math.radians(-135))) ** 2
+    sheen = 0.40 * np.abs(np.cos(phs - math.radians(-135))) ** 6 * (1 - 0.6 * smooth) + 0.08 * np.abs(np.cos(phs - math.radians(-135))) ** 2
     rim = np.exp(-((rw - Rr + 2) / 2.5) ** 2) * 0.25
     rec = (gro + sheen + rim)[..., None] * np.float32([1.05, 1.0, 0.98])
     f = f * (1 - m_rec[..., None]) + rec * m_rec[..., None]
@@ -3319,7 +3420,20 @@ def t_vinyl(t, A, a, end):
     sw_ = eout(clamp((t - (T1 - 0.04)) / 0.16)); arm_ang = lerp(-0.38, 0.0, sw_)
     lift = 1 - ease(clamp((t - (T2 - 0.08)) / 0.08))
     if z < 2.5: f = _tonearm(f, P, arm_ang, z, lift)
+    if z < 3:                                                                                # spindle through the label
+        sp_ = np.exp(-(rr / (7 * z)) ** 4); f = f * (1 - sp_[..., None]) + sp_[..., None] * (0.55 + 0.4 * np.exp(-(((XX - cx + 2 * z) ** 2 + (YY - cy + 2 * z) ** 2) / (3 * z) ** 2)))[..., None]
     if T2 <= t < T2 + 0.06: f = f + 0.06 * (1 - (t - T2) / 0.06)
+    k = ease(clamp((t - (T1 - 0.14)) / 0.18)) * (1 - ease(clamp((t - (T3 - 0.04)) / 0.14)))      # tilt into a turntable view
+    if k > 1e-3:
+        phi = math.radians(34) * k; f0 = 1800.0
+        def pj(x, y):
+            X_, Y_ = x - cx, y - cy; Z_ = -Y_ * math.sin(phi); q = f0 / (f0 + Z_)
+            return (cx + X_ * q, cy + 0.06 * H * k + Y_ * math.cos(phi) * q)
+        src = np.float32([[0, 0], [W, 0], [W, H], [0, H]]); dst = np.float32([pj(*p_) for p_ in src])
+        Hm = cv2.getPerspectiveTransform(src, dst)
+        wv = cv2.warpPerspective(f, Hm, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        wm = cv2.warpPerspective(np.ones((H, W), np.float32), Hm, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)[..., None]
+        f = wv + g['plinth'] * (1 - wm)
     return f
 
 
@@ -3385,6 +3499,7 @@ TRANSITIONS = {
     'luminol':   (lambda c, o: (c - .45, c + .35), lambda t, c, A, B, o: t_luminol(t, c, A, B, c - .45, c + .35)),
     'rollup':    (lambda c, o: (c - .40, c + .14), lambda t, c, A, B, o: t_rollup(t, c, A, B, c - .40, c + .14)),
     'bulb':      (lambda c, o: (c - .32, c + .40), lambda t, c, A, B, o: t_bulb(t, c, A, B, c - .32, c + .40)),
+    'target':    (lambda c, o: (c - .52, c + .42), lambda t, c, A, B, o: t_target(t, c, A, B, c - .52, c + .42)),
     'spray':     (lambda c, o: (c - .42, c + .35), lambda t, c, A, B, o: t_spray(t, c, A, B, c - .42, c + .35)),
 }
 
@@ -3447,7 +3562,11 @@ def base_index(t):
 def frame(t):
     import config as _c, typo
     for a, b, fn in TRANS:
-        if a <= t < b: f = fn(t); break
+        if a <= t < b:
+            if getattr(_c, 'MBLUR', False):                       # 180-degree shutter: average two sub-frames
+                d = 0.25 / FPS; f = 0.5 * (fn(max(a, t - d)) + fn(min(b - 1e-4, t + d)))
+            else: f = fn(t)
+            break
     else:
         f = layer(base_index(t), t)
     return typo.overlay(f, t, getattr(_c, 'TEXT', None), W, H)
