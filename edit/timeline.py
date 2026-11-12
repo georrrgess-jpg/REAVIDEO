@@ -2503,6 +2503,99 @@ def t_slidebox(t, A, a, end):
     return f
 
 
+# ---- spinning newspaper headline
+SERIF_B = '/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf'
+
+
+def _paper_sprite():
+    """Front page at 2x (premultiplied RGBA) and its 9:16 photo window (sprite px)."""
+    if 'paper' in _DK: return _DK['paper']
+    from PIL import Image, ImageDraw
+    S = 2; pw, ph = 930 * S, 1330 * S
+    img = Image.new('RGB', (pw, ph), (232, 226, 210)); d = ImageDraw.Draw(img); ink = (28, 26, 24)
+    mast = _font_px(SERIF_B, 100 * S); tw = d.textlength('MIAMI TRIBUNE', font=mast); d.text(((pw - tw) / 2, 22 * S), 'MIAMI TRIBUNE', font=mast, fill=ink)
+    d.line([(40 * S, 162 * S), (pw - 40 * S, 162 * S)], fill=ink, width=5 * S); d.line([(40 * S, 206 * S), (pw - 40 * S, 206 * S)], fill=ink, width=2 * S)
+    sm = _font_px(SERIF_B, 26 * S)
+    d.text((44 * S, 170 * S), 'THURSDAY, NOVEMBER 15', font=sm, fill=ink); t2 = 'FINAL EDITION   50¢'; d.text((pw - 44 * S - d.textlength(t2, font=sm), 170 * S), t2, font=sm, fill=ink)
+    hs = 84
+    while d.textlength('BAY HARBOR BUTCHER', font=_font_px(SERIF_B, hs * S)) > pw - 110 * S: hs -= 2
+    hl = _font_px(SERIF_B, hs * S)
+    for k, line in enumerate(('BAY HARBOR BUTCHER', 'STRIKES AGAIN')):
+        tw = d.textlength(line, font=hl); d.text(((pw - tw) / 2, (222 + k * 108) * S), line, font=hl, fill=ink)
+    sub = _font_px(SERIF_B, 34 * S); t3 = 'Police baffled as more remains surface off the coast'
+    tw = d.textlength(t3, font=sub); d.text(((pw - tw) / 2, 452 * S), t3, font=sub, fill=(60, 56, 52))
+    px0, py0, pww, phh = 44 * S, 510 * S, 448 * S, 796 * S
+    d.rectangle([px0 - 3 * S, py0 - 3 * S, px0 + pww + 3 * S, py0 + phh + 3 * S], outline=ink, width=3 * S)
+    r = np.random.default_rng(12); x0 = px0 + pww + 30 * S
+    for col in range(2):
+        cx = x0 + col * 196 * S; y = py0
+        while y < ph - 50 * S:                                                                   # text columns
+            if r.random() < 0.08: y += 22 * S; continue
+            w_ = int((176 if r.random() > 0.15 else r.uniform(60, 160)) * S)
+            d.rectangle([cx, y, cx + w_, y + 9 * S], fill=(95, 90, 84)); y += 22 * S
+    a = np.asarray(img).astype(np.float32)[..., ::-1] / 255
+    n = cv2.resize(fbm(ph // 16, pw // 16, 4, 77, 6), (pw, ph)); a *= (0.90 + 0.14 * n)[..., None]   # aged newsprint
+    yy, xx = np.mgrid[0:ph, 0:pw].astype(np.float32)
+    a *= (1 - 0.18 * ss(0.25, 0.0, np.minimum(np.minimum(xx, pw - xx), np.minimum(yy, ph - yy)) / pw))[..., None]   # yellowed edges
+    a *= (1 - 0.10 * np.exp(-((xx - pw / 2) / (6 * S)) ** 2))[..., None]                            # centre fold
+    _DK['paper'] = (np.dstack([a, np.ones((ph, pw), np.float32)]), (px0, py0, pww, phh), S)
+    return _DK['paper']
+
+
+def _halftone(f, cell=13):
+    l = np.clip(luma(f), 0, 1); X = (XX + YY) * 0.7071; Y = (YY - XX) * 0.7071
+    dx = (X % cell) - cell / 2; dy = (Y % cell) - cell / 2; d = np.sqrt(dx * dx + dy * dy)
+    r = np.sqrt(1 - l) * cell * 0.72
+    dot = ss(r + 0.8, r - 0.8, d)
+    return (1 - dot)[..., None] * np.float32([0.82, 0.88, 0.91]) + dot[..., None] * np.float32([0.10, 0.10, 0.11])
+
+
+def t_newspaper(t, c, A, B, a, b):
+    """A front page spins in (BAY HARBOR BUTCHER STRIKES AGAIN), slaps down, then the camera pushes into its
+    halftone photo of the next shot, whose dots dissolve into full colour as it fills the screen."""
+    spr, (px0, py0, pww, phh), S = _paper_sprite(); ph, pw = spr.shape[:2]
+    tl = c - 0.12; base = 0.5
+    if t < tl:
+        p = clamp((t - a) / (tl - a)); e = eout(p)
+        sc = base * lerp(0.04, 1.0, e); ang = math.radians(-4) + (1 - e) * 2.5 * 2 * math.pi; ctr = np.array([W / 2, H / 2])
+        zk = 0.0
+    else:
+        u = clamp((t - tl) / (b - tl)); k = ease(u); bounce = 1 + 0.04 * math.sin(min(1.0, (t - tl) / 0.10) * math.pi) * (t - tl < 0.10)
+        zfull = (W / (pww * base)); sc = base * math.exp(math.log(zfull) * ein(u) ** 0.9) * bounce; ang = math.radians(-4) * (1 - k)
+        pc = np.array([px0 + pww / 2, py0 + phh / 2]); zk = k
+        ctr = None
+    ca, sa = math.cos(ang), math.sin(ang)
+    R2 = np.array([[ca, -sa], [sa, ca]]) * sc
+    if ctr is not None: tvec = ctr - R2 @ np.array([pw / 2, ph / 2])
+    else:                                                                                       # keep the photo centre heading to the screen centre
+        rest_c = np.array([W / 2, H / 2]) - R2 @ np.array([pw / 2, ph / 2]) + R2 @ (pc - np.array([pw / 2, ph / 2]))
+        p_scr = R2 @ pc + (np.array([W / 2, H / 2]) - R2 @ np.array([pw / 2, ph / 2]))
+        tvec = (np.array([W / 2, H / 2]) - R2 @ np.array([pw / 2, ph / 2])) + (np.array([W / 2, H / 2]) - p_scr) * zk
+    M = np.float32(np.hstack([R2, tvec[:, None]]))
+    fa = layer(A, min(t, c - 1e-3)); bg = blur(fa, 8 * min(1.0, (t - a) / 0.3)) * (1 - 0.45 * min(1.0, (t - a) / 0.3))
+    if t < tl and (1 - eout(clamp((t - a) / (tl - a)))) > 0.25:                                     # rotational motion blur while spinning
+        acc = None
+        for j in range(3):
+            aj = ang + j * 0.06; Rj = np.array([[math.cos(aj), -math.sin(aj)], [math.sin(aj), math.cos(aj)]]) * sc
+            Mj = np.float32(np.hstack([Rj, (ctr - Rj @ np.array([pw / 2, ph / 2]))[:, None]]))
+            lj = cv2.warpAffine(spr, Mj, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            acc = lj if acc is None else acc + lj
+        lay = acc / 3
+    else:
+        lay = cv2.warpAffine(spr, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    sh = cv2.GaussianBlur(np.roll(np.roll(lay[..., 3], 24, 0), 16, 1), (0, 0), 18) * 0.6
+    f = bg * (1 - sh[..., None]) * (1 - lay[..., 3:4]) + lay[..., :3] * lay[..., 3:4]
+    corners = np.array([[px0, py0], [px0 + pww, py0], [px0 + pww, py0 + phh], [px0, py0 + phh]], np.float64)
+    scr = corners @ M[:, :2].T + M[:, 2]
+    P = cv2.getPerspectiveTransform(np.float32([[0, 0], [W, 0], [W, H], [0, H]]), np.float32(scr))
+    fb = layer(B, t); photo = _halftone(fb) * (1 - zk) + fb * zk
+    win = cv2.warpPerspective(photo, P, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    wm = cv2.warpPerspective(np.ones((H, W), np.float32), P, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)[..., None]
+    if t < tl and (1 - eout(clamp((t - a) / (tl - a)))) > 0.25: wm = wm * 0
+    f = f * (1 - wm) + win * wm
+    return f + 0.25 * max(0.0, 1 - abs(t - tl) / 0.05)                                          # slap flash
+
+
 # Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
 # c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
 # so the same transition works at any tempo and position.
@@ -2539,6 +2632,7 @@ TRANSITIONS = {
     'sunburst':  (lambda c, o: (c - .32, c + .30), lambda t, c, A, B, o: t_sunburst(t, c, A, B, c - .32, c + .30, o.get('sx', 0.80), o.get('sy', 0.13))),
     'clouds':    (lambda c, o: (c - .32, c + .32), lambda t, c, A, B, o: t_clouds(t, c, A, B, c - .32, c + .32)),
     'runby':     (lambda c, o: (c - .26, c + .26), lambda t, c, A, B, o: t_runby(t, c, A, B, c - .26, c + .26, o.get('y', 0.52))),
+    'newspaper': (lambda c, o: (c - .62, c + .36), lambda t, c, A, B, o: t_newspaper(t, c, A, B, c - .62, c + .36)),
     'badge':     (lambda c, o: (c - .55, c + .30), lambda t, c, A, B, o: t_badge(t, c, A, B, c - .55, c + .30)),
     'photo':     (lambda c, o: (c - .55, c + .30), lambda t, c, A, B, o: t_photo(t, c, A, B, c - .55, c + .30)),
     'casefile':  (lambda c, o: (c - .38, c + .38), lambda t, c, A, B, o: t_casefile(t, c, A, B, c - .38, c + .38)),

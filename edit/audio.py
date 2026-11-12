@@ -255,6 +255,9 @@ def sfx_for(name, c, o, up):
     elif name == 'knife':
         put(whoosh(0.30, 600, 4200, peak=0.85), c - 0.30, pan=0.4, gain=0.07); put(shing(), c - 0.12, pan=0.2, gain=0.11)
         put(boom(0.35, 110, 50), c, gain=0.08)
+    elif name == 'newspaper':
+        put(whoosh(0.50, 300, 3000, q=0.6, peak=0.9), c - 0.62, gain=0.08); put(crinkle(0.25), c - 0.30, gain=0.05)
+        put(boom(0.25, 140, 60), c - 0.12, gain=0.10); put(splat(0.05), c - 0.12, gain=0.07); put(whoosh(0.40, 400, 3500, peak=0.85), c, gain=0.06)
     elif name == 'badge':
         put(whoosh(0.30, 2500, 600, peak=0.5), c - 0.55, gain=0.05); put(tick(0.07, 1300), c - 0.27, gain=0.06); put(tick(0.05, 1900), c - 0.22, gain=0.04)
         put(shimmer(0.4), c - 0.30, pan=0.3, gain=0.03); put(whoosh(0.45, 300, 3500, peak=0.85), c - 0.15, gain=0.07)

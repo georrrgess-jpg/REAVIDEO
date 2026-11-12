@@ -32,7 +32,7 @@ SHOTS = [
  dict(name='poncho_walk', beats=3, out='whip', out_opts={'d': 1}, pack=D, src=97.60, x=.50, valid=(0, 136), push=(1.00, 1.04), **g(.55, 1.0)),
  dict(name='lab_walk',   beats=3, out='tape', fx=['idbox'],     pack=B2, src=172.30, x=.45, push=(1.00, 1.04), **g(.50, 1.0)),
  dict(name='slide_lamp', beats=2, out='cut',                    pack=B2, src=268.60, x=.55, push=(1.00, 1.04), **g(.55, 1.3)),
- dict(name='hood_up',    beats=3, out='blur', pack=S1, src=303.40, x=.50, push=(1.00, 1.04), **g(.55, 1.0)),
+ dict(name='hood_up',    beats=3, out='newspaper', pack=S1, src=303.40, x=.50, push=(1.00, 1.04), **g(.55, 1.0)),
  dict(name='smirk_walk', beats=3, out='bag',                    pack=C4, src=43.60,  x=.42, push=(1.00, 1.04), **g(.50, 1.05)),
  dict(name='containers', beats=2, out='cut',   pack=S1, src=372.60, x=.42, push=(1.00, 1.04), **g(.50, 1.0)),
  dict(name='car_glance', beats=3, out='blinds', fx=['idbox'],  pack=D,  src=26.60,  x=.40, push=(1.00, 1.04), **g(.50, 1.05)),
