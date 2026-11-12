@@ -2858,8 +2858,8 @@ def t_mugshot(t, c, A, B, a, b):
     fl = 0.35 * math.exp(-((t - (tf - 0.17)) / 0.025) ** 2)                                    # pre-flash
     if t >= tf: fl += 1.5 * math.exp(-(t - tf) * 8)
     if fl > 0.01:
-        f = f + fl
-        f = f + cv2.resize(cv2.GaussianBlur(np.clip(cv2.resize(f, (W // 8, H // 8)) - 0.8, 0, 2), (0, 0), 6), (W, H)) * 0.6 * min(1.0, fl)
+        k = min(0.66, 0.6 * fl); f = f * (1 - k) + k * 0.97                                       # blown out, but the image still shows through
+        f = f + cv2.resize(cv2.GaussianBlur(np.clip(cv2.resize(f, (W // 8, H // 8)) - 0.8, 0, 2), (0, 0), 6), (W, H)) * 0.3 * min(1.0, fl)
     return f
 
 
@@ -3025,7 +3025,7 @@ def t_luminol(t, c, A, B, a, b):
     beam passes; on the hit the whole scene flares and the next shot comes back up, the glow fading off it."""
     spat, bloom_ = _lum_assets(); dim = ease(clamp((t - a) / 0.08))
     if t >= c: dim *= 1 - eout(clamp((t - c) / (b - c)))
-    ts0 = a + 0.12; v = clamp((t - ts0) / (c - 0.04 - ts0))
+    ts0 = a + 0.07; v = clamp((t - ts0) / (c - 0.04 - ts0))
     path = lambda v_: (lerp(-0.12 * W, 1.12 * W, ease(v_)), H * (0.66 - 0.30 * math.sin(math.pi * v_)))
     bx, by = path(v); Rb = 0.27 * W
     fr = layer(A, t) if t < c else layer(B, t)
@@ -3036,7 +3036,7 @@ def t_luminol(t, c, A, B, a, b):
     rev = cv2.resize(rev, (W, H)) * (t >= ts0)
     violet = np.float32([1.0, 0.30, 0.78]); lumc = np.float32([1.0, 0.80, 0.30])
     l = luma(fr)[..., None]
-    f = fr * (1 - 0.88 * dim) * np.float32([1.15, 0.95, 0.9]) ** dim
+    f = fr * (1 - 0.80 * dim) * np.float32([1.15, 0.95, 0.9]) ** dim + 0.025 * dim * violet
     f = f + spot[..., None] * dim * (l * violet * 0.95 + 0.06 * violet)
     sx, sy = 1.15 * W, 1.10 * H; vx, vy = bx - sx, by - sy; L2 = vx * vx + vy * vy + 1e-3       # faint beam haze from the torch
     pr = np.clip(((XX - sx) * vx + (YY - sy) * vy) / L2, 0, 1); dd = np.sqrt((XX - sx - pr * vx) ** 2 + (YY - sy - pr * vy) ** 2)
