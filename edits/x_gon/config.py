@@ -1,9 +1,16 @@
-"""Dexter x "X Gon' Give It To Ya" (DMX): hook break to hook break, 1:28.093-1:48.303.
+"""Dexter x "X Gon' Give It To Ya" (DMX), v2: the hook, 1:07.878-1:28.088.
 
-8 bars at 95 BPM = 64 half-beats = 20.21 s; the next bar is the hook break again, so the loop lands on a hook.
-Built from the Dexter standard (edits/new_person): every shot moves (tools/motion.py), auto face framing,
-custom-graphic transitions (badge, tape, scope, newspaper, evidence bag, blinds, plastic, crown, red, knife,
-case file) and the slide-box loop. Cuts land on this song's kicks (even half-beats) and snares.
+8 bars at 95 BPM = 64 half-beats = 20.21 s. The hook is two identical 4-bar phrases ("first we gonna ROCK,
+then we gonna ROLL, then we let it POP, don't let it GO / X gon' give it to ya, he gon' give it to ya"), so the
+edit is built as two mirrored halves whose transitions act out the words (word times from the vocal stem):
+  ROCK  -> punch-in + lyric hit          ROCK  -> punch-in + lyric hit
+  ROLL  -> duct-tape rolls tape it shut  ROLL  -> the print rolls itself up
+  POP   -> mugshot camera flash          POP   -> a bare bulb pops
+  GO    -> punch-in + lyric hit          GO    -> punch-in + lyric hit
+  X     -> a knife carves an X           X     -> a spray-painted X
+  ...   -> handcuffs lock, luminol       ...   -> whip, cut, vinyl scratch back to the start (loop)
+The opener is a subwoofer pumping on the bass. Look: grittier than the standard (more contrast, less colour),
+zoom bumps on the kicks. Started from the Dexter standard (edits/new_person) but with an all-new kit (kit IV).
 Build: bash ../../edit/build.sh .
 """
 W, H, FPS = 1080, 1920, 60
@@ -11,38 +18,49 @@ PK = '../../media/scenepacks/'
 S1, A2, B2, C4, D, E = (PK + n + '.mp4' for n in ('dexter_s1', 'dexter_s2_a', 'dexter_s2_b', 'dexter_s4', 'dexter_mix_1440p', 'dexter_mix_a'))
 SCENEPACK = D
 SONG = '../../media/x_gon.mp3'
-SONG_OFFSET = 88.093
+SONG_OFFSET = 67.878
 GRID0, HALF = 0.0, 0.31579
 FIRST_CUT = 4
 TAIL = 20.211 - (63 * 0.31579 + 0.077)          # exactly 64 half-beats
 PRE, POST = 0.60, 0.50
-KICKS = [0, 8, 12, 16, 17, 19, 24, 25, 27, 28, 32, 40, 43, 44, 45, 48, 49, 50, 51, 56, 57, 60]
-SNARES = [6, 10, 14, 18, 26, 30, 34, 38, 42, 46, 54, 58, 62]
+KICKS = [0, 4, 8, 12, 16, 17, 18, 19, 20, 24, 27, 28, 32, 36, 40, 41, 43, 44, 48, 49, 50, 51, 52, 56, 57, 60]
+SNARES = [6, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 50, 54, 58, 62]
 
-MUTED = dict(con=1.12, tint=(1.04, 1.0, .96))
-def g(sat, gain, **kw): return dict(MUTED, sat=sat, rk=1.0, gain=gain, **kw)
+GRIT = dict(con=1.20, tint=(1.03, 1.0, .97))                  # harder and greyer than the standard; reds kept
+def g(sat, gain, **kw): return dict(GRIT, sat=sat * 0.85, rk=1.0, gain=gain, **kw)
 
 SHOTS = [
- dict(name='street_smile', out='badge', pack=C4, src=48.27, x=0.48, push=(1.00, 1.04), **g(0.55, 1.00)),  # C17 len 4.1s motion 1.7
- dict(name='crime_crowd', beats=4, out='whip', out_opts={'d': 1}, pack=C4, src=85.54, x=0.50, push=(1.00, 1.04), **g(0.55, 1.00)),  # B20 len 4.8s motion 2.9
- dict(name='office_walk', beats=2, out='tape', pack=B2, src=124.75, x=0.42, push=(1.00, 1.04), **g(0.50, 1.00)),  # E5 len 3.2s motion 1.9
- dict(name='slides', beats=4, out='scope', out_opts={'px': 0.5, 'py': 0.55}, pack=S1, src=264.42, x=0.50, push=(1.00, 1.04), **g(0.55, 1.10)),  # S65 len 5.8s motion 1.2
- dict(name='bushes', beats=4, out='newspaper', pack=S1, src=340.62, x=0.58, push=(1.00, 1.04), **g(0.55, 1.05)),  # S88 len 6.2s motion 2.5
- dict(name='shadows', beats=4, out='bag', pack=C4, src=78.97, x=0.42, push=(1.00, 1.04), **g(0.50, 1.20)),  # C26 len 2.5s motion 2.2
- dict(name='mangroves', beats=2, out='cut', pack=S1, src=176.03, x=0.48, push=(1.00, 1.04), **g(0.50, 1.05)),  # S42 len 3.6s motion 1.9
- dict(name='car', beats=4, out='blinds', fx=['idbox'], pack=B2, src=276.98, x=0.69, push=(1.00, 1.04), **g(0.50, 1.05)),  # B103 len 5.6s motion 2.0
- dict(name='smile', beats=4, out='whip', out_opts={'d': -1}, pack=C4, src=67.22, x=0.48, push=(1.00, 1.04), **g(0.55, 1.00)),  # C23 len 3.2s motion 1.9
- dict(name='dark_hall', beats=2, out='cut', pack=D, src=123.55, x=0.61, push=(1.00, 1.04), **g(0.50, 1.35)),  # D59 len 2.0s motion 1.5
- dict(name='hands_face', beats=4, out='cut', pack=A2, src=303.45, x=0.51, push=(1.00, 1.04), **g(0.50, 1.15)),  # A73 len 2.8s motion 1.3
- dict(name='files_walk', beats=4, out='plastic', punch={}, pack=A2, src=176.94, x=0.46, push=(1.00, 1.04), **g(0.50, 1.00)),  # A36 len 6.8s motion 3.3
- dict(name='night', beats=4, out='crown', fx=['idbox'], pack=C4, src=24.68, x=0.52, push=(1.00, 1.04), **g(0.50, 1.35)),  # C7 len 2.4s motion 1.2
- dict(name='spatter_room', beats=2, out='red', pack=D, src=106.70, x=0.58, push=(1.00, 1.04), **g(0.60, 1.00)),  # D52 len 2.9s motion 1.1
- dict(name='lean', beats=4, out='knife', pack=C4, src=161.72, x=0.38, push=(1.00, 1.04), **g(0.50, 1.10)),  # C62 len 2.7s motion 1.0
- dict(name='look_up', beats=4, out='casefile', pack=D, src=46.40, x=0.50, push=(1.00, 1.04), **g(0.50, 1.00)),  # D18 len 2.9s motion 1.0
- dict(name='upside_saw', beats=2, out='cut', pack=S1, src=329.48, x=0.47, push=(1.00, 1.04), **g(0.50, 1.30)),  # S86 len 4.2s motion 1.0
- dict(name='night_look', beats=5, out='slidebox', pack=S1, src=380.33, x=0.37, push=(1.00, 1.04), **g(0.50, 1.00)),  # S116 len 1.5s motion 0.7
+ dict(name='street_smile', out='sub', fx=['bump'], pack=C4, src=48.27, x=0.48, push=(1.00, 1.05), **g(0.55, 1.00)),
+ dict(name='dark_hall', beats=2, out='cut', fx=['bump'], pack=D, src=123.55, x=0.61, push=(1.00, 1.05), **g(0.50, 1.35)),
+ dict(name='crime_crowd', beats=4, out='ducttape', punch={}, fx=['bump', 'rgbhit'], pack=C4, src=85.54, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),
+ dict(name='hands_face', beats=4, out='mugshot', fx=['bump'], pack=A2, src=303.45, x=0.51, push=(1.00, 1.05), **g(0.50, 1.15)),
+ dict(name='office_walk', beats=4, out='cut', fx=['bump'], pack=B2, src=124.44, x=0.42, push=(1.00, 1.05), **g(0.50, 1.00)),
+ dict(name='mangroves', beats=2, out='xslash', punch={}, fx=['bump', 'rgbhit'], pack=S1, src=176.03, x=0.48, push=(1.00, 1.05), **g(0.50, 1.05)),
+ dict(name='smile', beats=4, out='cuffs', fx=['bump'], pack=C4, src=67.22, x=0.48, push=(1.00, 1.05), **g(0.55, 1.00)),
+ dict(name='car', beats=4, out='whip', out_opts={'d': 1}, fx=['bump'], pack=B2, src=276.98, x=0.69, push=(1.00, 1.05), **g(0.50, 1.05)),
+ dict(name='files_walk', beats=4, out='luminol', fx=['bump'], pack=A2, src=176.94, x=0.46, push=(1.00, 1.05), **g(0.50, 1.00)),
+ dict(name='night', beats=4, out='whip', out_opts={'d': -1}, fx=['bump'], pack=C4, src=24.68, x=0.52, push=(1.00, 1.05), **g(0.50, 1.35)),
+ dict(name='upside_saw', beats=2, out='cut', fx=['bump'], pack=S1, src=329.48, x=0.47, push=(1.00, 1.05), **g(0.50, 1.30)),
+ dict(name='lean', beats=4, out='rollup', punch={}, fx=['bump', 'rgbhit'], pack=C4, src=161.72, x=0.38, push=(1.00, 1.05), **g(0.50, 1.10)),
+ dict(name='look_up', beats=4, out='bulb', fx=['bump'], pack=D, src=46.40, x=0.50, push=(1.00, 1.05), **g(0.50, 1.00)),
+ dict(name='shadows', beats=4, out='cut', fx=['bump'], pack=C4, src=78.97, x=0.42, push=(1.00, 1.05), **g(0.50, 1.20)),
+ dict(name='spatter_room', beats=2, out='spray', punch={}, fx=['bump', 'rgbhit'], pack=D, src=106.70, x=0.58, push=(1.00, 1.05), **g(0.60, 1.00)),
+ dict(name='slides', beats=4, out='whip', out_opts={'d': 1}, fx=['bump'], pack=S1, src=264.42, x=0.50, push=(1.00, 1.05), **g(0.55, 1.10)),
+ dict(name='bushes', beats=4, out='cut', fx=['bump'], pack=S1, src=340.62, x=0.58, push=(1.00, 1.05), **g(0.55, 1.05)),
+ dict(name='night_look', beats=3, out='vinyl', fx=['bump'], pack=S1, src=380.33, x=0.37, push=(1.00, 1.05), **g(0.50, 1.00)),
 ]
 for s in SHOTS: s.setdefault('z', 1.0); s.setdefault('frame', 'auto')
+
+# Lyric hits on the hook's words (section time, from the vocal stem): white, the X in red.
+RED = (0.18, 0.13, 0.90)
+TEXT = [
+ dict(y=0.74, size=230, out=2.66, exit='blur', words=[(1.90, 'ROCK', 'impact')]),
+ dict(y=0.78, size=104, out=5.99, exit='cut', words=[(5.18, "DON'T", 'type'), (5.36, 'LET', 'type'), (5.50, 'IT', 'type'), (5.69, 'GO', 'impact', RED)]),
+ dict(y=0.80, size=92, out=7.56, exit='cut', words=[(6.32, 'X', 'impact', RED), (6.55, "GON'", 'pop'), (6.98, 'GIVE', 'pop'), (7.12, 'IT', 'pop'), (7.26, 'TO', 'pop'), (7.40, 'YA', 'pop')]),
+ dict(y=0.74, size=230, out=12.80, exit='blur', words=[(12.00, 'ROCK', 'impact')]),
+ dict(y=0.78, size=104, out=16.00, exit='cut', words=[(15.28, "DON'T", 'type'), (15.46, 'LET', 'type'), (15.60, 'IT', 'type'), (15.79, 'GO', 'impact', RED)]),
+ dict(y=0.80, size=92, out=19.15, exit='fade', words=[(17.86, 'HE', 'slide'), (17.98, "GON'", 'slide'), (18.40, 'GIVE', 'slide'), (18.50, 'IT', 'slide'), (18.62, 'TO', 'slide'), (18.76, 'YA', 'pop', RED)]),
+]
 
 from timing import build_cuts
 CUTS, DUR = build_cuts(SHOTS, GRID0, HALF, FIRST_CUT, TAIL)

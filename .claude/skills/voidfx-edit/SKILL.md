@@ -25,6 +25,7 @@ python edit/tools/new_edit.py <name> --song media/<song>.mp3 --section media/<na
 - **Rhythm:** the section is a chorus of 6 bars (48 half-beats; 18.95 s at 76 BPM). Cuts fall on the kicks, which land on off-beats here, so slot lengths run 3-3-2 (first cut at half-beat 5).
 - **Footage:** plain 720p extract (no AI upscaling, per the user). Grade sat 0.45–0.6, rk 1.0, con 1.12, tint (1.04, 1.0, 0.96), gain lifted on night shots.
 - **Quality bar:** hard cuts within one frame of the beat; no black or frozen frames; still steps 0; seamless loop seam; every transition previewed with `render.py sheet`, and fixed if any edge, colour or text clips.
+- **Every new edit gets its own transitions, made for its song** (user, 2026-11-12: X Gon' v1 "reuses too many of the same transitions"). Take the standard's structure, rhythm, framing and quality bar, but not its kit: build a fresh set of drawn, physical graphics from the song's own words and sound (transcribe the vocal stem, see Kit IV), and reuse at most one or two earlier transitions.
 
 ## Earlier Dexter standard (user-approved, 2026-11-10): `edits/hold_on`
 
@@ -231,6 +232,23 @@ Don't reuse the same big transition twice in one edit. Blur, whip and punch can 
 - Use the song section untouched: original speed and pitch, peak normalised to about −1.5 dBFS.
 - Add synthesized SFX (`audio.py`) only under transitions: whooshes on wipes, a shutter on the Polaroid, splats on spatter, a low hit on the red flash and punch-ins, bubbles on water. Keep them about 20–25 dB under the music. They should be felt, not noticed.
 
+**Dexter kit IV: "X Gon' Give It To Ya"** (`edits/x_gon` v2). Street-crime objects that act out the hook's words. Every graphic is drawn per frame (no stock assets).
+
+| name | what | lyric / use | length |
+|---|---|---|---|
+| `sub` | a subwoofer (gunmetal basket, bolts, rubber surround, cone, glossy dust cap with a red X, "XG-15 2000W" plate) rises over the shot and pumps on the beat with pressure rings; the cap blows out and the camera dives through the cone | opener, the bass | 0.55 + 0.30 s |
+| `ducttape` | three silver duct-tape rolls ("DUCT TAPE 48mm x 55m" on the core) roll across in alternating directions, taping the shot shut; strips are ripped off on the hit | "ROLL" | 0.40 + 0.36 s |
+| `mugshot` | booking camera pre-flash, then POP; the next shot appears as a mugshot (bleached flash, height chart, "MORGAN, DEXTER" board pushed up into frame) | "POP" | 0.26 + 0.48 s |
+| `xslash` | a blade carves a giant X in two slashes (white-hot, cooling to bleeding gashes); the four wedges fall away | "X gon' give it to ya" | 0.32 + 0.40 s |
+| `cuffs` | a handcuff (bow, toothed strand, lock box, chain) swings round the face, ratchets shut, the world outside darkens, the camera dives through the ring | after the X | 0.42 + 0.36 s |
+| `luminol` | lights out, a UV torch sweeps the frame and luminol makes hidden spatter glow blue; the scene flares into the next shot | phrase downbeat (loudest hit) | 0.45 + 0.35 s |
+| `rollup` | the shot is a print that rolls itself up from the bottom (evidence-photo printing on its back) | second "ROLL" | 0.40 + 0.14 s |
+| `bulb` | a bare bulb drops in on its cord, buzzes and lights the face, then POPs: filament flash, glass shards and sparks, darkness, next shot comes up | second "POP" | 0.32 + 0.40 s |
+| `spray` | a red X spray-painted in two strokes (overspray, sheen, runs dripping); the X swells open onto the next shot | second "X" | 0.42 + 0.35 s |
+| `vinyl` (loop) | the last shot shrinks into the photo label of a spinning record on a turntable (strobe-dot platter, "SIDE A · MIAMI METRO RECORDS" label), the tonearm drops the needle, the record is scratched back (the label becomes shot 1), the camera dives into the label | loop ending | 0.85 + 0.10 s |
+
+**Song-tailoring method (from X Gon'):** separate the vocals (`rea-video stems` on a short clip of the section), transcribe the vocal stem with word timestamps (`faster-whisper` `small.en`, `word_timestamps=True`, pass the known lyric as `initial_prompt`; feed audio as an array), then put each key word's transition cut on the half-beat nearest the word. If the hook is two identical phrases, mirror the plan: the same word gets a different object each time. Add sparse lyric hits with `TEXT` (impact/type/pop, keywords red) on punch-in shots only.
+
 ## Workflow for a new edit
 
 The user's stored footage is listed in `scenepacks/README.md` (Dexter S1, S2, S4 and mixes; The Flash S1, S2, S3, S5, all seasons, Blitzkrieg; plus a second voidfx reference edit). If `media/scenepacks/` is empty, run `bash scenepacks/fetch.sh [name-filter]` first. Shot lists are already in `scenepacks/catalog/<name>.json`. Choose the pack that matches the character the user asks for, and mix packs of the same show when one pack is too short. Put other inputs (song, new footage) in `media/`, which is gitignored and never committed. Tools need ffmpeg and `pip install numpy scipy opencv-python-headless soundfile`. The face model comes from rea-video's cache, `~/.cache/rea-video/models/face_detection_yunet_2023mar.onnx`. If that file is missing, get it from `https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx`; its sha256 starts with `8f2383e4`.
@@ -284,7 +302,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
-- 2026-11-12: First edit built from the New Person standard: Dexter × "X Gon' Give It To Ya" (DMX, `edits/x_gon`). Section 1:28.093–1:48.303, 8 bars at 95 BPM (64 half-beats), hook break to hook break, so the loop lands on the hook. `sections.py` first picked 3:11.7, which runs into the outro where the vocals drop out, so the section was set by hand (`--start 88.09 --bars 8`); check that an automatically picked section still has vocals and drums. This song's kicks fall on even half-beats, so slots are 4 and 2 half-beats long (not New Person's 3-3-2). The standard's kit is used unchanged, plus `scope` on the slide shot (18 shots: 12 graphic transitions including the loop, 2 whips, 4 cuts). Every transition was previewed with no clipping.
+- 2026-11-12: Dexter × "X Gon' Give It To Ya" (DMX, `edits/x_gon`). v1 (verse section 1:28.1–1:48.3, New Person's kit reused) was rejected: **"reuses too many of the same transitions from the previous edit"**; the user asked for my own twist and new style, more tailored to the song, with new animations, graphics and transitions. v2: moved to the hook (1:07.878–1:28.088, 8 bars at 95 BPM, two identical 4-bar phrases), all-new Kit IV acting out the words (ROCK punch, ROLL tape/roll-up, POP mugshot/bulb, X knife/spray, cuffs, luminol, vinyl loop), lyric hits, grittier grade (con 1.2, sat ×0.85), zoom bumps on kicks and colour hits on the punch shots. `sections.py` picks the outro here (3:11.7); choose the hook by hand.
 - 2026-11-12: **The user made New Person, Same Old Mistakes v6 the Dexter standard, and likes all its transitions** (badge, tape, newspaper, evidence bag, blinds, plastic, crown, red flash, knife, case file, slide-box loop). `new_edit.py` defaults to it.
 - 2026-11-12: New Person v5. Opener `photo` replaced with `badge`; red stamps and evidence markers removed ("clunky" counters); the VHS rewind loop wasn't creative enough, so it was replaced with `slidebox`. Loops should be visually rich, thematic graphics, not just an effect.
 - 2026-11-12: New Person v4. The user disliked the strings opener and the blood-in-water transition, and **loved the evidence-bag graphic**: physical, labelled forensic objects are the direction. They asked to fill the dead space with animations and graphics. Added `photo`, `casefile`, `stamp:`, `markers` and `idbox`. Every hold now carries a graphic.

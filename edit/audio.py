@@ -214,6 +214,45 @@ def zipper(dur=0.25):
     return y / np.abs(y).max()
 
 
+def rip(dur=0.3):
+    """Tape tearing: band-passed noise chopped by a fast, ragged amplitude grain."""
+    n = int(dur * SR); u = np.arange(n) / SR
+    y = sg.lfilter(*sg.butter(2, [700 / (SR / 2), 7000 / (SR / 2)], 'band'), rng.standard_normal(n))
+    grain = 0.35 + 0.65 * (np.sin(2 * np.pi * 52 * u + 3 * np.sin(2 * np.pi * 7 * u)) > 0.2)
+    y *= grain * np.minimum(1, u / 0.008) * np.exp(-u * 3.5)
+    return y / np.abs(y).max()
+
+
+def hiss(dur=0.2):
+    """Aerosol spray: high hiss with a soft start and stop."""
+    n = int(dur * SR); u = np.linspace(0, 1, n)
+    y = sg.lfilter(*sg.butter(3, 3500 / (SR / 2), 'high'), rng.standard_normal(n)) * np.minimum(1, np.minimum(u / 0.12, (1 - u) / 0.2))
+    return y / np.abs(y).max()
+
+
+def clank(dur=0.5):
+    """Small steel part snapping shut: inharmonic partials over a click."""
+    n = int(dur * SR); u = np.arange(n) / SR
+    y = sum(np.sin(2 * np.pi * f0 * u) * np.exp(-u * d) * g for f0, d, g in ((1210, 14, 1.0), (2630, 20, 0.7), (3970, 26, 0.5), (5480, 34, 0.35)))
+    y[:int(0.004 * SR)] += rng.standard_normal(int(0.004 * SR)) * 1.5
+    return y / np.abs(y).max()
+
+
+def pop_burst(dur=0.25):
+    """Bulb pop: a sharp broadband crack with a short low thump."""
+    n = int(dur * SR); u = np.arange(n) / SR
+    y = sg.lfilter(*sg.butter(2, 1200 / (SR / 2), 'high'), rng.standard_normal(n)) * np.exp(-u * 45)
+    y += np.sin(2 * np.pi * 70 * u) * np.exp(-u * 25) * 0.8
+    return y / np.abs(y).max()
+
+
+def crackle(dur=0.6):
+    """Vinyl surface noise: sparse clicks over a soft hiss."""
+    n = int(dur * SR); y = sg.lfilter(*sg.butter(2, 4000 / (SR / 2), 'high'), rng.standard_normal(n)) * 0.08
+    for i in rng.integers(0, n - 200, int(dur * 40)): y[i:i + 60] += rng.standard_normal(60) * np.exp(-np.arange(60) / 10) * rng.uniform(0.3, 1)
+    return y / np.abs(y).max()
+
+
 # ---- SFX follow the plan: each transition type has its sound, placed relative to its cut ----
 def sfx_for(name, c, o, up):
     if name == 'leaf': put(whoosh(0.34, 700, 5200) if up else whoosh(0.34, 5200, 800), c - 0.20, gain=0.085)
@@ -334,6 +373,37 @@ def sfx_for(name, c, o, up):
         put(whoosh(0.62, 2500, 7500, q=0.6, peak=0.3), c - 0.20, gain=0.05)
     elif name == 'water': put(bubbles(0.75), c - 0.30, gain=0.10)
     elif name == 'iris': put(whoosh(0.50, 300, 4200, peak=0.9), c - 0.35, gain=0.09)
+    # Dexter kit IV (X Gon' Give It To Ya)
+    elif name == 'sub':
+        put(whoosh(0.35, 200, 2500, peak=0.9), c - 0.50, gain=0.05)
+        put(boom(0.45, 62, 34), c - HALF, gain=0.10); put(boom(0.7, 58, 30), c, gain=0.15); put(splat(0.06), c, gain=0.05)
+    elif name == 'ducttape':
+        for k_, (dl, pn) in enumerate(((0.0, -0.5), (0.05, 0.5), (0.025, -0.2))): put(rip(0.33), c - 0.40 + dl + 0.02, pan=pn, gain=0.025)
+        for k_, od in enumerate((0, 2, 1)): put(rip(0.18), c + 0.035 * od, pan=(-0.5, 0.5, -0.2)[k_], gain=0.07)
+    elif name == 'mugshot':
+        put(whoosh(0.22, 2000, 9000, q=4, peak=0.95, sweep_pan=False), c - 0.26, gain=0.025); put(tick(0.03, 4200), c - 0.21, gain=0.05)
+        put(shutter(), c - 0.05, gain=0.15); put(boom(0.3, 120, 50), c - 0.04, gain=0.08)
+    elif name == 'xslash':
+        put(shing(0.6), c - 0.31, pan=-0.4, gain=0.09); put(shing(0.6), c - 0.17, pan=0.4, gain=0.09)
+        put(boom(0.45, 100, 45), c, gain=0.11); put(splat(0.08), c, gain=0.05)
+    elif name == 'cuffs':
+        put(whoosh(0.25, 1500, 400, peak=0.4), c - 0.42, gain=0.05)
+        for k_ in range(6): put(tick(0.02, 3300 - 100 * k_), c - 0.20 + 0.017 * k_, gain=0.045)
+        put(clank(), c - 0.10, gain=0.08); put(boom(0.35, 90, 45), c, gain=0.09)
+    elif name == 'luminol':
+        put(tick(0.04, 1500), c - 0.45, gain=0.07); put(tick(0.03, 2600), c - 0.33, gain=0.05); put(buzz(0.30), c - 0.32, gain=0.02)
+        put(shimmer(0.4), c - 0.06, gain=0.04); put(boom(0.4, 90, 40), c, gain=0.10)
+    elif name == 'rollup':
+        put(crinkle(0.45), c - 0.40, gain=0.05); put(whoosh(0.5, 300, 2500, q=0.7, peak=0.8), c - 0.40, gain=0.06)
+    elif name == 'bulb':
+        put(buzz(0.30), c - 0.32, gain=0.025); put(pop_burst(), c - 0.02, gain=0.14); put(glass(0.6), c - 0.01, gain=0.06)
+        put(boom(0.4, 80, 40), c - 0.02, gain=0.08)
+    elif name == 'spray':
+        put(hiss(0.16), c - 0.40, pan=-0.3, gain=0.05); put(hiss(0.16), c - 0.22, pan=0.3, gain=0.05); put(boom(0.35, 100, 45), c, gain=0.09)
+    elif name == 'vinyl':
+        a_ = c - 0.85; put(crackle(0.5), a_ + 0.26, gain=0.03); put(boom(0.15, 120, 60), a_ + 0.48, gain=0.06)
+        put(whoosh(0.09, 2500, 500, q=3, peak=0.5, sweep_pan=False), a_ + 0.48, gain=0.08); put(whoosh(0.11, 500, 3000, q=3, peak=0.5, sweep_pan=False), a_ + 0.57, gain=0.08)
+        put(whoosh(0.25, 400, 4000, peak=0.9), c - 0.15, gain=0.06)
 
 
 for i, s in enumerate(SHOTS):
