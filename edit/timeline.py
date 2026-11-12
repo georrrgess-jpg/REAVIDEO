@@ -96,6 +96,9 @@ def layer(i, t, ez=1.0):
         elif name == 'sweep': f = sweep_fx(f, t, s)
         elif name == 'ripple': f = ripple_fx(f, t, s)
         elif name == 'dust': f = dust_fx(f, i, t, s)
+        elif name == 'markers': f = markers_fx(f, i, t, s)
+        elif name == 'idbox': f = idbox_fx(f, i, t, s)
+        elif name.startswith('stamp:'): f = stamp_fx(f, t, s, name[6:])
         elif name == 'glint': f = glint_fx(f, t, s)
         elif name == 'ghost': f = ghost_fx(f, i, t, s)
         elif name == 'trails': f = trails_fx(f, i, t, s)
@@ -2131,6 +2134,224 @@ def t_bloodwater(t, c, A, B, a, b):
     return bubbles(f, t, wk * 0.7, seed=9, n=22, t0=a)
 
 
+# ============================================================ Dexter kit IV: forensic graphics (photo, case file, stamps, markers, ID lock)
+def _font_px(path, size):
+    from PIL import ImageFont
+    key = ('font', path, size)
+    if key not in _DK: _DK[key] = ImageFont.truetype(path, size)
+    return _DK[key]
+
+
+INTER_BLACK = '/usr/share/fonts/opentype/inter/Inter-Black.otf'
+INTER_SEMI = '/usr/share/fonts/opentype/inter/Inter-SemiBold.otf'
+MONO = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf'
+
+
+def _text_mask(txt, path, size, pad=8):
+    from PIL import Image, ImageDraw
+    key = ('tm', txt, path, size)
+    if key in _DK: return _DK[key]
+    f = _font_px(path, size); l, t_, r, b = f.getbbox(txt)
+    img = Image.new('L', (r - l + 2 * pad, b - t_ + 2 * pad), 0); ImageDraw.Draw(img).text((pad - l, pad - t_), txt, font=f, fill=255)
+    _DK[key] = np.asarray(img, np.float32) / 255
+    return _DK[key]
+
+
+def _blit(f, mask, x, y, col, alpha=1.0):
+    """Paint a float mask (h, w) with colour at top-left (x, y), clipped to the frame."""
+    h, w = mask.shape; x, y = int(x), int(y)
+    x0, y0, x1, y1 = max(0, x), max(0, y), min(W, x + w), min(H, y + h)
+    if x1 <= x0 or y1 <= y0: return f
+    m = mask[y0 - y:y1 - y, x0 - x:x1 - x][..., None] * alpha
+    f[y0:y1, x0:x1] = f[y0:y1, x0:x1] * (1 - m) + np.float32(col) * m
+    return f
+
+
+def _shot_hits(s, after=0.12):
+    return sorted(tk for tk in _hits('KICKS') + _hits('SNARES') if s['start'] + after <= tk <= s['end'] - 0.15)
+
+
+# ---- rubber stamp
+def _stamp_sprite(txt):
+    key = ('stamp', txt)
+    if key in _DK: return _DK[key]
+    tm = _text_mask(txt, INTER_BLACK, 132, pad=0); th, tw = tm.shape; bw, bh = tw + 110, th + 90
+    m = np.zeros((bh, bw), np.float32); m[45:45 + th, 55:55 + tw] = tm
+    cv2.rectangle(m, (10, 10), (bw - 11, bh - 11), 1.0, 9, cv2.LINE_AA); cv2.rectangle(m, (26, 26), (bw - 27, bh - 27), 1.0, 3, cv2.LINE_AA)
+    n = cv2.resize(fbm(bh // 3, bw // 3, 4, hash(txt) % 997, 10), (bw, bh)); n2 = np.random.default_rng(3).random((bh, bw)).astype(np.float32)
+    ink = m * np.clip((n - 0.18) * 2.6, 0, 1) * (n2 > 0.08)                          # worn, uneven ink
+    _DK[key] = cv2.GaussianBlur(ink, (0, 0), 0.8)
+    return _DK[key]
+
+
+def stamp_fx(f, t, s, txt, k=0):
+    hits = _shot_hits(s); t0 = hits[min(k, len(hits) - 1)] if hits else s['start'] + 0.25
+    if t < t0: return f
+    u = t - t0; spr = _stamp_sprite(txt); rng = np.random.default_rng(len(txt))
+    ang = rng.uniform(-9, 9); sc = (1 + 0.9 * (1 - eout(u / 0.09))) * min(1.35, 0.85 * W / _stamp_sprite(txt).shape[1]); al = min(1.0, u / 0.04) * 0.95
+    h, w = spr.shape; cx, cy = W * rng.uniform(0.40, 0.60), H * 0.70
+    M = cv2.getRotationMatrix2D((w / 2, h / 2), ang, sc); M[0, 2] += cx - w / 2; M[1, 2] += cy - h / 2
+    m = cv2.warpAffine(spr, M, (W, H), flags=cv2.INTER_LINEAR)[..., None] * al
+    if u < 0.09: m = cv2.GaussianBlur(m[..., 0], (0, 0), 6 * (1 - u / 0.09) + 0.1)[..., None]
+    out = f * (1 - m * 0.9) + np.float32([0.10, 0.08, 0.78]) * m * 0.9
+    return out * (1 + 0.15 * max(0.0, 1 - u / 0.07))                                  # impact flash
+
+
+# ---- evidence markers
+def _marker_sprite(num):
+    key = ('marker', num)
+    if key in _DK: return _DK[key]
+    w, h = 150, 170; col = np.zeros((h, w, 3), np.float32); al = np.zeros((h, w), np.float32)
+    front = np.array([[18, 62], [132, 62], [146, 166], [4, 166]], np.int32); top = np.array([[30, 8], [120, 8], [132, 62], [18, 62]], np.int32)
+    cv2.fillConvexPoly(al, front, 1.0, cv2.LINE_AA); cv2.fillConvexPoly(al, top, 1.0, cv2.LINE_AA)
+    cv2.fillConvexPoly(col, front, (0.05, 0.80, 0.98), cv2.LINE_AA); cv2.fillConvexPoly(col, top, (0.03, 0.58, 0.78), cv2.LINE_AA)
+    cv2.line(col, (18, 62), (132, 62), (0.02, 0.35, 0.50), 2, cv2.LINE_AA)
+    tm = _text_mask(str(num), INTER_BLACK, 78, pad=0); th, tw = tm.shape; y0, x0 = 75 + (85 - th) // 2, (w - tw) // 2
+    col[y0:y0 + th, x0:x0 + tw] *= (1 - tm[..., None])
+    _DK[key] = (col, al)
+    return _DK[key]
+
+
+def markers_fx(f, i, t, s):
+    hits = _shot_hits(s)[:3] or [s['start'] + 0.2]
+    base = 1 + 3 * sum(1 for j in range(i) if 'markers' in SHOTS[j].get('fx', ()))
+    spots = [(0.20, 0.86), (0.78, 0.83), (0.50, 0.92)]
+    out = f
+    for k, t0 in enumerate(hits):
+        if t < t0: continue
+        u = t - t0; col, al = _marker_sprite(base + k); h, w = al.shape
+        sc = 1.35 * (1 + 0.35 * math.sin(math.pi * min(1, u / 0.12)) * (u < 0.12)) * min(1.0, eout(u / 0.08) + 0.01)
+        x, y = spots[k][0] * W, spots[k][1] * H - 40 * (1 - eout(u / 0.10))
+        M = np.float32([[sc, 0, x - sc * w / 2], [0, sc, y - sc * h]])
+        a = cv2.warpAffine(al, M, (W, H))[..., None]; c_ = cv2.warpAffine(col, M, (W, H))
+        sh = cv2.GaussianBlur(np.roll(np.roll(a[..., 0], 10, 0), 16, 1), (0, 0), 9)[..., None] * 0.5
+        out = out * (1 - sh) * (1 - a) + c_ * a
+    return out
+
+
+# ---- face lock HUD
+def idbox_fx(f, i, t, s, label='SUBJECT 01'):
+    k = round((PRE + t - s['start']) * FPS); m = META[i]; k = int(min(max(k, m['lo']), m['hi']))
+    lm = None
+    for kk in (k, k - 1, k - 2, k + 1, k - 3):
+        lm = _landmarks(i, kk)
+        if lm: break
+    if not lm: return f
+    hits = _shot_hits(s, 0.05); t0 = hits[0] if hits else s['start'] + 0.1
+    if t < t0: return f
+    u = t - t0
+    z = max(lerp(s['push'][0], s['push'][1], (t - s['start']) / (s['end'] - s['start'])), 1.0) * (1 + bump_amount(t, s) if 'bump' in s.get('fx', ()) else 1)
+    ex, ey = (lm[0][0] + lm[1][0]) / 2, (lm[0][1] + lm[1][1]) / 2; fw = lm[2]
+    cx, cy = W / 2 + (ex - W / 2) * z, H * 0.42 + (ey + 0.20 * fw - H * 0.42) * z
+    snap = 1 + 0.6 * (1 - eout(u / 0.14)); bw, bh = fw * z * 0.72 * snap, fw * z * 0.95 * snap
+    can = np.zeros((H, W), np.float32); L = int(min(bw, bh) * 0.28)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            px, py = int(cx + sx * bw), int(cy + sy * bh)
+            cv2.line(can, (px, py), (px - sx * L, py), 1.0, 5, cv2.LINE_AA); cv2.line(can, (px, py), (px, py - sy * L), 1.0, 5, cv2.LINE_AA)
+    blink = 1.0 if u > 0.14 else (0.5 + 0.5 * math.sin(u * 120))
+    out = f * (1 - can[..., None] * blink) + np.float32([0.95, 0.97, 1.0]) * (can * blink)[..., None]
+    out = out + cv2.GaussianBlur(can, (0, 0), 6)[..., None] * np.float32([0.2, 0.25, 0.6]) * 0.6 * blink
+    lines = [label, 'MATCH %d%%' % min(98, int(40 + 600 * max(0.0, u - 0.15)))]
+    ty = int(cy + bh + 18)
+    for j, txt in enumerate(lines):
+        n = int(len(txt) * clamp((u - 0.12 - 0.12 * j) / 0.22))
+        if n <= 0: continue
+        tm = _text_mask(txt[:n], MONO, 38, pad=4); x = int(cx - bw)
+        out = _blit(out, cv2.dilate(tm, np.ones((5, 5), np.uint8)), x, ty + j * 52, (0, 0, 0), 0.55)
+        out = _blit(out, tm, x, ty + j * 52, (0.15, 0.15, 0.95) if j else (0.95, 0.97, 1.0))
+    return out
+
+
+# ---- forensic camera opener
+def _viewfinder(f, k, t, case='CASE 0915-07'):
+    if k <= 0.01: return f
+    can = np.zeros((H, W), np.float32); m, L = 70, 170
+    for (x, y, dx, dy) in ((m, m + 40, 1, 1), (W - m, m + 40, -1, 1), (m, H - m - 40, 1, -1), (W - m, H - m - 40, -1, -1)):
+        cv2.line(can, (x, y), (x + dx * L, y), 1.0, 11, cv2.LINE_AA); cv2.line(can, (x, y), (x, y + dy * L), 1.0, 11, cv2.LINE_AA)
+    cx, cy = W // 2, int(H * 0.42)
+    cv2.line(can, (cx - 60, cy), (cx + 60, cy), 1.0, 5, cv2.LINE_AA); cv2.line(can, (cx, cy - 60), (cx, cy + 60), 1.0, 5, cv2.LINE_AA)
+    cv2.circle(can, (cx, cy), 150, 1.0, 4, cv2.LINE_AA)
+    out = f * (1 - can[..., None] * k * 0.95) + np.float32([0.95, 0.97, 1.0]) * (can * k * 0.95)[..., None]
+    for txt, x, y in ((case, m + 10, m + 70), ('ISO 800  1/250  f2.8', m + 10, H - m - 110)):
+        tm = _text_mask(txt, MONO, 58, pad=4); out = _blit(out, cv2.dilate(tm, np.ones((7, 7), np.uint8)), x, y, (0, 0, 0), 0.5 * k); out = _blit(out, tm, x, y, (0.95, 0.97, 1.0), k)
+    if int(t * 4) % 2 == 0:
+        dot = np.zeros((H, W), np.float32); cv2.circle(dot, (W - m - 200, m + 100), 22, 1.0, -1, cv2.LINE_AA)
+        out = out * (1 - dot[..., None] * k) + np.float32([0.1, 0.1, 0.95]) * (dot * k)[..., None]
+    tm = _text_mask('REC', MONO, 58, pad=4); out = _blit(out, tm, W - m - 165, m + 70, (0.95, 0.97, 1.0), k)
+    # ABFO-style L scale along the bottom
+    sx0, sy = m + 20, H - m - 170; Lr = int((W - 2 * m - 40) * k)
+    sc = np.zeros((H, W), np.float32); cv2.rectangle(sc, (sx0, sy - 34), (sx0 + Lr, sy), 1.0, -1)
+    out = out * (1 - sc[..., None] * 0.85) + np.float32([0.92, 0.93, 0.93]) * sc[..., None] * 0.85
+    for j in range(0, Lr, 24):
+        h_ = 22 if j % 120 == 0 else 12; cv2.line(out, (sx0 + j, sy - 34), (sx0 + j, sy - 34 + h_), (0.05, 0.05, 0.05), 2, cv2.LINE_AA)
+    return out
+
+
+def _aperture(f, open_, cx=W / 2, cy=H * 0.42, n=6):
+    """Camera aperture: n overlapping blades; open_ = 1 fully open, 0 closed."""
+    if open_ >= 0.999: return f
+    rr, th = _polar(cx, cy); R = open_ * 0.75 * math.hypot(W, H)
+    seg = 2 * math.pi / n; rot = (1 - open_) * 1.1
+    a = (th + rot) % seg - seg / 2
+    poly_r = R * math.cos(seg / 2) / np.maximum(np.cos(a), 1e-3)                     # n-gon opening
+    blade = ss(poly_r - 2, poly_r + 2, rr)
+    edges = np.exp(-(((th + rot + seg * 0.5) % seg - seg / 2) * rr / 4) ** 2) * blade
+    shade = 0.10 + 0.08 * np.cos(th * n + rot * 3)
+    col = np.float32([1, 1, 1]) * shade[..., None] + (edges * 0.25)[..., None]
+    rim = np.exp(-((rr - poly_r) / 3) ** 2) * 0.5
+    return f * (1 - blade[..., None]) + col * blade[..., None] + rim[..., None]
+
+
+def t_photo(t, c, A, B, a, b):
+    """Forensic camera: a viewfinder (brackets, case number, REC, scale) frames the shot, focus pulls in, the
+    aperture blades snap shut, flash, and they open on the next shot."""
+    if t < c:
+        p = (t - a) / (c - a); k = eout(clamp(p / 0.35))
+        f = blur(layer(A, t, 1 + 0.05 * p), 10 * (1 - ease(clamp(p / 0.5))) * (p < 0.5))
+        f = _viewfinder(f, k, t)
+        return _aperture(f, 1 - ein(clamp((p - 0.72) / 0.28)))
+    u = clamp((t - c) / (b - c)); f = layer(B, t, 1 + 0.08 * (1 - u))
+    f = _viewfinder(f, 1 - ease(clamp(u / 0.6)), t)
+    f = _aperture(f, eout(clamp(u / 0.45)))
+    return f + 1.1 * (1 - eout(clamp(u / 0.35)))
+
+
+# ---- case file
+def _folder_sprite():
+    if 'folder' in _DK: return _DK['folder']
+    from PIL import Image, ImageDraw
+    img = Image.new('RGB', (W, H), (222, 196, 140)); d = ImageDraw.Draw(img)               # manila
+    d.rectangle([W - 380, 140, W - 60, 230], fill=(205, 176, 118)); d.rectangle([W - 360, 160, W - 80, 210], fill=(245, 245, 240))
+    d.text((W - 345, 162), 'MORGAN, DEXTER', font=_font_px(MONO, 34), fill=(30, 30, 30))
+    d.text((90, 300), 'CASE FILE', font=_font_px(INTER_BLACK, 120), fill=(70, 55, 35))
+    d.text((92, 450), 'MIAMI  0915-07  HOMICIDE', font=_font_px(MONO, 40), fill=(70, 55, 35))
+    for k in range(6): d.line([(90, 620 + 70 * k), (W - 90, 620 + 70 * k)], fill=(170, 145, 95), width=3)
+    a = np.asarray(img).astype(np.float32)[..., ::-1] / 255
+    a *= (0.9 + 0.16 * cv2.resize(fbm(H // 8, W // 8, 4, 64, 6), (W, H)))[..., None]       # paper fibre
+    st = _stamp_sprite('CONFIDENTIAL'); sh, sw = st.shape
+    M = cv2.getRotationMatrix2D((sw / 2, sh / 2), 12, 0.95); M[0, 2] += W * 0.5 - sw / 2; M[1, 2] += H * 0.66 - sh / 2
+    m = cv2.warpAffine(st, M, (W, H))[..., None]; a = a * (1 - m * 0.85) + np.float32([0.12, 0.10, 0.78]) * m * 0.85
+    _DK['folder'] = a
+    return a
+
+
+def t_casefile(t, c, A, B, a, b):
+    """A manila case-file cover (typed tab, CONFIDENTIAL stamp) swings shut over the frame on its left hinge,
+    then swings open onto the next shot."""
+    cov = _folder_sprite()
+    if t < c: base = layer(A, t); ang = (1 - ein(clamp((t - a) / (c - a)))) * math.radians(88)
+    else: base = layer(B, t, 1 + 0.08 * (1 - clamp((t - c) / (b - c)))); ang = eout(clamp((t - c) / (b - c))) * math.radians(88)
+    wl = max(2.0, W * math.cos(ang)); dpt = H * 0.08 * math.sin(ang)
+    P = cv2.getPerspectiveTransform(np.float32([[0, 0], [W, 0], [W, H], [0, H]]), np.float32([[0, 0], [wl, -dpt], [wl, H + dpt], [0, H]]))
+    shade = 1 - 0.45 * math.sin(ang)
+    door = cv2.warpPerspective(cov * shade, P, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    m = cv2.warpPerspective(np.ones((H, W), np.float32), P, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)[..., None]
+    shadow = np.clip((wl + 140 - XX) / 140, 0, 1) * (XX > wl) * 0.55 * (1 - abs(math.cos(ang)) ** 4)
+    base = base * (1 - shadow[..., None])
+    return base * (1 - m) + door * m + (0.25 * max(0.0, 1 - abs(t - c) / 0.05))
+
+
 # Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
 # c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
 # so the same transition works at any tempo and position.
@@ -2167,6 +2388,8 @@ TRANSITIONS = {
     'sunburst':  (lambda c, o: (c - .32, c + .30), lambda t, c, A, B, o: t_sunburst(t, c, A, B, c - .32, c + .30, o.get('sx', 0.80), o.get('sy', 0.13))),
     'clouds':    (lambda c, o: (c - .32, c + .32), lambda t, c, A, B, o: t_clouds(t, c, A, B, c - .32, c + .32)),
     'runby':     (lambda c, o: (c - .26, c + .26), lambda t, c, A, B, o: t_runby(t, c, A, B, c - .26, c + .26, o.get('y', 0.52))),
+    'photo':     (lambda c, o: (c - .55, c + .30), lambda t, c, A, B, o: t_photo(t, c, A, B, c - .55, c + .30)),
+    'casefile':  (lambda c, o: (c - .38, c + .38), lambda t, c, A, B, o: t_casefile(t, c, A, B, c - .38, c + .38)),
     'strings':   (lambda c, o: (c - .55, c + .38), lambda t, c, A, B, o: t_strings(t, c, A, B, c - .55, c + .38, o.get('px', 0.5), o.get('py', 0.40))),
     'bag':       (lambda c, o: (c - .45, c + .38), lambda t, c, A, B, o: t_bag(t, c, A, B, c - .45, c + .38)),
     'crown':     (lambda c, o: (c - .40, c + .42), lambda t, c, A, B, o: t_crown(t, c, A, B, c - .40, c + .42, o.get('px', 0.5), o.get('py', 0.46))),

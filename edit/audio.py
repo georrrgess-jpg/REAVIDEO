@@ -255,6 +255,12 @@ def sfx_for(name, c, o, up):
     elif name == 'knife':
         put(whoosh(0.30, 600, 4200, peak=0.85), c - 0.30, pan=0.4, gain=0.07); put(shing(), c - 0.12, pan=0.2, gain=0.11)
         put(boom(0.35, 110, 50), c, gain=0.08)
+    elif name == 'photo':
+        put(tick(0.05, 3200), c - 0.50, gain=0.04); put(tick(0.05, 3600), c - 0.42, gain=0.04)
+        put(shutter(), c - 0.06, gain=0.17); put(whoosh(0.3, 5000, 900, peak=0.15), c, gain=0.05)
+    elif name == 'casefile':
+        put(whoosh(0.38, 900, 200, q=0.7, peak=0.8), c - 0.38, gain=0.08); put(boom(0.3, 140, 60), c, gain=0.09); put(splat(0.05), c, gain=0.05)
+        put(whoosh(0.35, 200, 900, q=0.7, peak=0.2), c + 0.02, gain=0.06)
     elif name == 'strings':
         for k in range(9):
             put(splat(0.06), c - 0.55 + (0.03 + 0.32 * k / 8) * 0.55, pan=-0.6 + 0.15 * k, gain=0.045)
@@ -323,6 +329,17 @@ def sfx_for(name, c, o, up):
 for i, s in enumerate(SHOTS):
     o = s.get('out_opts', {}); name = s.get('out', 'cut'); c = CUTS[i + 1]
     sfx_for(name, c, o, up=math.cos(math.radians(o.get('ang', -38))) > 0)
+    _hs = sorted(GRID0 + k_ * HALF for k_ in globals().get('KICKS', []) + globals().get('SNARES', []))
+    _hits_in = [x for x in _hs if s['start'] + 0.12 <= x <= s['end'] - 0.15]
+    for fxn in s.get('fx', ()):
+        if fxn.startswith('stamp:'):
+            t0 = _hits_in[0] if _hits_in else s['start'] + 0.25
+            put(boom(0.25, 160, 60), t0, gain=0.10); put(splat(0.05), t0, gain=0.06)
+        elif fxn == 'markers':
+            for k_, t0 in enumerate((_hits_in or [s['start'] + 0.2])[:3]): put(tick(0.06, 1700 + 200 * k_), t0, pan=-0.5 + 0.5 * k_, gain=0.05)
+        elif fxn == 'idbox':
+            t0 = (_hits_in or [s['start'] + 0.1])[0]; put(tick(0.08, 2900), t0, gain=0.05)
+            for k_ in range(8): put(tick(0.02, 4200), t0 + 0.13 + 0.03 * k_, gain=0.015)
     if 'crackle_blue' in s.get('fx', ()): put(zap(s['end'] - s['start']), s['start'], gain=0.03)
     if 'crackle_build' in s.get('fx', ()): put(zap(s['end'] - s['start']), s['start'], gain=0.035)
     if 'streaks' in s.get('fx', ()): put(shimmer(0.62), s['end'] - 0.62, pan=0.3, gain=0.030)
