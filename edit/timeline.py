@@ -1717,6 +1717,143 @@ def t_clock(t, A, B, a, op, end):
     return draw_clock(fa, cx, cy, R, spin / 12, spin, spin * 6, open_r=0.05 + 0.95 * eout(u ** 0.8), window=fb, swirl=2.0 * (1 - u))
 
 
+# ============================================================ Duality kit (Dexter x New Person, Same Old Mistakes)
+_DK = {}
+
+
+def _polar(cx, cy):
+    key = ('polar', int(cx), int(cy))
+    if key not in _DK:
+        X = XX - cx; Y = YY - cy; _DK[key] = (np.sqrt(X * X + Y * Y), np.arctan2(Y, X))
+    return _DK[key]
+
+
+def kaleido(f, k, rot, zoom_, n=6, cx=W / 2, cy=H * 0.42):
+    """Fold the frame into an n-way mirrored kaleidoscope (k = blend 0..1)."""
+    if k <= 0.01: return f
+    rr, th = _polar(cx, cy); seg = 2 * np.pi / n
+    a = (th + rot) % seg; a = np.where(a > seg / 2, seg - a, a)               # mirror inside each wedge
+    base = -np.pi / 2 - seg / 4                                               # wedge samples upward, over the face
+    r2 = rr * zoom_
+    mx = (cx + r2 * np.cos(a + base)).astype(np.float32); my = (cy + r2 * np.sin(a + base)).astype(np.float32)
+    g = cv2.remap(f, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    return f * (1 - k) + g * k if k < 0.999 else g
+
+
+def t_kaleido(t, c, A, B, a, b):
+    """The frame folds into a turning 6-way kaleidoscope, blooms with colour fringes, and unfolds into the next shot."""
+    u = clamp((t - a) / (b - a)); k = math.sin(math.pi * u) ** 0.6
+    mix = ease(clamp((u - 0.42) / 0.16))
+    src = layer(A, t) * (1 - mix) + layer(B, t) * mix if 0 < mix < 1 else (layer(B, t) if mix >= 1 else layer(A, t))
+    f = kaleido(src, k, rot=2.4 * ease(u) + 0.6 * t, zoom_=1.0 + 0.55 * k, n=8)
+    sp = int(16 * k)
+    if sp:
+        f = f.copy(); f[..., 2] = np.roll(f[..., 2], sp, 1); f[..., 0] = np.roll(f[..., 0], -sp, 1)
+    rr, _ = _polar(W / 2, H * 0.42)
+    return f * (1 + 0.15 * k)
+
+
+# crime-scene tape
+def _tape():
+    if 'tape' not in _DK:
+        from PIL import Image, ImageDraw, ImageFont
+        Lw, Ht = 3600, 150; img = Image.new('RGB', (Lw, Ht), (14, 196, 247))      # BGR order handled below: stored as BGR
+        d = ImageDraw.Draw(img); f = ImageFont.truetype('/usr/share/fonts/opentype/inter/Inter-Black.otf', 74)
+        txt = 'CRIME SCENE  DO NOT CROSS   '; x = 20
+        while x < Lw:
+            d.text((x, Ht / 2 - 46), txt, font=f, fill=(10, 10, 12)); x += f.getlength(txt)
+        a = np.asarray(img).astype(np.float32) / 255
+        a[:9] *= 0.25; a[-9:] *= 0.25                                              # dark edge stripes
+        n = fbm(Ht // 2, Lw // 8, 3, 91, 6); a *= (0.88 + 0.18 * cv2.resize(n, (Lw, Ht)))[..., None]   # plastic sheen/wrinkles
+        _DK['tape'] = a
+    return _DK['tape']
+
+
+_TAPES = [(-14, 0.18, 0.00), (9, 0.36, 0.05), (-6, 0.55, 0.10), (12, 0.73, 0.03), (-10, 0.90, 0.08), (4, 0.08, 0.12), (-3, 0.46, 0.15), (7, 0.64, 0.02), (-12, 0.99, 0.13)]
+
+
+def t_tape(t, c, A, B, a, b):
+    """Crime-scene tape whips across the frame in layers until it covers it, then rips away to reveal the next shot."""
+    T = _tape(); Ht, Lw = T.shape[:2]
+    f = layer(A, t) if t < c else layer(B, t)
+    al_all = np.zeros((H, W), np.float32); col_all = np.zeros((H, W, 3), np.float32)
+    for k, (ang, yf, dl) in enumerate(_TAPES):
+        if t < c:
+            p = eout(clamp((t - a - dl * (c - a)) / ((c - a) * 0.6))); d = 1 if k % 2 == 0 else -1
+            x_off = d * (1 - p) * (Lw * 1.9 / 2 + W * 0.6)                       # leading end starts just off-screen
+        else:
+            p = ein(clamp((t - c - dl * 0.4 * (b - c)) / ((b - c) * 0.7))); d = -1 if k % 2 == 0 else 1
+            x_off = d * p * (Lw * 1.9 / 2 + W * 0.6)                             # pulled fully clear lengthwise
+        th = math.radians(ang + 4 * math.sin(t * 7 + k)); sc = 1.9
+        cx, cy = W / 2 + x_off, yf * H
+        M = cv2.getRotationMatrix2D((Lw / 2, Ht / 2), -math.degrees(th), sc); M[0, 2] += cx - Lw / 2; M[1, 2] += cy - Ht / 2
+        col = cv2.warpAffine(T, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        al = cv2.warpAffine(np.ones((Ht, Lw), np.float32), M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        sh = cv2.GaussianBlur(np.roll(al, 22, 0), (0, 0), 12) * 0.45
+        f = f * (1 - sh[..., None]); f = f * (1 - al[..., None]) + col * al[..., None]
+    return f
+
+
+# Rorschach blot
+def _blot(seed=17):
+    """Symmetric ink-blot distance field: a few big mirrored lobes on the fold, ragged symmetric edges."""
+    if 'blot' not in _DK:
+        h, w = H // 4, W // 4; r = np.random.default_rng(seed); yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        F = np.sqrt(((xx / w) - 0.5) ** 2 * 25 + 0.0 * yy) / 1.0                    # starts as a line on the fold
+        for sx, sy, rad in ((0.0, 0.42, 0.20), (0.16, 0.30, 0.15), (0.20, 0.55, 0.13), (0.10, 0.72, 0.14), (0.28, 0.40, 0.08), (0.0, 0.88, 0.09)):
+            for X in (0.5 - sx, 0.5 + sx):
+                F = np.minimum(F, np.sqrt(((xx / w) - X) ** 2 + ((yy / h) - sy) ** 2 * 0.40) / rad)
+        n = fbm(h, w, 5, seed, 10); n = (n + n[:, ::-1]) / 2
+        F = F + 0.32 * (n - 0.5)
+        _DK['blot'] = (cv2.resize(F, (W, H), interpolation=cv2.INTER_CUBIC), float(np.percentile(F, 99.8)) + 0.2)
+    return _DK['blot']
+
+
+def t_rorschach(t, c, A, B, a, b):
+    """A symmetric ink blot blooms out from the fold like a Rorschach card; the next shot lives inside it."""
+    Fu, Fmax = _blot(); u = clamp((t - a) / (b - a))
+    g = lerp(0.05, Fmax, 0.15 * u + 0.85 * ein(u) ** 0.9)
+    inside = ss(g + 0.03, g - 0.03, Fu)[..., None]
+    rim = np.exp(-((Fu - g) / 0.05) ** 2) + 0.6 * ss(g + 0.12, g, Fu) * ss(g - 0.02, g + 0.02, Fu)
+    fa = layer(A, t); fb = layer(B, t, 1 + 0.12 * (1 - u))
+    paper = fa * (1 - 0.35 * ease(u * 2))                                          # the old shot darkens like aged paper
+    f = paper * (1 - inside) + fb * inside
+    ink = np.float32([0.02, 0.02, 0.03])
+    m = np.clip(rim * 1.4, 0, 1)[..., None]
+    f = f * (1 - m) + ink * m
+    sheen = np.exp(-((Fu - g + 0.03) / 0.02) ** 2) * 0.25
+    return f + sheen[..., None] * np.float32([0.9, 0.85, 0.8])
+
+
+# two faces: mirror, then doors
+def t_mirror(t, c, A, B, a, b):
+    """His face folds into a perfect mirror image (the two Dexters), a seam of light splits it, and the halves
+    swing open like doors onto the next shot."""
+    s = SHOTS[A]; fa = layer(A, min(t, c))
+    mid = W // 2
+    mirrored = fa.copy(); mirrored[:, mid:] = fa[:, :mid][:, ::-1][:, :W - mid]
+    if t < c:
+        k = ease(clamp((t - a) / ((c - a) * 0.5)))
+        f = fa * (1 - k) + mirrored * k
+        seam = np.exp(-((XX - mid) / 3) ** 2) * ease(clamp((t - a) / (c - a)))
+        return f + (seam * 1.2 + cv2.GaussianBlur(seam, (0, 0), 18) * 0.6)[..., None] * np.float32([0.9, 0.95, 1.0])
+    u = clamp((t - c) / (b - c)); ang = ein(u) * math.radians(88)
+    fb = layer(B, t, 1 + 0.1 * (1 - u))
+    out = fb * (0.55 + 0.45 * ease(u))
+    wl = max(2, int(mid * math.cos(ang))); dpt = H * 0.10 * math.sin(ang)
+    for side in (0, 1):
+        half = mirrored[:, :mid] if side == 0 else mirrored[:, mid:]
+        hw = half.shape[1]
+        src = np.float32([[0, 0], [hw, 0], [hw, H], [0, H]])
+        if side == 0: dst = np.float32([[0, 0], [wl, dpt], [wl, H - dpt], [0, H]])
+        else: dst = np.float32([[W - wl, dpt], [W, 0], [W, H], [W - wl, H - dpt]])
+        P = cv2.getPerspectiveTransform(src, dst)
+        door = cv2.warpPerspective(half * (1 - 0.6 * math.sin(ang)), P, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        m = cv2.warpPerspective(np.ones((H, hw), np.float32), P, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)[..., None]
+        out = out * (1 - m) + door * m
+    return out + (1 - eout(u / 0.25)) * 0.35
+
+
 # Transition registry: name -> (window(c, o) -> (start, end), render(t, c, A, B, o)).
 # c is the cut time into shot B, o the shot's out_opts. Windows are relative to the cut,
 # so the same transition works at any tempo and position.
@@ -1753,6 +1890,10 @@ TRANSITIONS = {
     'sunburst':  (lambda c, o: (c - .32, c + .30), lambda t, c, A, B, o: t_sunburst(t, c, A, B, c - .32, c + .30, o.get('sx', 0.80), o.get('sy', 0.13))),
     'clouds':    (lambda c, o: (c - .32, c + .32), lambda t, c, A, B, o: t_clouds(t, c, A, B, c - .32, c + .32)),
     'runby':     (lambda c, o: (c - .26, c + .26), lambda t, c, A, B, o: t_runby(t, c, A, B, c - .26, c + .26, o.get('y', 0.52))),
+    'kaleido':   (lambda c, o: (c - .45, c + .40), lambda t, c, A, B, o: t_kaleido(t, c, A, B, c - .45, c + .40)),
+    'tape':      (lambda c, o: (c - .34, c + .30), lambda t, c, A, B, o: t_tape(t, c, A, B, c - .34, c + .30)),
+    'rorschach': (lambda c, o: (c - .30, c + .45), lambda t, c, A, B, o: t_rorschach(t, c, A, B, c - .30, c + .45)),
+    'mirror':    (lambda c, o: (c - .45, c + .40), lambda t, c, A, B, o: t_mirror(t, c, A, B, c - .45, c + .40)),
     'knife':     (lambda c, o: (c - .30, c + .34), lambda t, c, A, B, o: t_knife(t, c, A, B, c - .30, c + .34)),
     'scope':     (lambda c, o: (c - .40, c + .38), lambda t, c, A, B, o: t_scope(t, c, A, B, c - .40, c + .38, o.get('px', 0.5), o.get('py', 0.5))),
     'plastic':   (lambda c, o: (c - .30, c + .40), lambda t, c, A, B, o: t_plastic(t, c, A, B, c - .30, c + .40)),

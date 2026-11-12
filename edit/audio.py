@@ -230,6 +230,16 @@ def sfx_for(name, c, o, up):
     elif name == 'knife':
         put(whoosh(0.30, 600, 4200, peak=0.85), c - 0.30, pan=0.4, gain=0.07); put(shing(), c - 0.12, pan=0.2, gain=0.11)
         put(boom(0.35, 110, 50), c, gain=0.08)
+    elif name == 'kaleido':
+        put(shimmer(0.8), c - 0.45, pan=-0.3, gain=0.04); put(whoosh(0.85, 300, 4000, q=0.7, peak=0.5), c - 0.45, gain=0.07)
+    elif name == 'tape':
+        put(whoosh(0.30, 800, 5000, peak=0.6), c - 0.34, pan=0.5, gain=0.07); put(crinkle(0.35), c - 0.25, gain=0.06)
+        put(crinkle(0.25), c + 0.02, pan=-0.4, gain=0.08); put(whoosh(0.25, 4000, 900, peak=0.2), c, gain=0.06)
+    elif name == 'rorschach':
+        put(splat(0.18), c - 0.30, gain=0.09); put(whoosh(0.7, 200, 900, q=0.6, peak=0.6), c - 0.28, gain=0.07)
+    elif name == 'mirror':
+        put(shimmer(0.5), c - 0.45, gain=0.04); put(tick(0.10, 3000), c - 0.02, gain=0.06)
+        put(whoosh(0.40, 1800, 300, q=0.8, peak=0.25), c, pan=-0.5, gain=0.06); put(whoosh(0.40, 1800, 300, q=0.8, peak=0.25), c, pan=0.5, gain=0.06)
     elif name == 'sunburst':
         put(shimmer(0.7), c - 0.32, pan=0.5, gain=0.04); put(whoosh(0.45, 300, 6000, q=0.7, peak=0.85), c - 0.40, gain=0.07); put(boom(0.4, 110, 50), c, gain=0.06)
     elif name == 'clouds':

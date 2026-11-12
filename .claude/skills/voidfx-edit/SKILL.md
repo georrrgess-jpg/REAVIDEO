@@ -177,6 +177,14 @@ Blue-sky kit (first used in `edits/blue_sky`, Flash × Mr. Blue Sky):
 - `clock` (loop): a drawn clock with lightning-bolt hands pops in, spins backwards faster and faster while the world swirls, then its face opens and the camera falls through it into shot 0. "Time rewinds" to loop; good for speedsters.
 - Section note: when the chorus finder is unreliable (long instrumental outros), map vocals with `rea-video stems`, then pick the 8 bars of the strongest full-band vocal stretch that end at a section change.
 
+Duality kit (first used in `edits/new_person`, Dexter × New Person, Same Old Mistakes):
+- `kaleido`: the frame folds into a turning 8-way kaleidoscope with colour fringes and unfolds into the next shot. Psychedelic; good for Tame Impala-style songs.
+- `tape`: layered yellow "CRIME SCENE DO NOT CROSS" tape whips in lengthwise until it covers the frame, then rips fully clear.
+- `rorschach`: a symmetric ink blot opens from the centre fold with an ink rim; the next shot is inside it.
+- `mirror`: the face folds into a perfect mirror double (two faces), a light seam splits it, and the halves swing open like perspective doors.
+- Rhythm note: when the kick falls on odd half-beats, cut in 3-3-2 groups so every kick gets a cut.
+- Footage note: all stored packs are really 720p. The user asked for 1080p clips without AI upscaling, chose "720p, no AI" when told no 1080p exists, and asked for efficiency. Default to plain extract (no `--sr`) unless asked; ask for 1080p+ packs when quality matters.
+
 Grade option `yk` (yellow keep) keeps gold, orange and lightning saturated in a muted grade, the way `rk` does for red. The Flash look is `sat .45, rk 1.0, yk 1.0`.
 
 Other overlays: `fx=['leak_bubbles']` (red light leak and drifting particles) on a long hold before the ending.
@@ -247,6 +255,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-12: Dexter × New Person, Same Old Mistakes (`edits/new_person`): the user asked for the best Dexter edit yet, with stunning unique transitions, no AI upscaling (1080p clips preferred; none exist, so 720p with plain resizing) and an efficient build. Final `dexter_new_person_edit_v1.mp4`: 18.95 s at 60 fps, 74.5 MB, built in about 1 hour with no upscaling pass.
 - 2026-11-11: The user asked for the best Flash edit yet, with custom graphics and animations, set to Mr. Blue Sky. Built `edits/blue_sky` (final `flash_blue_sky_edit_v1.mp4`: 21.65 s at 60 fps, 84.8 MB, hard cuts 4–14 ms from the beat, no frozen or black frames): a bright sunny grade (sat .78) instead of the muted speedster look, ML-upscaled footage, and the blue-sky kit above.
 - 2026-11-10: The user asked for the best Dexter edit yet, "above and beyond", with multiple custom effects, animations, graphics and transitions, using voidfx references and The Less I Know The Better. Built `edits/less_i_know` (see "Flagship candidate"). It is the first edit with lyric typography, a black-and-white selective-red grade, and ML upscaling.
 - 2026-11-10: **The user made Flash × Slaughter House v3 the standard for speedster / powered-character edits**, while noting it is still not at the quality they're pursuing (see "Second standard"). `new_edit.py --from flash` scaffolds from it.
