@@ -1,9 +1,13 @@
 """Start a new edit from a STANDARD.
 
-  python edit/tools/new_edit.py NAME --song media/song.mp3 --section media/NAME_section.json [--from hold_on|flash] [--pack PACK]
+  python edit/tools/new_edit.py NAME --song media/song.mp3 --section media/NAME_section.json [--from new_person|hold_on|flash] [--pack PACK]
 
 Standards (user-approved):
-  hold_on  Dexter x Hold On v3: the general standard (grounded character edits). Default.
+  new_person  Dexter x New Person, Same Old Mistakes v6: THE Dexter standard (latest). Default. Every shot
+              moves (pick with tools/motion.py), automatic face framing, every transition a custom drawn
+              graphic (badge, newspaper, evidence bag, tape, blinds, plastic, crown, red, knife, case file),
+              thematic slide-box loop. 16 slots, 3-3-2 rhythm on off-beat kicks.
+  hold_on  Dexter x Hold On v3: the earlier Dexter standard (22 slots).
   flash    Flash x Slaughter House v3: the standard for speedster / superpower edits (lightning, emblem,
            speed). The user called it adequate but not yet at the quality they are pursuing: beat it.
 
@@ -70,9 +74,28 @@ ROLES_FLASH = [
     'cold, blue, tech or helmet shot (blue arcs; dips to dark)',
     'END: warm civilian close-up, long hold, looking up (shockwave ripples; the bolt-split loops to OPEN)',
 ]
-TEMPLATES = {'hold_on': (os.path.join(ROOT, 'edits', 'hold_on', 'config.py'), ROLES_HOLD_ON, 'dexter_mix_1440p'),
+ROLES_NEW_PERSON = [
+    'OPEN: friendly, sunlit Dexter doing something (sunglasses on); his ID badge drops in and dives into the next shot',
+    'crime scene, handheld, he moves toward camera',
+    'at work in the lab, walking or turning (face-lock overlay)',
+    'close, warm-lit, an object in his hands',
+    'suspect look: hood or cap going up; exits through the spinning newspaper headline',
+    'smirk while walking (goes into the evidence bag)',
+    'outdoor turn, flat daylight',
+    'driving or framed by a window, glancing (face-lock; blinds out)',
+    'public joy (parade, crowd)',
+    'stark black-and-white or high-contrast stare',
+    'big laugh or smile (kill-room plastic out)',
+    'walking at night, intense (face-lock; crown splash out)',
+    'blood: hands or spatter, red (red flash out)',
+    'turning in a suburb, daylight (knife out)',
+    'looking up, lit from above (case file out)',
+    'END: slow profile turn, warm (slide-box loop back to OPEN)',
+]
+TEMPLATES = {'new_person': (os.path.join(ROOT, 'edits', 'new_person', 'config.py'), ROLES_NEW_PERSON, 'dexter_mix_1440p'),
+             'hold_on': (os.path.join(ROOT, 'edits', 'hold_on', 'config.py'), ROLES_HOLD_ON, 'dexter_mix_1440p'),
              'flash': (os.path.join(ROOT, 'edits', 'flash', 'config.py'), ROLES_FLASH, 'flash_all_seasons')}
-KEEP = ('beats', 'out', 'out_opts', 'fx', 'punch', 'z', 'cy', 'track', 'sat', 'rk', 'yk', 'con', 'tint', 'gain', 'push')
+KEEP = ('beats', 'out', 'out_opts', 'fx', 'punch', 'z', 'cy', 'track', 'frame', 'sat', 'rk', 'yk', 'con', 'tint', 'gain', 'push')
 
 
 def standard_shots(STANDARD):
@@ -87,13 +110,13 @@ def standard_shots(STANDARD):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('name'); ap.add_argument('--song', required=True)
-    ap.add_argument('--section', required=True); ap.add_argument('--pack'); ap.add_argument('--from', dest='frm', default='hold_on', choices=sorted(TEMPLATES)); a = ap.parse_args()
+    ap.add_argument('--section', required=True); ap.add_argument('--pack'); ap.add_argument('--from', dest='frm', default='new_person', choices=sorted(TEMPLATES)); a = ap.parse_args()
     STANDARD, ROLES, defpack = TEMPLATES[a.frm]; a.pack = a.pack or defpack
     sec = json.load(open(a.section)); shots, first, hits = standard_shots(STANDARD)
     assert len(shots) == len(ROLES), 'standard changed: update the ROLES list in new_edit.py'
     half = sec['half']; nhalf = int(round(sec['length'] / half))
     used = first + sum(s.get('beats', 0) for s in shots[1:])
-    if nhalf != 64: print('note: the section is %d half-beats, the standard uses 64; add or remove 2-half-beat slots so the lengths sum to %d.' % (nhalf, nhalf - 1))
+    if nhalf - 1 != used: print('note: the section is %d half-beats, the standard fills %d; add or remove slots (2-4 half-beats each) so FIRST_CUT plus the lengths sum to %d.' % (nhalf, used + 1, nhalf - 1))
     d = os.path.join(ROOT, 'edits', a.name); os.makedirs(d, exist_ok=True); out = os.path.join(d, 'config.py')
     if os.path.exists(out): sys.exit('%s already exists' % out)
     rows = []

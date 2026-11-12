@@ -1,6 +1,6 @@
 ---
 name: voidfx-edit
-description: The user's preferred editing style for short vertical fan edits ("voidfx" style). The approved STANDARD is the Dexter × "Hold On, We're Going Home" v3 edit (edits/hold_on); new edits start from it with edit/tools/new_edit.py. Use for ANY request to make, remake, recut or restyle an edit, TikTok/Reels/Shorts edit, fan edit, scene-pack edit or music edit, even if the style isn't named. Covers the style rules (beat-grid timing, themed transitions, grade, framing, loop ending, SFX level), the build workflow with the tools in edit/, and the QA checklist.
+description: The user's preferred editing style for short vertical fan edits ("voidfx" style). The current Dexter STANDARD is "New Person, Same Old Mistakes" v6 (edits/new_person); the speedster standard is edits/flash. New edits start from a standard with edit/tools/new_edit.py. Use for ANY request to make, remake, recut or restyle an edit, TikTok/Reels/Shorts edit, fan edit, scene-pack edit or music edit, even if the style isn't named. Covers the style rules (beat-grid timing, themed transitions, grade, framing, loop ending, SFX level), the build workflow with the tools in edit/, and the QA checklist.
 ---
 
 # voidfx edit style (the user's default)
@@ -9,9 +9,26 @@ Every edit made in this repo uses this style unless the user asks otherwise. It 
 reverse-engineered from the reference `doomsday_voidfx_9x16` (analysis: `docs/style-breakdown.md`;
 first build: `edit/config.py`).
 
-## The standard (user-approved, 2026-11-10)
+## The Dexter standard (user-approved, 2026-11-12): `edits/new_person`
 
-**`edits/hold_on/config.py`, Dexter × "Hold On, We're Going Home" v3, is the standard.** The user
+**Dexter × "New Person, Same Old Mistakes" v6 is the standard for Dexter (and grounded-character) edits.**
+The user liked the edit and all its transitions. Start new Dexter edits from it:
+```bash
+python edit/tools/new_edit.py <name> --song media/<song>.mp3 --section media/<name>_section.json
+```
+(`--from new_person` is the default.) What makes it the standard; each point is a rule:
+- **Every shot moves.** Pick shots with `python edit/tools/motion.py <packs> --scores media/dexter_scores.json`, using motion ≥ 0.6. The QA "still steps" count (frame-to-frame change < 0.3) must be 0. No shot may read as a still picture.
+- **Faces are framed on point:** `frame='auto'` on every shot (crop sized so the face is about 30% of the height, eyes in the upper third, tracking both axes).
+- **Every transition is a custom drawn graphic, physical and labelled:** `badge` (opener), `tape`, `newspaper`, `bag`, `blinds`, `plastic`, `crown`, `red`, `knife`, `casefile`, plus the `slidebox` loop. Plain whips and cuts are glue only (2 whips and 4 cuts in 16 shots).
+- **Overlays are sparse:** `idbox` face-lock on 3 shots, all white text. No stamps or evidence markers (the user rejected them here).
+- **The loop is a thematic graphic** (`slidebox`: the edit becomes his slide collection), not just an effect.
+- **Rhythm:** the section is a chorus of 6 bars (48 half-beats; 18.95 s at 76 BPM). Cuts fall on the kicks, which land on off-beats here, so slot lengths run 3-3-2 (first cut at half-beat 5).
+- **Footage:** plain 720p extract (no AI upscaling, per the user). Grade sat 0.45–0.6, rk 1.0, con 1.12, tint (1.04, 1.0, 0.96), gain lifted on night shots.
+- **Quality bar:** hard cuts within one frame of the beat; no black or frozen frames; still steps 0; seamless loop seam; every transition previewed with `render.py sheet`, and fixed if any edge, colour or text clips.
+
+## Earlier Dexter standard (user-approved, 2026-11-10): `edits/hold_on`
+
+**`edits/hold_on/config.py`, Dexter × "Hold On, We're Going Home" v3, was the first standard; `new_person` supersedes it.** The user
 asked for it to be the template for future edits. Start every new edit from it, and match or
 beat it on the quality bar below. Where an older rule in this file disagrees with the standard,
 the standard wins.
@@ -267,6 +284,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-12: **The user made New Person, Same Old Mistakes v6 the Dexter standard, and likes all its transitions** (badge, tape, newspaper, evidence bag, blinds, plastic, crown, red flash, knife, case file, slide-box loop). `new_edit.py` defaults to it.
 - 2026-11-12: New Person v5. Opener `photo` replaced with `badge`; red stamps and evidence markers removed ("clunky" counters); the VHS rewind loop wasn't creative enough, so it was replaced with `slidebox`. Loops should be visually rich, thematic graphics, not just an effect.
 - 2026-11-12: New Person v4. The user disliked the strings opener and the blood-in-water transition, and **loved the evidence-bag graphic**: physical, labelled forensic objects are the direction. They asked to fill the dead space with animations and graphics. Added `photo`, `casefile`, `stamp:`, `markers` and `idbox`. Every hold now carries a graphic.
 - 2026-11-12: New Person v3. The user disliked the kaleidoscope opener and found most of the other transitions lackluster. They want **every transition to be unique and tied to a custom drawn graphic**. Replaced kaleido, rorschach, drops and a blur with `strings`, `bag`, `crown` and `bloodwater`. Treat plain blur, whip and dip as glue only, and keep them rare.
