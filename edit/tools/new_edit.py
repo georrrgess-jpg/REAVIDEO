@@ -1,9 +1,15 @@
 """Start a new edit from a STANDARD.
 
-  python edit/tools/new_edit.py NAME --song media/song.mp3 --section media/NAME_section.json [--from new_person|hold_on|flash] [--pack PACK]
+  python edit/tools/new_edit.py NAME --song media/song.mp3 --section media/NAME_section.json [--from x_gon|new_person|hold_on|flash] [--pack PACK]
 
 Standards (user-approved):
-  new_person  Dexter x New Person, Same Old Mistakes v6: THE Dexter standard (latest). Default. Every shot
+  x_gon       Dexter x X Gon' Give It To Ya v3: THE Dexter standard (latest). Default. The hook, built as two
+              mirrored halves whose transitions act out the lyric words (word times from the vocal stem), an
+              all-new drawn kit made for that song, sparse lyric hits, gritty grade, soft bumps on the
+              strongest kicks, motion blur in every transition, vinyl-scratch loop. 18 slots on even
+              half-beats. The slot list keeps x_gon's transitions as placeholders: per the user, every new
+              edit builds its OWN song-specific transitions, so replace them.
+  new_person  Dexter x New Person, Same Old Mistakes v6: the previous Dexter standard. Every shot
               moves (pick with tools/motion.py), automatic face framing, every transition a custom drawn
               graphic (badge, newspaper, evidence bag, tape, blinds, plastic, crown, red, knife, case file),
               thematic slide-box loop. 16 slots, 3-3-2 rhythm on off-beat kicks.
@@ -74,6 +80,26 @@ ROLES_FLASH = [
     'cold, blue, tech or helmet shot (blue arcs; dips to dark)',
     'END: warm civilian close-up, long hold, looking up (shockwave ripples; the bolt-split loops to OPEN)',
 ]
+ROLES_X_GON = [
+    'OPEN: daylight face close-up with an expression change (the opener graphic rises over it on the bass)',
+    'short dark beat (hallway, night): hard cut into the first lyric hit',
+    'PUNCH on the first key word: medium shot with movement',
+    'warm extreme close-up with a detail in frame',
+    'frontal stare at camera (ID badge, uniform)',
+    'short outdoor shot, PUNCH on the hook word',
+    'smile, close face',
+    'profile: driving or framed by a window (whip out)',
+    'walking at work with files',
+    'night, lit face, phrase downbeat (whip out)',
+    'short upside-down or disorienting shot (hard cut)',
+    'PUNCH: close, intense stare',
+    'looking up, lit from above',
+    'warm outdoor look (hard cut)',
+    'short blood or kill-room shot, PUNCH',
+    'forensic: slides or lab (whip out)',
+    'outdoor turn, foliage (hard cut)',
+    'END: night, looking off (loop graphic back to OPEN)',
+]
 ROLES_NEW_PERSON = [
     'OPEN: friendly, sunlit Dexter doing something (sunglasses on); his ID badge drops in and dives into the next shot',
     'crime scene, handheld, he moves toward camera',
@@ -92,7 +118,8 @@ ROLES_NEW_PERSON = [
     'looking up, lit from above (case file out)',
     'END: slow profile turn, warm (slide-box loop back to OPEN)',
 ]
-TEMPLATES = {'new_person': (os.path.join(ROOT, 'edits', 'new_person', 'config.py'), ROLES_NEW_PERSON, 'dexter_mix_1440p'),
+TEMPLATES = {'x_gon': (os.path.join(ROOT, 'edits', 'x_gon', 'config.py'), ROLES_X_GON, 'dexter_mix_1440p'),
+             'new_person': (os.path.join(ROOT, 'edits', 'new_person', 'config.py'), ROLES_NEW_PERSON, 'dexter_mix_1440p'),
              'hold_on': (os.path.join(ROOT, 'edits', 'hold_on', 'config.py'), ROLES_HOLD_ON, 'dexter_mix_1440p'),
              'flash': (os.path.join(ROOT, 'edits', 'flash', 'config.py'), ROLES_FLASH, 'flash_all_seasons')}
 KEEP = ('beats', 'out', 'out_opts', 'fx', 'punch', 'z', 'cy', 'track', 'frame', 'sat', 'rk', 'yk', 'con', 'tint', 'gain', 'push')
@@ -105,14 +132,15 @@ def standard_shots(STANDARD):
     cwd = os.getcwd(); os.chdir(os.path.dirname(STANDARD))
     try: spec.loader.exec_module(m)
     finally: os.chdir(cwd)
-    return m.SHOTS, m.FIRST_CUT, {k: getattr(m, k) for k in ('KICKS', 'SNARES') if hasattr(m, k)}
+    extra = {k: getattr(m, k) for k in ('MBLUR', 'BUMP', 'BUMP_DECAY') if hasattr(m, k)}
+    return m.SHOTS, m.FIRST_CUT, {k: getattr(m, k) for k in ('KICKS', 'SNARES') if hasattr(m, k)}, extra
 
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('name'); ap.add_argument('--song', required=True)
-    ap.add_argument('--section', required=True); ap.add_argument('--pack'); ap.add_argument('--from', dest='frm', default='new_person', choices=sorted(TEMPLATES)); a = ap.parse_args()
+    ap.add_argument('--section', required=True); ap.add_argument('--pack'); ap.add_argument('--from', dest='frm', default='x_gon', choices=sorted(TEMPLATES)); a = ap.parse_args()
     STANDARD, ROLES, defpack = TEMPLATES[a.frm]; a.pack = a.pack or defpack
-    sec = json.load(open(a.section)); shots, first, hits = standard_shots(STANDARD)
+    sec = json.load(open(a.section)); shots, first, hits, extra = standard_shots(STANDARD)
     assert len(shots) == len(ROLES), 'standard changed: update the ROLES list in new_edit.py'
     half = sec['half']; nhalf = int(round(sec['length'] / half))
     used = first + sum(s.get('beats', 0) for s in shots[1:])
@@ -144,6 +172,7 @@ TAIL = {sec['length']} - ({used} * {half} + 0.077)   # video is exactly the sect
 PRE, POST = 0.60, 0.50
 KICKS = {K}      # strong kicks (half-beats) for fx 'bump' / 'ripple'
 SNARES = {S}     # strong snares for fx 'rgbhit' / 'ripple'
+''' + ''.join('%s = %r\n' % kv for kv in extra.items()) + (('BUMP_KICKS = %r   # strongest kicks only\n' % [i for i, v in enumerate(sec.get('kick', [])) if v > 0.75 and i < nhalf]) if 'BUMP' in extra else '') + f'''
 
 SHOTS = [
 ''' + '\n'.join(rows) + '''

@@ -1,6 +1,6 @@
 ---
 name: voidfx-edit
-description: The user's preferred editing style for short vertical fan edits ("voidfx" style). The current Dexter STANDARD is "New Person, Same Old Mistakes" v6 (edits/new_person); the speedster standard is edits/flash. New edits start from a standard with edit/tools/new_edit.py. Use for ANY request to make, remake, recut or restyle an edit, TikTok/Reels/Shorts edit, fan edit, scene-pack edit or music edit, even if the style isn't named. Covers the style rules (beat-grid timing, themed transitions, grade, framing, loop ending, SFX level), the build workflow with the tools in edit/, and the QA checklist.
+description: The user's preferred editing style for short vertical fan edits ("voidfx" style). The current Dexter STANDARD is "X Gon' Give It To Ya" v3 (edits/x_gon); the speedster standard is edits/flash. New edits start from a standard with edit/tools/new_edit.py. Use for ANY request to make, remake, recut or restyle an edit, TikTok/Reels/Shorts edit, fan edit, scene-pack edit or music edit, even if the style isn't named. Covers the style rules (beat-grid timing, themed transitions, grade, framing, loop ending, SFX level), the build workflow with the tools in edit/, and the QA checklist.
 ---
 
 # voidfx edit style (the user's default)
@@ -9,7 +9,19 @@ Every edit made in this repo uses this style unless the user asks otherwise. It 
 reverse-engineered from the reference `doomsday_voidfx_9x16` (analysis: `docs/style-breakdown.md`;
 first build: `edit/config.py`).
 
-## The Dexter standard (user-approved, 2026-11-12): `edits/new_person`
+## The Dexter standard (user-approved, 2026-11-12): `edits/x_gon`
+
+**Dexter × "X Gon' Give It To Ya" v3 is the standard for Dexter edits** ("I like this edit, make it a standard").
+Start new Dexter edits from it (`python edit/tools/new_edit.py <name> --song ... --section ...`, `--from x_gon` is the default).
+It keeps every New Person rule below (moving shots, auto framing, drawn physical transitions, previews, QA) and adds:
+- **A new kit for every song.** Never reuse the previous edit's transitions (the user rejected X Gon' v1 for that). Design drawn, physical, labelled objects from the song's own words, sound and mood (Kit IV is the model; see its table and the song-tailoring method). Whips, cuts and punch-ins are glue only.
+- **Act out the song:** pick the section the listener knows (the hook), transcribe the vocal stem for word times, and land each key word's transition on the nearest half-beat; when the hook repeats, mirror the plan with a different object for the same word.
+- **Sparse lyric hits** (`TEXT`): a few key words, impact/type/pop, white with red keywords, fading out; only on punch-in shots.
+- **Polish defaults:** `MBLUR = True` (motion blur inside every transition), soft zoom bumps on the strongest kicks only (`BUMP = 0.028`, `BUMP_KICKS`, `BUMP_DECAY = 0.12`), no snare colour-split hits, a gritty grade (con 1.2, sat ×0.85, reds kept).
+- **The loop is a thematic object that reads instantly** (the vinyl record: fast pull-back plus a tilted turntable view). If a loop object isn't recognisable in its first few frames, fix it.
+- **Rhythm:** 18 slots of 2 and 4 half-beats on even half-beats (first cut at 4, last slot 3 plus the tail), punch-ins on the lyric's key words.
+
+## The previous Dexter standard (user-approved, 2026-11-12): `edits/new_person`
 
 **Dexter × "New Person, Same Old Mistakes" v6 is the standard for Dexter (and grounded-character) edits.**
 The user liked the edit and all its transitions. Start new Dexter edits from it:
@@ -303,6 +315,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-12: **The user approved X Gon' v3 and made it the Dexter standard** ("I like this edit make it a standard"). `new_edit.py` now defaults to `x_gon`.
 - 2026-11-12: Dexter × "X Gon' Give It To Ya" (DMX, `edits/x_gon`). v1 (verse section 1:28.1–1:48.3, New Person's kit reused) was rejected: **"reuses too many of the same transitions from the previous edit"**; the user asked for my own twist and new style, more tailored to the song, with new animations, graphics and transitions. v2: moved to the hook (1:07.878–1:28.088, 8 bars at 95 BPM, two identical 4-bar phrases), all-new Kit IV acting out the words (ROCK punch, ROLL tape/roll-up, POP mugshot/bulb, X knife/spray, cuffs, luminol, vinyl loop), lyric hits, grittier grade (con 1.2, sat ×0.85), zoom bumps on kicks and colour hits on the punch shots. `sections.py` picks the outro here (3:11.7); choose the hook by hand.
 - 2026-11-12: X Gon' v2 feedback: the loop's start didn't read as a record (fixed: fast pull-back, tilted turntable view, stronger vinyl sheen, spindle); the user disliked the light-breaking (bulb) animation (replaced with `target`); "smooth and polish the edit". Polish for v3: motion blur in every transition (`MBLUR = True`, two sub-frames, 180-degree shutter), soft zoom bumps only on the strongest kicks (`BUMP`, `BUMP_KICKS`, `BUMP_DECAY`), no snare colour-split hits, lyric text fades out instead of cutting. Treat these as the default polish for future edits.
 - 2026-11-12: **The user made New Person, Same Old Mistakes v6 the Dexter standard, and likes all its transitions** (badge, tape, newspaper, evidence bag, blinds, plastic, crown, red flash, knife, case file, slide-box loop). `new_edit.py` defaults to it.
