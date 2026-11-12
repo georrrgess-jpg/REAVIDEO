@@ -253,6 +253,23 @@ def crackle(dur=0.6):
     return y / np.abs(y).max()
 
 
+def sawwhine(dur=0.6):
+    """Bone saw: a screaming harmonic whine with grinding noise, rising into the cut."""
+    n = int(dur * SR); u = np.arange(n) / SR; f0 = 1700 + 900 * (u / dur)
+    ph = 2 * np.pi * np.cumsum(f0) / SR
+    y = sum(np.sin(ph * h) / h for h in (1, 2, 3, 5)) * (0.6 + 0.4 * np.sin(2 * np.pi * 37 * u))
+    y += sg.lfilter(*sg.butter(2, [2000 / (SR / 2), 9000 / (SR / 2)], 'band'), rng.standard_normal(n)) * 0.8
+    y *= np.minimum(1, u / 0.05) * np.minimum(1, (dur - u) / 0.04)
+    return y / np.abs(y).max()
+
+
+def beep(f0=1000, dur=0.08):
+    """Heart-monitor beep."""
+    n = int(dur * SR); u = np.arange(n) / SR
+    y = np.sin(2 * np.pi * f0 * u) * np.minimum(1, np.minimum(u / 0.004, (dur - u) / 0.01))
+    return y
+
+
 # ---- SFX follow the plan: each transition type has its sound, placed relative to its cut ----
 def sfx_for(name, c, o, up):
     if name == 'leaf': put(whoosh(0.34, 700, 5200) if up else whoosh(0.34, 5200, 800), c - 0.20, gain=0.085)
@@ -398,6 +415,30 @@ def sfx_for(name, c, o, up):
     elif name == 'bulb':
         put(buzz(0.30), c - 0.32, gain=0.025); put(pop_burst(), c - 0.02, gain=0.14); put(glass(0.6), c - 0.01, gain=0.06)
         put(boom(0.4, 80, 40), c - 0.02, gain=0.08)
+    # Dexter kit V (the kill ritual)
+    elif name == 'saw':
+        put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)
+        put(boom(0.9, 70, 30), c, gain=0.16); put(splat(0.1), c, gain=0.06)
+    elif name == 'ziptie':
+        for tc_ in (c - 0.30, c - 0.20, c - 0.10): put(zipper(0.06), tc_, gain=0.08)
+        put(shing(0.3), c - 0.02, gain=0.04); put(boom(0.3, 110, 50), c, gain=0.08)
+    elif name == 'toolroll':
+        put(whoosh(0.35, 400, 2500, peak=0.4), c - 0.46, gain=0.06); put(clank(0.4), c - 0.18, gain=0.05)
+        put(shimmer(0.3), c - 0.24, gain=0.03); put(whoosh(0.4, 300, 4000, peak=0.9), c - 0.06, gain=0.06)
+    elif name == 'fingerprint':
+        put(boom(0.25, 150, 60), c - 0.26, gain=0.08); put(whoosh(0.5, 200, 3000, q=0.7, peak=0.9), c - 0.10, gain=0.06)
+    elif name == 'bag2':
+        put(crinkle(0.45), c - 0.45, gain=0.07); put(rip(0.25), c, gain=0.09); put(boom(0.35, 90, 40), c, gain=0.09)
+    elif name == 'projector':
+        put(tick(0.04, 1200), c - 0.30, gain=0.06); put(buzz(0.3), c - 0.05, gain=0.03); put(tick(0.06, 900), c - 0.05, gain=0.07)
+    elif name == 'click':
+        put(tick(0.05, 800), c - 0.06, gain=0.09); put(tick(0.04, 1400), c, gain=0.07)
+    elif name == 'lightsup':
+        put(boom(0.4, 100, 45), c, gain=0.10); put(tick(0.04, 1800), c, gain=0.06)
+    elif name == 'flatline':
+        put(beep(1000, 0.55), c - 0.30, gain=0.035); put(boom(0.5, 80, 35), c, gain=0.12)
+    elif name == 'frost':
+        put(crinkle(0.6), c - 0.90, gain=0.04); put(shimmer(0.6), c - 0.60, gain=0.04); put(squeak(0.3), c - 0.14, gain=0.05)
     elif name == 'target':
         put(whoosh(0.25, 300, 2200, peak=0.85), c - 0.52, gain=0.05)
         for tp in (c - HALF, c - HALF / 2, c):
@@ -422,6 +463,9 @@ for i, s in enumerate(SHOTS):
             put(boom(0.25, 160, 60), t0, gain=0.10); put(splat(0.05), t0, gain=0.06)
         elif fxn == 'markers':
             for k_, t0 in enumerate((_hits_in or [s['start'] + 0.2])[:3]): put(tick(0.06, 1700 + 200 * k_), t0, pan=-0.5 + 0.5 * k_, gain=0.05)
+        elif fxn == 'ekg':
+            for t0 in _hits_in:
+                if s.get('out') != 'flatline' or t0 < s['end'] - 0.30: put(beep(1000, 0.07), t0, gain=0.03)
         elif fxn == 'idbox':
             t0 = (_hits_in or [s['start'] + 0.1])[0]; put(tick(0.08, 2900), t0, gain=0.05)
             for k_ in range(8): put(tick(0.02, 4200), t0 + 0.13 + 0.03 * k_, gain=0.015)

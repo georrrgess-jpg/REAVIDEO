@@ -103,7 +103,10 @@ def layer(i, t, ez=1.0):
         elif name == 'ghost': f = ghost_fx(f, i, t, s)
         elif name == 'trails': f = trails_fx(f, i, t, s)
         elif name == 'crackle_build': f = crackle_fx(f, i, t, s, build=True)
+        elif name == 'pulse': f = pulse_fx(f, t, s)
+        elif name == 'ekg': f = ekg_overlay(f, t, s, flat_from=(s['end'] - 0.30) if s.get('out') == 'flatline' else None)
         else: raise ValueError('unknown fx %r on shot %d' % (name, i))
+    if s.get('projected') and not _K4.get('raw'): f = proj_look(f, t, i)
     return f
 
 
@@ -3270,6 +3273,557 @@ def t_target(t, c, A, B, a, b):
     return f + flash
 
 
+# ============================================================ Dexter kit V: "The Kill Ritual" (fragment, slowed)
+# Every transition is a step of Dexter's ritual: the bone saw (the drop), zip ties, the leather tool roll, the
+# fingerprint card, the black contractor bag, the kill-room slide projector, a heart monitor that flatlines,
+# and frost creeping over the lens (the Ice Truck Killer) for the loop.
+
+
+def _ring_noise(seed, h=H, w=W, s=3):
+    key = ('rn', seed, h, w, s)
+    if key not in _K4: _K4[key] = cv2.resize(fbm(h // (8 * s) + 2, w // (8 * s) + 2, 4, seed, 4), (w, h), interpolation=cv2.INTER_CUBIC)
+    return _K4[key]
+
+
+def _raw(i, t, ez=1.0):
+    """layer() without the projected-slide look (for the projector transitions, which apply it themselves)."""
+    _K4['raw'] = True
+    try: return layer(i, t, ez)
+    finally: _K4['raw'] = False
+
+
+# ---- bone saw (the drop)
+def _saw_assets():
+    if 'saw' in _K4: return _K4['saw']
+    R = 330.0; D = int(2 * R + 40); c0 = D / 2
+    Y, X = np.mgrid[0:D, 0:D].astype(np.float32) - c0; r = np.sqrt(X * X + Y * Y) + 1e-3; th = np.arctan2(Y, X)
+    nT = 30; ph = np.mod(th / (2 * math.pi) * nT, 1.0)
+    rim = R - 38 * np.where(ph < 0.8, ph / 0.8, (1 - ph) / 0.2) ** 1.2                         # saw teeth
+    body = ss(rim + 1, rim - 1, r)
+    tip = ((ph > 0.90) | (ph < 0.07)) & (r > R - 16)
+    grind = 0.52 + 0.07 * np.sin(r * 0.9) + 0.05 * np.sin(r * 0.23)
+    sheen = 0.30 * np.abs(np.cos(th - math.radians(-135))) ** 8
+    v = (grind + sheen) * (0.8 + 0.2 * ss(R - 60, R - 20, r))
+    v = np.where(tip, 0.80 + 0.15 * np.cos(th * nT * 2), v)
+    slots = np.zeros((D, D), np.float32)
+    for k in range(4):
+        a0 = math.radians(20 + 90 * k)
+        pts = np.int32([[c0 + (R - 40 - 22 * q) * math.cos(a0 + 0.10 * q), c0 + (R - 40 - 22 * q) * math.sin(a0 + 0.10 * q)] for q in range(5)])
+        cv2.polylines(slots, [pts], False, 1.0, 5, cv2.LINE_AA); cv2.circle(slots, tuple(int(v_) for v_ in pts[-1]), 8, 1.0, -1, cv2.LINE_AA)
+    al = body * (1 - slots) * ss(23, 26, r)
+    fl = ss(64, 62, r); q = np.clip((r - 30) / 34, 0, 1) * 0.5                                    # flange washer
+    v = v * (1 - fl) + _shade(X / r * q, Y / r * q, _nz(q), 0.45, ks=0.9, pw=40) * fl
+    v = v * (1 - 0.6 * np.exp(-((r - 64) / 2) ** 2))
+    trgb, tm = _polar_text('MORGAN  ·  BONE SAW  ·  7-1/4"  ·  5800 RPM', INTER_BLACK, 20, 120, 150, D, c0, (0.10, 0.10, 0.12), (0.5, 0.5, 0.5), reps=1)
+    rgb = v[..., None] * np.float32([1.03, 1.0, 0.97])
+    rgb = rgb * (1 - tm[..., None] * 0.85) + trgb * tm[..., None] * 0.85
+    _K4['saw'] = (_rgba(rgb, al), R)
+    return _K4['saw']
+
+
+def t_saw(t, c, A, B, a, b):
+    """The drop: a spinning bone-saw blade drops in and rips straight down through the shot (sparks and red mist
+    thrown off the teeth, a glowing kerf behind it); on the drop the two halves burst apart onto the next shot."""
+    spr, R = _saw_assets(); D = spr.shape[0]; bx = W / 2
+    p = clamp((t - a) / (c - a)); by = lerp(-R - 60, H * 0.90, ease(p) ** 0.85)
+    if t >= c: by = H * 0.90 + (t - c) * 3600
+    sc = 1.0; ang = (t - a) * 2400.0
+    if t < c:
+        f = layer(A, t)
+        vib = 3 * math.sin(t * 410); f = np.roll(f, int(vib), 1) if p > 0.3 else f
+        ky = min(by, H)                                                                        # the kerf so far
+        kd = np.abs(XX - bx); kin = (YY < ky) * 1.0
+        f = f * (1 - (ss(5, 2, kd) * kin)[..., None]) + (ss(5, 2, kd) * kin)[..., None] * 0.02
+        heat = np.exp(-np.clip(ky - YY, 0, None) / 260) * kin
+        f = f + (np.exp(-(kd / 7) ** 2) * heat)[..., None] * np.float32([0.25, 0.55, 1.0]) * 1.2
+    else:
+        u = clamp((t - c) / (b - c)); fb = layer(B, t, 1 + 0.15 * (1 - eout(u)))
+        fa = layer(A, c - 1e-3); dx = eout(u) * W * 0.75
+        kd = np.abs(XX - bx); glow = np.exp(-(kd / 9) ** 2)[..., None] * np.float32([0.25, 0.55, 1.0]) * (1 - u)
+        fa = fa + glow
+        left = (XX < bx).astype(np.float32); acc = fb.copy()
+        for side, m in ((-1, left), (1, 1 - left)):
+            M = cv2.getRotationMatrix2D((bx, H / 2), side * -7 * eout(u), 1.0); M[0, 2] += side * dx
+            pc = cv2.warpAffine(fa * m[..., None], M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            pm = cv2.warpAffine(m, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            sh = cv2.GaussianBlur(np.roll(pm, 24, 1 if side < 0 else 1), (0, 0), 20) * 0.5
+            acc = acc * (1 - sh[..., None]) * (1 - pm[..., None]) + pc
+        f = acc + 0.55 * math.exp(-(t - c) * 14)
+        if t - c < 0.2: f = np.roll(f, int(18 * math.exp(-(t - c) * 18) * math.sin((t - c) * 120)), 0)
+    lay = None                                                                                  # spinning blade with rotational blur
+    for j in range(3):
+        M = cv2.getRotationMatrix2D((D / 2, D / 2), -(ang + j * 2.5), sc); M[0, 2] += bx - D / 2; M[1, 2] += by - D / 2
+        lj = cv2.warpAffine(spr, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        lay = lj if lay is None else lay + lj
+    lay /= 3
+    sh = cv2.GaussianBlur(np.roll(np.roll(lay[..., 3], 30, 0), 20, 1), (0, 0), 22) * 0.55
+    f = over(f * (1 - sh[..., None]), lay)
+    rb = np.sqrt((XX - bx) ** 2 + (YY - by) ** 2) + 1e-3; thb = np.arctan2(YY - by, XX - bx)           # fixed highlight on the spinning steel
+    f = f + (lay[..., 3] * (0.35 * np.abs(np.cos(thb - math.radians(-135))) ** 10 + 0.25 * np.exp(-((rb - R * 0.86) / 10) ** 2)))[..., None]
+    cy_ = by + R * 0.98                                                                        # sparks and mist off the cutting edge
+    if -40 < cy_ < H + 40 and t < c + 0.15:
+        sp = np.zeros((H, W), np.float32); mist = np.zeros((H, W), np.float32); rng = np.random.default_rng(1)
+        for i in range(140):
+            tb = a + i * 0.0065; age = t - tb
+            if not 0 <= age < 0.24: continue
+            pb = clamp((tb - a) / (c - a)); byb = lerp(-R - 60, H * 0.90, ease(pb) ** 0.85) + R * 0.98
+            if byb < 0: continue
+            ang_ = math.radians(rng.uniform(150, 215)); v_ = rng.uniform(900, 2200)
+            vx, vy = math.cos(ang_) * v_, math.sin(ang_) * v_ - 300
+            px_, py_ = bx + vx * age, byb + vy * age + 1500 * age * age
+            if i % 4 == 0: cv2.circle(mist, (int(px_), int(py_)), int(3 + 6 * age * 10), 1 - age / 0.24, -1, cv2.LINE_AA)
+            else: cv2.line(sp, (int(px_), int(py_)), (int(px_ - vx * 0.022), int(py_ - (vy + 3000 * age) * 0.022)), 1 - age / 0.24, 3, cv2.LINE_AA)
+        f = f * (1 - mist[..., None] * 0.7) + BLOOD * mist[..., None] * 0.7
+        f = f + (cv2.GaussianBlur(sp, (0, 0), 4) * 2.0 + sp * 1.4)[..., None] * np.float32([0.35, 0.75, 1.0])
+    return f
+
+
+# ---- zip tie
+def _ziptie_assets():
+    if 'zip' in _K4: return _K4['zip']
+    sh_, L = 56, 2 * W
+    yy, xx = np.mgrid[0:sh_, 0:L].astype(np.float32); s = (yy - sh_ / 2) / (sh_ / 2)
+    teeth = (np.mod(xx, 9) < 4.5) * (yy < sh_ * 0.45)
+    v = _shade(0 * s, s * 0.8, _nz(np.clip(s, -1, 1) * 0.8), 0.10, ks=0.35, pw=20) + 0.10 * teeth
+    strap = (v[..., None] * np.float32([1.0, 1.0, 1.0])).astype(np.float32)
+    hb, hw = 120, 104
+    yy, xx = np.mgrid[0:hb, 0:hw].astype(np.float32); e = np.minimum(np.minimum(xx, hw - 1 - xx), np.minimum(yy, hb - 1 - yy))
+    tl = 1 - ss(0, 10, e); nx = np.where(xx < hw / 2, -1, 1) * tl * (np.minimum(xx, hw - 1 - xx) < np.minimum(yy, hb - 1 - yy)); ny = np.where(yy < hb / 2, -1, 1) * tl * (np.minimum(xx, hw - 1 - xx) >= np.minimum(yy, hb - 1 - yy))
+    hv = _shade(nx * 0.7, ny * 0.7, _nz(np.maximum(np.abs(nx), np.abs(ny)) * 0.7), 0.12, ks=0.5, pw=25)
+    slot = (np.abs(xx - hw / 2) < 34) & (np.abs(yy - hb / 2) < 14); hv = np.where(slot, 0.01, hv)
+    _K4['zip'] = (strap, hv.astype(np.float32))
+    return _K4['zip']
+
+
+def t_ziptie(t, c, A, B, a, b):
+    """A heavy black zip tie loops round the shot's waist and ratchets tight in three clicks, cinching the frame
+    in like a sack; the tail is snipped and the tie snaps off, the frame springs back as the next shot."""
+    strap, head = _ziptie_assets(); sh_ = strap.shape[0]; yb = 0.58 * H; cx = W / 2
+    clicks = (c - 0.30, c - 0.20, c - 0.10)
+    k = 0.0
+    for j, tc_ in enumerate(clicks): k += 0.15 * eout(clamp((t - tc_) / 0.05))
+    k = k * (t < c) + (-0.10 * math.exp(-(t - c) * 9) * math.cos((t - c) * 40)) * (t >= c)
+    swing = 0.12 * eout(clamp((t - a) / 0.10))                                                  # the loop drops on first
+    sy = 1 - k * np.exp(-((YY - yb) / (0.24 * H)) ** 2)
+    mx = (cx + (XX - cx) / sy).astype(np.float32)
+    src = layer(A, min(t, c - 1e-3)) if t < c else layer(B, t)
+    bg = np.float32([0.03, 0.03, 0.035])
+    f = cv2.remap(src, mx, YY, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=tuple(float(v) for v in bg))
+    if t >= c: f = f + 0.45 * math.exp(-(t - c) * 14)
+    snap = t >= c - 0.02
+    if not snap or t < c + 0.12:
+        half = W / 2 * (1 - max(k, 0) * 1.0); y0 = int(yb - sh_ / 2); fall = 0.0 if not snap else 2600 * (t - c + 0.02) ** 2
+        for side in (-1, 1):                                                                     # the strap round the waist
+            x0, x1 = (cx - half, cx) if side < 0 else (cx, cx + half)
+            if snap: x0, x1 = x0 + side * 900 * (t - c + 0.02), x1 + side * 900 * (t - c + 0.02)
+            xs, xe = int(max(0, x0)), int(min(W, x1))
+            if xe > xs and 0 <= y0 + fall < H - sh_:
+                yy0 = int(y0 + fall); f[yy0:yy0 + sh_, xs:xe] = strap[:, :xe - xs]
+        if not snap:
+            tail = 120 + 1400 * max(k, 0); M = cv2.getRotationMatrix2D((0, sh_ / 2), -18, 1.0); M[0, 2] += cx + 40; M[1, 2] += yb - sh_ / 2
+            tm = cv2.warpAffine(np.ones((sh_, int(tail)), np.float32), M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            tc = cv2.warpAffine(strap[:, :int(tail)], M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            f = f * (1 - tm[..., None]) + tc
+            hb_, hw_ = head.shape; hy, hx = int(yb - hb_ / 2), int(cx - hw_ / 2)
+            f[hy:hy + hb_, hx:hx + hw_] = head[..., None] * np.float32([1, 1, 1.02])
+            f[hy:hy + hb_, hx:hx + hw_] += 0.35 * math.exp(-min((abs(t - tc_) for tc_ in clicks)) * 40)
+    return f
+
+
+# ---- the leather tool roll
+def _roll_assets():
+    if 'troll' in _K4: return _K4['troll']
+    n = _ring_noise(19, s=1); g = cv2.resize(np.random.default_rng(2).random((H // 2, W // 2)).astype(np.float32), (W, H))
+    leather = np.float32([0.10, 0.19, 0.34])[None, None] * (0.75 + 0.35 * n[..., None] + 0.10 * (g[..., None] - 0.5))
+    rgb = leather.copy(); al = np.ones((H, W), np.float32)
+    st = np.zeros((H, W), np.float32)
+    for y in (26, H - 26):
+        for x in range(10, W, 26): cv2.line(st, (x, y), (x + 13, y), 1.0, 3, cv2.LINE_AA)
+    for x in (26, W - 26):
+        for y in range(10, H, 26): cv2.line(st, (x, y), (x, y + 13), 1.0, 3, cv2.LINE_AA)
+    rgb = rgb * (1 - st[..., None]) + np.float32([0.45, 0.62, 0.72]) * st[..., None]
+    def put(mask, v, tint=(1.0, 1.0, 1.0)):
+        nonlocal rgb
+        sh = cv2.GaussianBlur(np.roll(np.roll(mask, 14, 0), 10, 1), (0, 0), 9) * 0.6
+        rgb = rgb * (1 - sh[..., None]) * (1 - mask[..., None]) + (v * mask)[..., None] * np.float32(tint)
+    def steel(mask, x0, x1, base=0.62):
+        u = np.clip((XX - x0) / max(1, x1 - x0), 0, 1); nx = (u - 0.5) * 1.6
+        return _shade(np.clip(nx, -0.95, 0.95), 0 * nx, _nz(np.clip(nx, -0.95, 0.95)), base, ks=1.0, pw=30) + 0.18 * np.exp(-((u - 0.3) / 0.06) ** 2)
+    def poly(pts):
+        m = np.zeros((H, W), np.float32); cv2.fillConvexPoly(m, np.int32(pts), 1.0, cv2.LINE_AA); return m
+    m = np.zeros((H, W), np.float32); cv2.rectangle(m, (120, int(0.17 * H)), (176, int(0.58 * H)), 1.0, -1)      # scalpel
+    put(m, steel(m, 120, 176) * (1 - 0.18 * (np.mod(YY, 12) < 4) * (YY > 0.30 * H) * (YY < 0.50 * H)))
+    put(poly([[122, int(0.58 * H)], [174, int(0.58 * H)], [184, int(0.66 * H)], [150, int(0.74 * H)], [126, int(0.67 * H)]]), steel(m, 120, 190, 0.75))
+    m = np.zeros((H, W), np.float32); cv2.rectangle(m, (300, int(0.12 * H)), (384, int(0.40 * H)), 1.0, -1)       # boning knife
+    put(m, 0.05 + 0.10 * steel(m, 300, 384, 0.4))
+    for y in (0.18, 0.26, 0.34): cv2.circle(rgb, (342, int(y * H)), 10, (0.75, 0.78, 0.80), -1, cv2.LINE_AA)
+    put(poly([[296, int(0.40 * H)], [388, int(0.40 * H)], [384, int(0.45 * H)], [300, int(0.45 * H)]]), steel(m, 296, 388, 0.55))
+    mk = poly([[302, int(0.45 * H)], [382, int(0.45 * H)], [376, int(0.72 * H)], [330, int(0.90 * H)], [306, int(0.72 * H)]])
+    put(mk, steel(mk, 300, 384, 0.68) + 0.25 * np.exp(-((XX - 306) / 4) ** 2))
+    bx0, bx1 = 500, 800; by0 = int(0.30 * H); by1 = by0 + int(round((bx1 - bx0) * 16 / 9))          # cleaver (blade is 9:16)
+    m = np.zeros((H, W), np.float32); cv2.rectangle(m, (bx1 - 92, int(0.07 * H)), (bx1 - 20, by0), 1.0, -1)
+    put(m, 0.20 + 0.12 * _ring_noise(4, s=1), (0.55, 0.80, 1.0))
+    for y in (0.12, 0.19, 0.26): cv2.circle(rgb, (bx1 - 56, int(y * H)), 11, (0.72, 0.75, 0.78), -1, cv2.LINE_AA)
+    mb = np.zeros((H, W), np.float32); cv2.rectangle(mb, (bx0, by0), (bx1, by1), 1.0, -1)
+    brush = cv2.GaussianBlur(np.random.default_rng(6).random((H, W)).astype(np.float32), (0, 0), sigmaX=40, sigmaY=0.8)
+    put(mb, steel(mb, bx0, bx1, 0.70) * (0.9 + 0.5 * (brush - brush.mean()) / (brush.std() + 1e-6) * 0.15))
+    m = np.zeros((H, W), np.float32); cv2.rectangle(m, (896, int(0.28 * H)), (980, int(0.62 * H)), 1.0, -1)       # M99 syringe
+    put(m, 0.55 + 0.25 * steel(m, 896, 980, 0.5), (1.0, 1.0, 1.0))
+    liq = np.zeros((H, W), np.float32); cv2.rectangle(liq, (904, int(0.44 * H)), (972, int(0.61 * H)), 1.0, -1)
+    rgb = rgb * (1 - 0.8 * liq[..., None]) + np.float32([0.10, 0.12, 0.70]) * 0.8 * liq[..., None]
+    for yy_ in range(int(0.31 * H), int(0.60 * H), 40): cv2.line(rgb, (896, yy_), (918, yy_), (0.15, 0.15, 0.18), 2, cv2.LINE_AA)
+    m = np.zeros((H, W), np.float32); cv2.rectangle(m, (928, int(0.14 * H)), (948, int(0.28 * H)), 1.0, -1); cv2.rectangle(m, (880, int(0.13 * H)), (996, int(0.145 * H)), 1.0, -1)
+    cv2.rectangle(m, (870, int(0.27 * H)), (1006, int(0.285 * H)), 1.0, -1)
+    put(m, steel(m, 870, 1006, 0.6))
+    m = np.zeros((H, W), np.float32); cv2.line(m, (938, int(0.62 * H)), (938, int(0.80 * H)), 1.0, 4, cv2.LINE_AA); put(m, steel(m, 930, 946, 0.8))
+    rgb = _blit(rgb, _text_mask('M99', INTER_BLACK, 40), 900, int(0.33 * H), (0.12, 0.10, 0.75))
+    bev = np.zeros((H, W), np.float32)                                                          # cleaver spine, ground edge, hole
+    bev += (np.abs(YY - (by0 + 10)) < 10) * (np.abs(XX - (bx0 + bx1) / 2) < (bx1 - bx0) / 2) * -0.35
+    bev += ss(by1 - 70, by1 - 6, YY) * (YY < by1) * (np.abs(XX - (bx0 + bx1) / 2) < (bx1 - bx0) / 2) * 0.35
+    bev += np.exp(-((YY - (by1 - 3)) / 2.5) ** 2) * (np.abs(XX - (bx0 + bx1) / 2) < (bx1 - bx0) / 2) * 0.6
+    hole = ss(23, 21, np.sqrt((XX - (bx1 - 48)) ** 2 + (YY - (by0 + 56)) ** 2)); bev -= hole * 0.9
+    _K4['troll_bev'] = bev.astype(np.float32)
+    for y0 in (int(0.24 * H), int(0.70 * H)):                                                   # leather straps over the tools
+        sm = np.zeros((H, W), np.float32); cv2.rectangle(sm, (60, y0), (W - 60, y0 + 64), 1.0, -1)
+        sm = sm * (1 - ((XX > bx0 - 8) & (XX < bx1 + 8) & (YY > by0 - 8) & (YY < by1 + 8)))
+        sh = cv2.GaussianBlur(np.roll(sm, 10, 0), (0, 0), 8) * 0.6
+        rgb = rgb * (1 - sh[..., None]) * (1 - sm[..., None]) + (leather * 0.75 * sm[..., None])
+        ss_ = np.zeros((H, W), np.float32)
+        for x in range(70, W - 70, 22): cv2.line(ss_, (x, y0 + 8), (x + 11, y0 + 8), 1.0, 2); cv2.line(ss_, (x, y0 + 56), (x + 11, y0 + 56), 1.0, 2)
+        rgb = rgb * (1 - ss_[..., None] * sm[..., None]) + np.float32([0.45, 0.62, 0.72]) * (ss_ * sm)[..., None]
+    _K4['troll'] = (rgb.astype(np.float32), (bx0, by0, bx1, by1))
+    return _K4['troll']
+
+
+def t_toolroll(t, c, A, B, a, b):
+    """Dexter's leather tool roll unrolls across the shot (scalpel, boning knife, cleaver, M99 syringe in their
+    straps), a glint runs along the steel, then the camera dives into the mirror-polished cleaver, whose
+    reflection is the next shot."""
+    rgb, (bx0, by0, bx1, by1) = _roll_assets(); Rr = 64.0
+    xr = lerp(-2 * Rr, W + 2 * Rr, eout(clamp((t - a) / 0.30)))
+    fa = layer(A, min(t, c - 1e-3)); fb = layer(B, t)
+    bw, bh = bx1 - bx0, by1 - by0; bcx, bcy = (bx0 + bx1) / 2, (by0 + by1) / 2
+    td = c - 0.06; u = clamp((t - td) / (b - td)); zmax = W / bw
+    z = math.exp(math.log(zmax) * ein(u) ** 0.8)
+    ccx, ccy = lerp(bcx, W / 2, ease(u)), lerp(bcy, H / 2, ease(u))
+    Mz = np.float32([[z, 0, ccx - z * bcx], [0, z, ccy - z * bcy]])
+    sc = cv2.warpAffine(rgb, Mz, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE) if z > 1.001 else rgb
+    q0 = Mz @ np.array([bx0, by0, 1.0]); q1 = Mz @ np.array([bx1, by1, 1.0])
+    Mb = np.float32([[(q1[0] - q0[0]) / W, 0, q0[0]], [0, (q1[1] - q0[1]) / H, q0[1]]])
+    refl = cv2.warpAffine(fb, Mb, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    rm = cv2.warpAffine(np.ones((H, W), np.float32), Mb, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    mix = 0.12 + 0.88 * ease(u)
+    sc = sc * (1 - rm[..., None] * mix) + refl * np.float32([1.04, 1.0, 0.96]) * rm[..., None] * mix
+    bev = _K4['troll_bev'] if z <= 1.001 else cv2.warpAffine(_K4['troll_bev'], Mz, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    sc = sc + (bev * (1 - ease(u)))[..., None]
+    gl = clamp((t - (c - 0.24)) / 0.20)                                                         # glint along the steel
+    if 0 < gl < 1: sc = sc + (np.exp(-(((XX * 0.6 + YY * 0.8) - lerp(-200, W * 0.6 + H * 0.8 + 200, gl)) / 40) ** 2) * 0.5)[..., None]
+    if z <= 1.001:
+        m = ss(xr + 1, xr - 1, XX)[..., None]
+        f = fa * (1 - m) + sc * m
+        cr = (XX >= xr) & (XX < xr + 2 * Rr)                                                    # the rolled-up leather cylinder
+        s_ = np.clip((XX - xr - Rr) / Rr, -1, 1); shade = (0.25 + 0.85 * np.clip(-0.5 * s_ + 0.85 * np.sqrt(1 - s_ ** 2), 0, 1))
+        cyl = np.float32([0.10, 0.19, 0.34]) * (0.8 + 0.3 * _ring_noise(19, s=1)[..., None]) * shade[..., None]
+        f = np.where(cr[..., None], cyl, f)
+        f = f * (1 - (np.exp(-np.clip(XX - xr - 2 * Rr, 0, None) / 40) * (XX > xr + 2 * Rr) * 0.5 * (xr < W))[..., None])
+    else: f = sc
+    return f
+
+
+# ---- fingerprint card
+def _fp_assets():
+    if 'fp' in _K4: return _K4['fp']
+    from PIL import Image, ImageDraw
+    img = Image.new('RGB', (W, H), (238, 236, 230)); d = ImageDraw.Draw(img); ink = (30, 30, 34)
+    d.text((60, 70), 'MIAMI METRO POLICE DEPARTMENT', font=_font_px(INTER_BLACK, 44), fill=ink)
+    d.text((60, 128), 'FINGERPRINT RECORD  ·  CASE 0915-07', font=_font_px(INTER_SEMI, 30), fill=(90, 90, 96))
+    d.line([(60, 180), (W - 60, 180)], fill=ink, width=4)
+    d.rectangle([110, int(0.27 * H), W - 110, int(0.73 * H)], outline=ink, width=4)
+    d.text((126, int(0.27 * H) + 12), '1.  R. THUMB', font=_font_px(INTER_BLACK, 32), fill=ink)
+    for k, lab in enumerate(('2. R. INDEX', '3. R. MIDDLE', '4. R. RING')):
+        x0 = 60 + k * 330; d.rectangle([x0, int(0.78 * H), x0 + 300, int(0.92 * H)], outline=ink, width=3); d.text((x0 + 14, int(0.78 * H) + 10), lab, font=_font_px(INTER_SEMI, 26), fill=ink)
+    a = np.asarray(img).astype(np.float32)[..., ::-1] / 255
+    a *= (0.95 + 0.07 * _ring_noise(31, s=1))[..., None]
+    rng = np.random.default_rng(57)
+    def nz_(sig): n = cv2.GaussianBlur(rng.random((H, W)).astype(np.float32), (0, 0), sig); return ((n - n.mean()) / (n.std() + 1e-6)).astype(np.float32)
+    _K4['fp'] = (a.astype(np.float32), nz_(28) * 0.5, nz_(28) * 0.5)
+    _K4['fp_fine'] = nz_(4)
+    return _K4['fp']
+
+
+def t_fingerprint(t, c, A, B, a, b):
+    """A fingerprint card slaps into frame and Dexter's inked thumb rolls onto it (the whorl spreads from the
+    core); the camera dives into the whorl as the ridges spin open and the next shot shows between them."""
+    card, nwx, nwy = _fp_assets(); P = np.array([W / 2, 0.52 * H])
+    land = eout(clamp((t - a) / 0.14))
+    td = c - 0.06; u = clamp((t - td) / (b - td)); z = math.exp(math.log(28.0) * ein(u) ** 0.9)
+    C = np.array([lerp(P[0], W / 2, ease(u)), lerp(P[1], H / 2, ease(u))])
+    lx = (XX - C[0]) / z; ly = (YY - C[1]) / z                                                   # card coordinates around the core
+    if land < 1:
+        s_ = lerp(1.6, 1.0, land); ang = math.radians(9 * (1 - land))
+        ca, sa = math.cos(ang), math.sin(ang); lx, ly = (lx * ca - ly * sa) / s_, (lx * sa + ly * ca) / s_
+    mx = (lx + P[0]).astype(np.float32); my = (ly + P[1]).astype(np.float32)
+    paper = cv2.remap(card, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    wx = cv2.remap(nwx, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT); wy = cv2.remap(nwy, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    nf = cv2.remap(_K4['fp_fine'], mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    RX, RY = 260.0, 330.0
+    r = np.sqrt(lx * lx + (ly / 1.22) ** 2) + 1e-3; th = np.arctan2(ly, lx); rn = np.sqrt((lx / RX) ** 2 + (ly / RY) ** 2)
+    swirl = 2.2 * ein(u) * np.exp(-r / 160)
+    pw_ = 2 * math.pi * (r + 22 * wx) / 10.5 + 1.0 * (th + swirl) + 3 * wy                         # whorl core
+    ya = (ly + 60) - 0.0016 * lx * lx * np.sign(ly + 60 + 1e-3)                                    # arches round it
+    pa = 2 * math.pi * (np.abs(ya) + 22 * wx) / 10.5 + 3 * wy
+    wb = ss(0.42, 0.70, rn)
+    ridge = 0.5 + 0.5 * ((1 - wb) * np.cos(pw_) + wb * np.cos(pa))
+    brk = ss(-1.5, -0.9, nf)                                                                        # ridge endings and breaks
+    shape = ss(1.02, 0.92, rn)
+    tp = a + 0.16; grow = clamp((t - tp) / 0.16) * 1.2
+    spread = ss(grow * 1.05, grow * 1.05 - 0.15, rn)
+    ink = ss(0.38, 0.62, ridge) * shape * spread * (0.85 + 0.12 * nf) * (t >= tp) * brk
+    ink = np.clip(ink, 0, 1)
+    f = paper * (1 - ink[..., None] * 0.92) + np.float32([0.09, 0.08, 0.10]) * ink[..., None] * 0.92
+    if land < 1:
+        bg = layer(A, t) * 0.55; cm = ss(0.5, -0.5, np.maximum(np.abs(mx - W / 2) - W / 2, np.abs(my - H / 2) - H / 2))[..., None]
+        f = bg * (1 - cm) + f * cm
+    if t >= td:
+        fb = layer(B, t, 1 + 0.08 * (1 - u)); open_ = ss(0.0, 0.9, u)
+        mB = np.clip(open_ * 1.4 * (1 - ridge * shape) + ss(0.55, 1.0, u), 0, 1)[..., None]
+        f = f * (1 - mB) + fb * mB
+    return f
+
+
+# ---- black contractor bag
+def t_bag2(t, c, A, B, a, b):
+    """The frame is swallowed by a black contractor bag: glossy crinkled plastic gathers in from the edges in
+    pleats, sucking the shot into the shrinking mouth, and the red drawstring pulls it shut; on the hit a blade
+    slits the bag open and the next shot spills out of the tear."""
+    P = (W / 2, 0.46 * H); n1 = _ring_noise(71, s=1); n2 = _ring_noise(72, s=1)
+    dx, dy = XX - P[0], YY - P[1]; r = np.sqrt(dx * dx + dy * dy) + 1e-3; th = np.arctan2(dy, dx)
+    tc = c - 0.05; cl = clamp((t - (a + 0.04)) / (tc - (a + 0.04)))
+    Rm = RFULL * 1.05 * (1 - ease(cl) ** 0.9)
+    gy, gx = np.gradient(n1 * 40 + n2 * 14)
+    pleat = np.sin(th * 26 + n2 * 6) * np.exp(-np.clip(r - Rm, 0, None) / 220)
+    nx_ = np.clip(gx * 0.28 + (-np.sin(th)) * pleat * 0.6, -0.95, 0.95); ny_ = np.clip(gy * 0.28 + np.cos(th) * pleat * 0.6, -0.95, 0.95)
+    v = _shade(nx_, ny_, _nz(np.sqrt(np.clip(nx_ ** 2 + ny_ ** 2, 0, 0.95))), 0.022, ks=1.15, pw=55, amb=0.3)
+    plastic = v[..., None] * np.float32([1.08, 1.0, 0.96])
+    if t < c:
+        s_img = max(0.02, (Rm / RFULL)) ** 0.8; rot = 0.6 * (1 - Rm / RFULL)
+        ca, sa = math.cos(rot), math.sin(rot)
+        mx = (P[0] + (dx * ca - dy * sa) / s_img).astype(np.float32); my = (P[1] + (dx * sa + dy * ca) / s_img).astype(np.float32)
+        inside = cv2.remap(layer(A, t), mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        mo = ss(Rm + 2, Rm - 2, r)[..., None]
+        f = plastic * (1 - mo) + inside * mo
+        ring = np.exp(-((r - Rm) / 9) ** 2) * (Rm < RFULL)
+        f = f * (1 - ring[..., None]) + ring[..., None] * np.float32([0.10, 0.10, 0.72]) * (0.6 + 0.6 * np.cos(th * 30) ** 2)[..., None]
+        f = f * (1 - (np.exp(-np.clip(r - Rm, 0, None) / 60) * 0.5 * (Rm < RFULL))[..., None]) + 0 * f
+        if t >= tc - 0.02:
+            kn = np.exp(-(r / 46) ** 2); f = f * (1 - kn[..., None]) + kn[..., None] * np.float32([0.10, 0.10, 0.70]) * (0.8 + 0.4 * np.cos(th * 9) ** 2)[..., None]
+    else:
+        u = clamp((t - c) / (b - c)); fb = layer(B, t, 1 + 0.12 * (1 - eout(u)))
+        hh = lerp(0.18 * H, 1.3 * H, eout(u)); wo = lerp(6, 1.5 * W, eout(u) ** 1.3)
+        jag = 1 + 0.10 * np.sin(YY / 23 + 3) + 0.06 * np.sin(YY / 9)
+        prof = np.sqrt(np.clip(1 - ((YY - P[1]) / hh) ** 2, 0, 1)) * wo / 2 * jag
+        hole = ss(prof + 1.5, prof - 1.5, np.abs(XX - P[0]))
+        edge = np.exp(-((np.abs(XX - P[0]) - prof) / 8) ** 2) * (prof > 1)
+        f = plastic * (1 - hole[..., None]) + fb * hole[..., None] + (edge * 0.35)[..., None]
+        f = f + 0.35 * math.exp(-(t - c) * 14)
+    return f
+
+
+# ---- kill-room slide projector (projector -> click -> lightsup)
+def _proj_assets():
+    if 'proj' in _K4: return _K4['proj']
+    n = _ring_noise(83, s=1)
+    fold = (np.sin(XX / 70 + 5 * n) * 9 + np.sin(XX / 23 + 2 * n) * 3).astype(np.float32)
+    sheen = (np.exp(-((np.mod(XX + 40 * n, 140) - 70) / 6) ** 2) * 0.10).astype(np.float32)
+    x0, y0, x1, y1 = 0.05 * W, 0.07 * H, 0.95 * W, 0.87 * H
+    e = np.minimum(np.minimum(XX - x0, x1 - XX), np.minimum(YY - y0, y1 - YY))
+    area = ss(-3, 6, e)
+    hot = (1 - 0.45 * np.clip(((XX - W / 2) / (0.5 * W)) ** 2 + ((YY - 0.47 * H) / (0.45 * H)) ** 2, 0, 1)).astype(np.float32)
+    _K4['proj'] = dict(fold=fold, sheen=sheen, area=area.astype(np.float32), hot=hot, rect=(x0, y0, x1, y1))
+    return _K4['proj']
+
+
+def proj_look(f, t, seed=0, k=1.0, shift=0.0):
+    """The shot as a slide thrown onto kill-room plastic: warm lamp light, hot centre, plastic folds bending it,
+    dust and scratches, lamp flicker; dark plastic wall around it."""
+    g = _proj_assets(); x0, y0, x1, y1 = g['rect']
+    sx, sy = (x1 - x0) / W, (y1 - y0) / H
+    mx = ((XX - x0 - shift) / sx + g['fold'] * 0.6).astype(np.float32); my = ((YY - y0) / sy).astype(np.float32)
+    img = cv2.remap(f, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    fr_ = int(round(t * FPS)); rng = np.random.default_rng(fr_ * 7 + seed)
+    flick = 1 + 0.05 * (rng.random() - 0.5)
+    img = img * np.float32([0.78, 0.95, 1.12]) * g['hot'][..., None] * 1.12 * flick + g['sheen'][..., None] * 0.6
+    dust = np.zeros((H, W), np.float32)
+    for _ in range(14): cv2.circle(dust, (int(rng.uniform(0, W)), int(rng.uniform(0, H))), int(rng.integers(1, 4)), 1.0, -1)
+    if rng.random() < 0.6: xs = int(rng.uniform(0.1, 0.9) * W); cv2.line(dust, (xs, 0), (xs + int(rng.normal(0, 8)), H), 0.6, 1)
+    img = img * (1 - 0.6 * dust[..., None])
+    am = (g['area'] * k)[..., None]
+    wall = (0.025 + g['sheen'] * 0.35)[..., None] * np.float32([1.0, 1.0, 1.05])
+    return wall * (1 - am) + img * am
+
+
+def t_projector(t, c, A, B, a, b):
+    """The lights cut out (a fluorescent stutter), the slide projector's lamp comes on and the next shot is
+    thrown onto the plastic sheeting of the kill room."""
+    if t < c:
+        u = clamp((t - a) / (c - 0.05 - a)); fl = 1.0 if u < 0.35 else (0.25 if int(t * FPS) % 3 else 0.7) * (1 - ease((u - 0.35) / 0.65))
+        fa_ = layer(A, t); f = fa_ * max(0.05, fl) + (1 - max(0.05, fl)) * (0.10 * fa_ + np.float32([0.05, 0.03, 0.02]))
+        lamp = clamp((t - (c - 0.05)) / 0.05)
+        if lamp > 0: f = f * (1 - lamp) + proj_look(_raw(B, t), t, B, k=lamp) * lamp
+        return f
+    u = clamp((t - c) / (b - c)); return proj_look(_raw(B, t), t, B, k=1.0) * (1 + 0.25 * (1 - u))
+
+
+def t_click(t, c, A, B, a, b):
+    """Slide change: the carousel clacks, the projection blinks dark, and the next slide drops into the gate."""
+    if t < c:
+        u = clamp((t - a) / (c - a)); return proj_look(_raw(A, t), t, A, k=1 - 0.85 * ease(u), shift=-80 * ease(u))
+    u = clamp((t - c) / (b - c)); return proj_look(_raw(B, t), t, B, k=0.2 + 0.8 * eout(u), shift=60 * (1 - eout(u)))
+
+
+def t_lightsup(t, c, A, B, a, b):
+    """The projection pushes in until it fills the frame, then the kill-room lights slam on: the next shot, real."""
+    if t < c:
+        u = clamp((t - a) / (c - a)); f = proj_look(_raw(A, t), t, A); return zoom(f, 1 + 0.25 * ein(u), cy=0.47 * H)
+    u = clamp((t - c) / (b - c)); return layer(B, t, 1 + 0.10 * (1 - eout(u))) + 0.6 * math.exp(-(t - c) * 12)
+
+
+# ---- heart monitor (fx 'ekg' on a shot, 'flatline' out of it)
+def _ekg_trace(t, s, flat_from=None):
+    """Monitor trace: y offsets for each screen x at time t (beats on the shot's kicks and snares)."""
+    import config as _c
+    T = 1.1; x_h = ((t - s['start']) / T) % 1.0 * W
+    beats = sorted(_hits('KICKS') + _hits('SNARES'))
+    xs = np.arange(W, dtype=np.float32); tx = t - ((x_h - xs) % W) / W * T
+    y = np.zeros(W, np.float32)
+    for tb in beats:
+        if flat_from is not None and tb >= flat_from: continue
+        d = tx - tb
+        y += 18 * np.exp(-((d + 0.09) / 0.02) ** 2) - 170 * np.exp(-(d / 0.009) ** 2) + 60 * np.exp(-((d - 0.02) / 0.008) ** 2) - 30 * np.exp(-((d - 0.16) / 0.035) ** 2)
+    gap = ((x_h - xs) % W) > W - 50
+    return y, x_h, gap
+
+
+def ekg_overlay(f, t, s, flat_from=None, k=1.0):
+    yb = 0.74 * H; y, x_h, gap = _ekg_trace(t, s, flat_from)
+    lay = np.zeros((H, W), np.float32)
+    for gy in range(int(0.60 * H), int(0.88 * H), 40): lay[gy:gy + 1] = 0.10
+    for gx in range(0, W, 40): lay[int(0.60 * H):int(0.88 * H), gx:gx + 1] = 0.10
+    pts = np.stack([np.arange(W), yb + y], 1).astype(np.int32)
+    seg = np.split(pts, np.where(np.diff(gap.astype(int)) != 0)[0] + 1)
+    tr = np.zeros((H, W), np.float32)
+    for sgm in seg:
+        if len(sgm) > 1 and not gap[sgm[0][0]]: cv2.polylines(tr, [sgm], False, 1.0, 4, cv2.LINE_AA)
+    fade = np.clip(1 - ((x_h - np.arange(W)) % W) / W, 0.25, 1)[None, :]
+    tr = tr * fade
+    hx = int(x_h); cv2.circle(tr, (hx, int(yb + y[min(hx, W - 1)])), 9, 1.0, -1, cv2.LINE_AA)
+    green = np.float32([0.45, 1.0, 0.35])
+    out = f * (1 - 0.35 * k * ((YY > 0.58 * H) & (YY < 0.90 * H))[..., None]) + (lay * k)[..., None] * green
+    out = out + (cv2.GaussianBlur(tr, (0, 0), 6) * 0.9 + tr)[..., None] * green * k
+    hr = 'HR  --' if flat_from is not None and t >= flat_from else 'HR  %d' % (128 + int(4 * math.sin(t * 3)))
+    col = (0.25, 0.25, 0.95) if hr.endswith('--') else (0.45, 1.0, 0.35)
+    out = _blit(out, _text_mask(hr, MONO, 54), 60, int(0.61 * H), col, k)
+    return out
+
+
+def t_flatline(t, c, A, B, a, b):
+    """The trace flatlines (HR --), the picture drains to monitor green and collapses into a single glowing line
+    like a CRT switching off; on the hit the next shot snaps open out of the line."""
+    if t < c - 0.12:
+        f = layer(A, t)
+        u = clamp((t - a) / (c - 0.12 - a)); l = luma(f)[..., None]; f = f * (1 - 0.6 * u) + l * np.float32([0.5, 1.0, 0.45]) * 0.6 * u
+        return f
+    bg = np.full((H, W, 3), 0.055, np.float32) * np.float32([0.6, 1.0, 0.6])
+    if t < c:
+        u = ein(clamp((t - (c - 0.12)) / 0.12)); sy = lerp(1.0, 0.004, u); sx = lerp(1.0, 0.85, u)
+        f = layer(A, t) * (1 + 1.5 * u)
+        M = np.float32([[sx, 0, W / 2 * (1 - sx)], [0, sy, H / 2 * (1 - sy)]])
+        g = cv2.warpAffine(f, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        m = cv2.warpAffine(np.ones((H, W), np.float32), M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)[..., None]
+        line = np.exp(-((YY - H / 2) / (3 + 40 * (1 - u))) ** 2)[..., None] * u * np.float32([0.7, 1.0, 0.7])
+        return bg * (1 - m) + g * m + line
+    u = clamp((t - c) / (b - c)); e = eout(clamp(u / 0.6)); sy = lerp(0.004, 1.0, e) * (1 + 0.06 * math.sin(u * 14) * (1 - u))
+    fb = layer(B, t); M = np.float32([[1, 0, 0], [0, sy, H / 2 * (1 - sy)]])
+    g = cv2.warpAffine(fb, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    m = cv2.warpAffine(np.ones((H, W), np.float32), M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)[..., None]
+    f = bg * (1 - m) + g * m
+    sp = int(14 * (1 - e))
+    if sp > 1: f = f.copy(); f[..., 2] = np.roll(f[..., 2], sp, 1); f[..., 0] = np.roll(f[..., 0], -sp, 1)
+    return f + (np.exp(-((YY - H / 2) / (6 + 300 * e)) ** 2) * 0.5 * math.exp(-(t - c) * 14))[..., None]
+
+
+# ---- red heartbeat vignette (fx 'pulse')
+def pulse_fx(f, t, s):
+    import config as _c
+    ks = _hits('BUMP_KICKS') if hasattr(_c, 'BUMP_KICKS') else _hits('KICKS'); a = 0.0
+    for tk in ks:
+        if s['start'] - 1e-6 <= tk <= t: a = max(a, math.exp(-(t - tk) / 0.16))
+    if a < 0.02: return f
+    if 'vig' not in _K4: _K4['vig'] = (np.clip(((XX - W / 2) / (0.55 * W)) ** 2 + ((YY - H / 2) / (0.55 * H)) ** 2, 0, 1.6) ** 1.5).astype(np.float32)
+    m = (_K4['vig'] * 0.55 * a)[..., None]
+    return f * (1 - m) + BLOOD * 0.9 * m
+
+
+# ---- frost loop (the Ice Truck Killer)
+def _frost_assets():
+    if 'frost' in _K4: return _K4['frost']
+    rng = np.random.default_rng(9)
+    grain = cv2.GaussianBlur(rng.random((H, W)).astype(np.float32), (0, 0), 1.1); grain = (grain - grain.min()) / (grain.max() - grain.min())
+    veins = np.zeros((H, W), np.float32)
+    for k, s in enumerate((1, 2)):
+        n = _ring_noise(100 + k, s=s); veins += (1 - np.abs(2 * n - 1)) ** 8 / (k + 1)
+    veins /= veins.max()
+    dend = np.zeros((H, W), np.float32)
+    def branch(x, y, ang, L, depth):
+        x1, y1 = x + math.cos(ang) * L, y + math.sin(ang) * L
+        cv2.line(dend, (int(x), int(y)), (int(x1), int(y1)), 0.55 + 0.1 * depth, 1, cv2.LINE_AA)
+        if depth == 0: return
+        for j in range(1, 4):
+            px_, py_ = x + (x1 - x) * j / 4, y + (y1 - y) * j / 4
+            for sgn in (-1, 1): branch(px_, py_, ang + sgn * math.pi / 3, L * 0.42 * (1 - j / 6), depth - 1)
+    for _ in range(80):                                                                       # crystals grow in from the edges
+        side = rng.integers(4); u_ = rng.uniform(0, 1)
+        x, y = [(u_ * W, 0), (W, u_ * H), (u_ * W, H), (0, u_ * H)][side]; x += rng.normal(0, 60); y += rng.normal(0, 60)
+        ang = math.atan2(H * 0.45 - y, W / 2 - x) + rng.normal(0, 0.5)
+        branch(x, y, ang, rng.uniform(120, 300), 3)
+    dend = np.clip(cv2.GaussianBlur(dend, (0, 0), 0.7) * 1.6, 0, 1)
+    pat = np.clip(0.30 * grain + 0.30 * veins + 0.95 * dend, 0, 1.2)
+    edge = np.minimum(np.minimum(XX, W - XX) / W, np.minimum(YY, H - YY) / H * (H / W)) / 0.5
+    G = np.clip(edge + 0.25 * (_ring_noise(110, s=2) - 0.5) - 0.20 * dend, 0, 1.3)
+    spark = (rng.random((H, W)) > 0.9994).astype(np.float32)
+    _K4['frost'] = (pat.astype(np.float32), G.astype(np.float32), cv2.GaussianBlur(spark, (0, 0), 1.2) * 6)
+    return _K4['frost']
+
+
+def t_frost(t, A, a, end):
+    """Loop: frost creeps in over the lens from the edges (ferns of ice crystals, the picture behind going cold
+    and blurred, sparkles); when it has frozen over, a swipe wipes a clear streak through it and the first shot is
+    behind the glass."""
+    if t >= end: return layer(0, t - DUR)
+    pat, G, spark = _frost_assets()
+    tw = end - 0.24
+    front = 1.12 * ease(clamp((t - a) / (tw - a))) ** 0.8
+    cover = ss(front, front - 0.12, G)
+    base = layer(A, t)
+    cold = blur(base, 14 * cover.mean() + 2) * np.float32([1.15, 1.0, 0.85])
+    cold = luma(cold)[..., None] * 0.5 + cold * 0.5
+    ice = np.float32([1.0, 0.95, 0.86]) * (0.50 + 0.65 * pat)[..., None]
+    tw_ = 0.5 + 0.5 * math.sin(t * 40)
+    m = (cover * (0.30 + 0.62 * pat))[..., None]
+    f = base * (1 - cover[..., None]) + cold * cover[..., None]
+    f = f * (1 - m) + ice * m + (spark * cover * tw_)[..., None]
+    if t >= tw:
+        u = clamp((t - tw) / (end - tw)); xf = lerp(-0.2 * W, 1.3 * W, eout(clamp(u / 0.45)))
+        yl = 0.45 * H + 0.10 * H * np.sin(XX / W * 3.0); hw = lerp(110, 1500, ein(clamp((u - 0.25) / 0.75)))
+        d = np.abs(YY - yl)
+        dd = np.sqrt(d ** 2 + np.clip(XX - (xf - hw), 0, None) ** 2) + 18 * (_ring_noise(120, s=1) - 0.5)   # rounded palm end
+        wipe = ss(hw + 6, hw - 6, dd)
+        wet = np.exp(-((dd - hw) / 7) ** 2) * 0.5
+        f0 = layer(0, t - DUR)
+        f = f * (1 - wipe[..., None]) + f0 * wipe[..., None] + wet[..., None] * np.float32([1.0, 0.98, 0.95])
+    return f
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -3499,12 +4053,22 @@ TRANSITIONS = {
     'luminol':   (lambda c, o: (c - .45, c + .35), lambda t, c, A, B, o: t_luminol(t, c, A, B, c - .45, c + .35)),
     'rollup':    (lambda c, o: (c - .40, c + .14), lambda t, c, A, B, o: t_rollup(t, c, A, B, c - .40, c + .14)),
     'bulb':      (lambda c, o: (c - .32, c + .40), lambda t, c, A, B, o: t_bulb(t, c, A, B, c - .32, c + .40)),
+    # Dexter kit V (the kill ritual)
+    'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
+    'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
+    'toolroll':  (lambda c, o: (c - .46, c + .40), lambda t, c, A, B, o: t_toolroll(t, c, A, B, c - .46, c + .40)),
+    'fingerprint': (lambda c, o: (c - .40, c + .42), lambda t, c, A, B, o: t_fingerprint(t, c, A, B, c - .40, c + .42)),
+    'bag2':      (lambda c, o: (c - .45, c + .40), lambda t, c, A, B, o: t_bag2(t, c, A, B, c - .45, c + .40)),
+    'projector': (lambda c, o: (c - .30, c + .10), lambda t, c, A, B, o: t_projector(t, c, A, B, c - .30, c + .10)),
+    'click':     (lambda c, o: (c - .06, c + .10), lambda t, c, A, B, o: t_click(t, c, A, B, c - .06, c + .10)),
+    'lightsup':  (lambda c, o: (c - .12, c + .25), lambda t, c, A, B, o: t_lightsup(t, c, A, B, c - .12, c + .25)),
+    'flatline':  (lambda c, o: (c - .30, c + .28), lambda t, c, A, B, o: t_flatline(t, c, A, B, c - .30, c + .28)),
     'target':    (lambda c, o: (c - .52, c + .42), lambda t, c, A, B, o: t_target(t, c, A, B, c - .52, c + .42)),
     'spray':     (lambda c, o: (c - .42, c + .35), lambda t, c, A, B, o: t_spray(t, c, A, B, c - .42, c + .35)),
 }
 
 
-LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl')
+LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost')
 
 
 def build_trans():
@@ -3529,6 +4093,9 @@ def build_trans():
     elif lp == 'slidebox':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_slidebox(t, last, a, end)))
+    elif lp == 'frost':
+        c = CUTS[-1]; a, end = c - 0.90, c + 0.10
+        out.append((a, DUR + 1, lambda t: t_frost(t, last, a, end)))
     elif lp == 'vinyl':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_vinyl(t, last, a, end)))
