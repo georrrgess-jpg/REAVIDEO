@@ -3603,7 +3603,8 @@ def t_bag2(t, c, A, B, a, b):
     gy, gx = np.gradient(n1 * 40 + n2 * 14)
     pleat = np.sin(th * 26 + n2 * 6) * np.exp(-np.clip(r - Rm, 0, None) / 220)
     nx_ = np.clip(gx * 0.28 + (-np.sin(th)) * pleat * 0.6, -0.95, 0.95); ny_ = np.clip(gy * 0.28 + np.cos(th) * pleat * 0.6, -0.95, 0.95)
-    v = _shade(nx_, ny_, _nz(np.sqrt(np.clip(nx_ ** 2 + ny_ ** 2, 0, 0.95))), 0.022, ks=1.15, pw=55, amb=0.3)
+    v = _shade(nx_, ny_, _nz(np.sqrt(np.clip(nx_ ** 2 + ny_ ** 2, 0, 0.95))), 0.05, ks=1.15, pw=55, amb=0.45)
+    v = v + 0.05 * np.exp(-YY / (0.6 * H))                                                        # overhead light on the plastic
     plastic = v[..., None] * np.float32([1.08, 1.0, 0.96])
     if t < c:
         s_img = max(0.02, (Rm / RFULL)) ** 0.8; rot = 0.6 * (1 - Rm / RFULL)
