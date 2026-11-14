@@ -2622,12 +2622,13 @@ def _shade(nx, ny, nz, base, ks=0.8, pw=40, amb=0.28):
 def _nz(tilt): return np.sqrt(np.clip(1 - tilt * tilt, 0, 1))
 
 
-def _live_circle(f, live, cx, cy, Rs, ang=0.0, feather=1.5):
+def _live_circle(f, live, cx, cy, Rs, ang=0.0, feather=1.5, src=None):
     """Paste a live frame into the circle (cx, cy, Rs), rotated by ang degrees; at Rs = RFULL centred on screen it
     is the frame 1:1, so a dive into the circle lands exactly on the next shot."""
     Rs = min(Rs, RFULL)
     sc = Rs / RFULL * lerp(RFULL / (W / 2), 1.0, clamp(Rs / RFULL) ** 2)
-    M = cv2.getRotationMatrix2D((W / 2, H / 2), ang, sc); M[0, 2] += cx - W / 2; M[1, 2] += cy - H / 2
+    sx, sy = src if src is not None else (W / 2, H / 2)
+    M = cv2.getRotationMatrix2D((sx, sy), ang, sc); M[0, 2] += cx - sx; M[1, 2] += cy - sy
     lv = cv2.warpAffine(live, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
     rr = np.sqrt((XX - cx) ** 2 + (YY - cy) ** 2); m = ss(Rs + feather, Rs - feather, rr)[..., None]
     return f * (1 - m) + lv * m, rr
@@ -4068,6 +4069,177 @@ def t_mirror(t, A, a, end):
     return f
 
 
+# ---- the outrun sun, as a window (the drop)
+def _sky_floor(t, hz, speed=1.0):
+    sky = np.zeros((H, W, 3), np.float32); yn = np.clip(YY / max(hz, 1.0), 0, 1)[..., None]
+    sky[:] = np.float32([0.16, 0.03, 0.07]) * (1 - yn) + np.float32([0.45, 0.10, 0.55]) * yn
+    rng = np.random.default_rng(3); st = np.zeros((H, W), np.float32)
+    for _ in range(60): cv2.circle(st, (int(rng.uniform(0, W)), int(rng.uniform(0, H))), 1, float(rng.uniform(0.3, 0.9)), -1)
+    sky = sky + (st * (YY < hz))[..., None] * 0.7
+    fl = (YY >= hz).astype(np.float32)
+    depth = np.maximum(YY - hz, 0) + 1.0
+    zf = 9000 / depth; zl = np.mod(zf - t * 14 * speed, 6)
+    hl = np.exp(-(np.minimum(zl, 6 - zl) / (2.2 * 9000 / depth ** 2)) ** 2)
+    xw = (XX - W / 2) * zf / 60; vl = np.exp(-(np.abs(np.mod(xw + 5, 10) - 5) / (1.8 * zf / 60)) ** 2)
+    grid = (np.clip(hl + vl, 0, 1) * fl * (1 - np.exp(-depth / 50))).astype(np.float32)
+    f = sky * (1 - fl[..., None]) + np.float32([0.10, 0.02, 0.08]) * fl[..., None]
+    f = f + (grid * (0.5 + 0.5 * np.exp(-depth / 400)))[..., None] * NEON_PINK + (cv2.GaussianBlur(grid, (0, 0), 6) * 0.6)[..., None] * NEON_PINK
+    f = f + (np.exp(-((YY - hz) / 5) ** 2) * 0.9 + np.exp(-((YY - hz) / 40) ** 2) * 0.25)[..., None] * NEON_PINK
+    return f
+
+
+def t_sunwindow(t, c, A, B, a, b):
+    """The drop: the camera tilts down off the shot onto the outrun horizon, where the striped sun is made of the
+    next shot; the camera flies over the racing grid toward it, the sun rises and its stripes part, and on the
+    drop it fills the frame as the next shot."""
+    t1 = a + 0.16
+    fly = ease(clamp((t - t1) / (b - 0.04 - t1)))
+    hz = lerp(0.44 * H, 1.25 * H, fly ** 1.4)                                                    # the camera tilts up as it closes in
+    R0 = 0.33 * W; z = math.exp(math.log(RFULL / R0) * ein(clamp((t - t1) / (b - 0.04 - t1))) ** 0.9)
+    R = R0 * z; cx = W / 2; cy = lerp(0.44 * H - 0.05 * H, H / 2, fly)
+    world = _sky_floor(t, hz, 1 + 3 * fly)
+    d = np.sqrt((XX - cx) ** 2 + (YY - cy) ** 2)
+    gy = np.clip((YY - (cy - R)) / (2 * R), 0, 1)[..., None]
+    grad = np.float32([0.35, 0.90, 1.0]) * (1 - gy) + np.float32([0.65, 0.20, 1.0]) * gy
+    f, _ = _live_circle(world, layer(B, t), cx, cy, R, feather=1.5, src=(W / 2, lerp(0.36 * H, H / 2, fly)))   # the sun frames his eyes
+    inside = ss(R + 1.5, R - 1.5, d)[..., None]
+    tint = 1 - ease(clamp((t - (c - 0.02)) / (b - c)))                                           # the sun's colour drains off the shot
+    f = f * (1 - inside * tint * 0.55) + (f * grad * 1.6) * inside * tint * 0.55
+    ph = (YY - (cy - 0.35 * R)) / max(1.0, (cy + R) - (cy - 0.35 * R))
+    gap_w = (3 + 16 * np.clip(ph, 0, 1)) * z * (1 - fly) ** 1.5
+    gaps = ((ph > 0) & (np.mod(YY - cy + t * 40 * z, 40 * z) < gap_w)).astype(np.float32)[..., None] * inside
+    f = f * (1 - gaps) + world * gaps
+    halo = (np.exp(-np.clip(d - R, 0, None) / (90 * z)) * 0.35 * (d > R) * (1 - fly))[..., None]
+    f = f + halo * np.float32([0.6, 0.35, 1.0])
+    f = f * (1 - (ss(hz - 2, hz + 2, YY) * (d <= R))[..., None]) + (world * ss(hz - 2, hz + 2, YY)[..., None]) * (d <= R)[..., None]
+    if t < t1:                                                                                   # tilt down off the outgoing shot
+        e = ease(clamp((t - a) / (t1 - a))); dy = -e * H
+        fa = cv2.warpAffine(layer(A, t), np.float32([[1, 0, 0], [0, 1, dy]]), (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        fw = cv2.warpAffine(f, np.float32([[1, 0, 0], [0, 1, dy + H]]), (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        return fa * (YY < H + dy)[..., None] + fw * (YY >= H + dy)[..., None]
+    if c <= t < c + 0.10: f = f * (1 + 0.25 * (1 - (t - c) / 0.10))
+    return f
+
+
+# ---- rear-view mirror (mid-edit)
+def t_mirror2(t, c, A, B, a, b):
+    """A rear-view mirror swings down into the shot (glossy housing, silver-rimmed glass); in its glass is the road
+    behind -- the next shot -- and the camera pushes into the glass until it is the frame."""
+    gw, gh = 900, 300
+    drop = eout(clamp((t - a) / 0.22)); td = c - 0.12; u = clamp((t - td) / (b - td))
+    zmax = H / gh; z = math.exp(math.log(zmax) * ease(u))
+    cx = W / 2; cy0 = lerp(-0.25 * H, 0.30 * H, drop); cy = lerp(cy0, H / 2, ease(u))
+    rot = (math.radians(7) * (1 - drop) + math.radians(2.0) * math.sin((t - a) * 16) * math.exp(-(t - a) * 7)) * (1 - ease(u))
+    fa = layer(A, t); f = fa * (1 - 0.30 * drop * (1 - u))
+    hw, hh = gw / 2 * z, gh / 2 * z; rad = 80 * z
+    ca, sa = math.cos(rot), math.sin(rot)
+    lx = (XX - cx) * ca + (YY - cy) * sa; ly = -(XX - cx) * sa + (YY - cy) * ca
+    def rdist(hx, hy, r):
+        qx = np.maximum(np.abs(lx) - (hx - r), 0); qy = np.maximum(np.abs(ly) - (hy - r), 0)
+        return np.sqrt(qx * qx + qy * qy) - r
+    dh = rdist(hw + 30 * z, hh + 30 * z, rad + 24 * z); dg = rdist(hw, hh, rad)
+    housing = ss(1, -1, dh); glassm = ss(1, -1, dg)
+    stem = ((np.abs(lx) < 26 * z) & (ly < -hh - 20 * z) & (ly > -hh - 20 * z - 0.4 * H)).astype(np.float32)
+    hm = np.maximum(housing, stem)
+    sh = cv2.GaussianBlur(np.roll(np.roll(hm, int(26 * z), 0), int(16 * z), 1), (0, 0), 18) * 0.55 * (1 - u)
+    f = f * (1 - sh[..., None])
+    rimd = np.clip(-dh / (30 * z), 0, 1)                                                         # glossy housing: bevel highlight on the top edge
+    hcol = 0.05 + 0.10 * np.exp(-((ly + hh + 20 * z) / (10 * z)) ** 2) + 0.06 * (1 - rimd)
+    f = f * (1 - hm[..., None]) + (hcol[..., None] * np.float32([1.0, 0.98, 1.0])) * hm[..., None]
+    fb = layer(B, t)
+    sc_end = z * gh / H; sc_cov = z * gw / W * 1.02; sc = lerp(sc_cov, sc_end, ease(u))
+    src_c = np.array([W / 2, lerp(0.38 * H, H / 2, ease(u))])                                    # the glass frames the face line
+    Mg = np.float32([[sc * ca, -sc * sa, 0], [sc * sa, sc * ca, 0]]); Mg[:, 2] = np.array([cx, cy]) - Mg[:, :2] @ src_c
+    g = cv2.warpAffine(fb, Mg, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    gmask = cv2.warpAffine(np.ones((H, W), np.float32), Mg, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    if u < 0.97: gmask = cv2.GaussianBlur(gmask, (0, 0), 14 * (1 - u) + 0.5) * gmask
+    gmask = gmask[..., None]
+    scb = z * gw / W * 1.02; Mb = np.float32([[scb * ca, -scb * sa, 0], [scb * sa, scb * ca, 0]]); Mb[:, 2] = np.array([cx, cy]) - Mb[:, :2] @ src_c
+    bg = cv2.warpAffine(cv2.GaussianBlur(fb, (0, 0), 18), Mb, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE) * 0.55
+    g = bg * (1 - gmask) + g * gmask / np.maximum(cv2.warpAffine(np.ones((H, W), np.float32), Mg, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)[..., None], 1e-3)
+    sheen = np.exp(-(((lx + ly * 1.6) / max(1.0, z) - lerp(-700, 700, clamp((t - a - 0.10) / 0.35))) / 60) ** 2) * 0.20 * (1 - u)
+    g = g * (0.88 + 0.12 * u) + sheen[..., None]
+    f = f * (1 - glassm[..., None]) + g * glassm[..., None]
+    rim = np.exp(-((dg + 2 * z) / (2.5 * z)) ** 2) * (1 - u)                                       # silver rim of the glass
+    f = f + rim[..., None] * 0.55
+    return f
+
+
+# ---- split-flap board (the crash)
+def t_flaps(t, c, A, B, a, b, rows=8, cols=3):
+    """On the crash the frame flips over like a split-flap departure board: module by module, top to bottom, each
+    top flap falls over its hinge and the next shot clacks into place; the board's gaps show while it runs."""
+    fa = layer(A, t); fb = layer(B, t); f = fa.copy(); h = H / rows
+    act = clamp((t - a) / 0.05) * (1 - clamp((t - (b - 0.06)) / 0.06))
+    shade = np.ones((H, 1, 1), np.float32)
+    for r in range(rows):
+        t0 = a + 0.03 + r * 0.03; ph = clamp((t - t0) / 0.16)
+        y0 = int(r * h); y1 = int((r + 1) * h); yh = int((y0 + y1) / 2)
+        if ph <= 0: continue
+        if ph >= 1: f[y0:y1] = fb[y0:y1]; continue
+        f[y0:yh] = fb[y0:yh]; f[yh:y1] = fa[yh:y1]
+        k = math.cos(math.pi * ph)
+        if k > 0:                                                                                # A's top flap folding down to the hinge
+            hh = max(1, int(round((yh - y0) * k))); src = cv2.resize(fa[y0:yh], (W, hh), interpolation=cv2.INTER_AREA)
+            f[yh - hh:yh] = src * (0.45 + 0.55 * k); f[yh - hh:yh - hh + 2] += 0.35 * k              # lit top edge
+            sh = int((y1 - yh) * 0.5 * (1 - k)); shade[yh:yh + sh] *= 0.55
+        else:                                                                                    # its back, B's bottom half, landing
+            hh = max(1, int(round((y1 - yh) * -k))); src = cv2.resize(fb[yh:y1], (W, hh), interpolation=cv2.INTER_AREA)
+            f[yh:yh + hh] = src * (0.45 + 0.55 * -k); f[yh + hh - 2:yh + hh] += 0.30 * -k
+    f = f * (1 - (1 - shade) * act)
+    gap = np.zeros((H, W), np.float32)
+    for r in range(rows + 1):
+        y = int(r * h); gap[max(0, y - 4):y + 4] = 1.0
+        if r < rows: yh = int((r + 0.5) * h); gap[yh - 1:yh + 1] = 0.7
+    for j in range(1, cols): x = int(W / cols * j); gap[:, x - 4:x + 4] = 1.0
+    return f * (1 - (gap * act * 0.9)[..., None])
+
+
+# ---- sunglasses reflection loop
+def _lens_masks(f):
+    """The two dark lenses of the sunglasses in a frame: soft masks plus the bigger lens's centre and size."""
+    q = 4; sm = cv2.resize(f, (W // q, H // q), interpolation=cv2.INTER_AREA); l = luma(sm)
+    m = ((l < 0.11) & (np.arange(H // q)[:, None] > 0.08 * H / q) & (np.arange(H // q)[:, None] < 0.50 * H / q)).astype(np.uint8)
+    m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8)); m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+    n, lab, stats, cent = cv2.connectedComponentsWithStats(m)
+    if n <= 1: return None
+    order = sorted(range(1, n), key=lambda i: -stats[i, cv2.CC_STAT_AREA])[:2]
+    mm = np.isin(lab, order).astype(np.float32)
+    big = order[0]; x, y, w, h_ = stats[big, :4]
+    mask = cv2.GaussianBlur(cv2.resize(mm, (W, H), interpolation=cv2.INTER_LINEAR), (0, 0), 3)
+    return mask, (cent[big][0] * q, cent[big][1] * q), (w * q, h_ * q)
+
+
+def t_shades(t, A, a, end):
+    """Loop: the edit ends on Dexter in his sunglasses. The first shot of the edit appears reflected in the dark
+    lenses (curved, cool, a sheen sliding over the glass); then the camera dives into one lens until the reflection
+    is the frame, and the edit starts again."""
+    if t >= end: return layer(0, t - DUR)
+    fa = layer(A, t); f0 = layer(0, t - DUR)
+    lm = _lens_masks(fa)
+    if lm is None: return fa
+    mask, (lx0, ly0), (lw, lh) = lm
+    td = a + 0.42; u = clamp((t - td) / (end - td)); show = ease(clamp((t - a) / 0.30))
+    zend = min(14.0, 1.25 * max(W / max(lw, 1), H / max(lh, 1))); z = math.exp(math.log(zend) * ein(u) ** 0.9)
+    cx, cy = lerp(lx0, W / 2, ease(u)), lerp(ly0, H / 2, ease(u))
+    M = np.float32([[z, 0, cx - z * lx0], [0, z, cy - z * ly0]])
+    fz = cv2.warpAffine(fa, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT) if z > 1.001 else fa
+    mz = cv2.warpAffine(mask, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0) if z > 1.001 else mask
+    sc = lerp(1.15 * lw * z / W, 1.0, ease(u))                                                  # the reflection: shot 0 in the lens, curved
+    rr = np.sqrt(((XX - cx) / (lw * z * 0.6)) ** 2 + ((YY - cy) / (lh * z * 0.6)) ** 2)
+    bulge = 1 + 0.18 * (1 - u) * np.clip(1 - rr ** 2, 0, 1)
+    mx = (W / 2 + (XX - cx) / (sc * bulge)).astype(np.float32); my = (H / 2 + (YY - cy) / (sc * bulge)).astype(np.float32)
+    refl = cv2.remap(f0, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    dark = lerp(0.62, 1.0, ease(u))
+    refl = refl * dark * np.float32([1.10, 1.0, 0.92]) ** (1 - u)
+    sweep = lerp(-0.6, 1.6, clamp((t - a - 0.05) / 0.45))
+    sheen = np.exp(-((((XX - cx) / (lw * z) + (YY - cy) / (lh * z) * 0.5) - sweep) / 0.12) ** 2) * 0.28 * (1 - u)
+    refl = refl + sheen[..., None]
+    k = (mz * show)[..., None]
+    if u > 0.85: k = np.maximum(k, ss(0.85, 1.0, u))                                           # land exactly on the first shot
+    return fz * (1 - k) + refl * k
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -4303,6 +4475,9 @@ TRANSITIONS = {
     'window':    (lambda c, o: (c - .40, c + .32), lambda t, c, A, B, o: t_window(t, c, A, B, c - .40, c + .32)),
     'streetlights': (lambda c, o: (c - .52, c + .22), lambda t, c, A, B, o: t_streetlights(t, c, A, B, c - .52, c + .22)),
     'wiper':     (lambda c, o: (c - .42, c + .24), lambda t, c, A, B, o: t_wiper(t, c, A, B, c - .42, c + .24)),
+    'sunwindow': (lambda c, o: (c - .40, c + .30), lambda t, c, A, B, o: t_sunwindow(t, c, A, B, c - .40, c + .30)),
+    'mirror2':   (lambda c, o: (c - .40, c + .40), lambda t, c, A, B, o: t_mirror2(t, c, A, B, c - .40, c + .40)),
+    'flaps':     (lambda c, o: (c - .20, c + .25), lambda t, c, A, B, o: t_flaps(t, c, A, B, c - .20, c + .25)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
@@ -4318,7 +4493,7 @@ TRANSITIONS = {
 }
 
 
-LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror')
+LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades')
 
 
 def build_trans():
@@ -4343,6 +4518,9 @@ def build_trans():
     elif lp == 'slidebox':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_slidebox(t, last, a, end)))
+    elif lp == 'shades':
+        c = CUTS[-1]; a, end = c - 0.85, c + 0.10
+        out.append((a, DUR + 1, lambda t: t_shades(t, last, a, end)))
     elif lp == 'mirror':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_mirror(t, last, a, end)))

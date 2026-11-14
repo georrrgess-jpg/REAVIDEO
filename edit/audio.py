@@ -445,6 +445,17 @@ def sfx_for(name, c, o, up):
         put(whoosh(0.30, 800, 300, peak=0.4), c - 0.10, gain=0.04); put(boom(0.4, 90, 40), c, gain=0.07)
     elif name == 'mirror':
         put(tick(0.04, 1500), c - 0.57, gain=0.05); put(whoosh(0.40, 300, 3500, peak=0.9), c - 0.40, gain=0.05)
+    elif name == 'sunwindow':
+        put(whoosh(0.30, 3000, 300, peak=0.8), c - 0.42, gain=0.045); put(whoosh(0.55, 200, 2600, q=0.7, peak=0.85), c - 0.26, gain=0.06)
+        put(boom(0.8, 60, 30), c, gain=0.12); put(shimmer(0.5), c - 0.20, gain=0.03)
+    elif name == 'mirror2':
+        put(whoosh(0.25, 1800, 500, peak=0.4), c - 0.40, gain=0.04); put(tick(0.04, 1500), c - 0.18, gain=0.05)
+        put(whoosh(0.45, 300, 3500, peak=0.85), c - 0.14, gain=0.05)
+    elif name == 'flaps':
+        for r_ in range(12): put(tick(0.03, 1700 + 60 * (r_ % 3)), c - 0.18 + r_ * 0.022 + 0.07, pan=-0.3 + 0.05 * r_, gain=0.04)
+        put(boom(0.4, 90, 40), c, gain=0.08)
+    elif name == 'shades':
+        put(shimmer(0.5), c - 0.80, gain=0.035); put(whoosh(0.45, 300, 4000, peak=0.9), c - 0.40, gain=0.06)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)
