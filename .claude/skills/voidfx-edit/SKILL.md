@@ -1,6 +1,6 @@
 ---
 name: voidfx-edit
-description: The user's preferred editing style for short vertical fan edits ("voidfx" style). The current Dexter STANDARD is "X Gon' Give It To Ya" v3 (edits/x_gon); the speedster standard is edits/flash. New edits start from a standard with edit/tools/new_edit.py. Use for ANY request to make, remake, recut or restyle an edit, TikTok/Reels/Shorts edit, fan edit, scene-pack edit or music edit, even if the style isn't named. Covers the style rules (beat-grid timing, themed transitions, grade, framing, loop ending, SFX level), the build workflow with the tools in edit/, and the QA checklist.
+description: The user's preferred editing style for short vertical fan edits ("voidfx" style). The current Dexter STANDARD is "The Perfect Girl" v11 (edits/perfect_girl, approved as adequate); the speedster standard is edits/flash. New edits start from a standard with edit/tools/new_edit.py. Use for ANY request to make, remake, recut or restyle an edit, TikTok/Reels/Shorts edit, fan edit, scene-pack edit or music edit, even if the style isn't named. Covers the style rules (beat-grid timing, themed transitions, grade, framing, loop ending, SFX level), the build workflow with the tools in edit/, and the QA checklist.
 ---
 
 # voidfx edit style (the user's default)
@@ -9,7 +9,19 @@ Every edit made in this repo uses this style unless the user asks otherwise. It 
 reverse-engineered from the reference `doomsday_voidfx_9x16` (analysis: `docs/style-breakdown.md`;
 first build: `edit/config.py`).
 
-## The Dexter standard (user-approved, 2026-11-12): `edits/x_gon`
+## The Dexter standard (user-approved, 2026-11-14): `edits/perfect_girl`
+
+**Dexter × "The Perfect Girl" (Mareux) v11 is the Dexter standard.** The user's words: "This edit is adequate, make it a standard."
+Like the Flash standard, **adequate means the floor, not the target**: every new Dexter edit should beat it and say how.
+`python edit/tools/new_edit.py <name> --song ... --section ...` defaults to it (`--from perfect_girl`; it carries MBLUR, BUMP and LETTERBOX).
+What it adds to the rules below (each was learned the hard way over 11 versions; see the preference log):
+- **Few, crafted, physical Dexter set-pieces beat many effects.** The approved pieces: `trophy` (scalpel nick -> bead of blood holding the next shot -> dive -> glass slide press, no label), `codepage` (Harry's Code on a turning notebook page), `tear`, `panes`, `carve` (carving knife glide, slash, split), `shades` loop. Rejected along the way: generic mood graphics (outrun sun, neon trace, streetlights, rain/wiper, rack focus, light trails, split-flap), opening-credits rituals (tee, sink drain), repeated blood spatter, anatomical/abstract pieces (iris, latex glove), and any on-screen text (case labels, subtitles, narration).
+- **Every graphic must do the transition's work** (hold or reveal the next shot), and **the focal beat must be emphasised**: big, readable, slow-motion build into a hard hit (flash + jolt).
+- **Pacing for a slow song:** 12 slots on the song's real beat (0.465 s at 129 BPM half-time), one 5-beat hold, cuts within one frame of the beat.
+- **Cinematic layer:** letterbox bars over the opening bar that open on the drop and close again before the loop seam; a red Dark Passenger outline on one dark shot; neon-noir grade.
+- **Check what the user means by a time:** list the transition windows and say which one covers it before changing anything (the "8 seconds" mix-up cost two rounds).
+
+## The previous Dexter standard (user-approved, 2026-11-12): `edits/x_gon`
 
 **Dexter × "X Gon' Give It To Ya" v3 is the standard for Dexter edits** ("I like this edit, make it a standard").
 Start new Dexter edits from it (`python edit/tools/new_edit.py <name> --song ... --section ...`, `--from x_gon` is the default).
@@ -370,6 +382,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-14: **The user made Perfect Girl v11 the Dexter standard** ("This edit is adequate make it a standard"). `new_edit.py` defaults to `perfect_girl`. Treat it as the minimum to beat.
 - 2026-11-14: Perfect Girl v10 feedback: replace the glove with a better animated, more visually appealing, **emphasised** counterpart. v11: `carve`. The user approves of physical, crafted Dexter objects (knife, slide, notebook) far more than abstract or anatomical effects (iris, latex).
 - 2026-11-14: Perfect Girl v9 feedback: the user didn't like the eye dive; wanted a cooler Dexter-themed transition never used before. v10: `glove` (a gloved hand pushes through the screen like latex, then tears it open).
 - 2026-11-14: Perfect Girl v8: the user asked for one more focal-point transition, very cinematic, well animated and visually pleasing. v9: `eyedive` replaces the whip at 0:14.9 (sunset close-up -> street smile).

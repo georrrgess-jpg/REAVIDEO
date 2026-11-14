@@ -1,9 +1,15 @@
 """Start a new edit from a STANDARD.
 
-  python edit/tools/new_edit.py NAME --song media/song.mp3 --section media/NAME_section.json [--from x_gon|new_person|hold_on|flash] [--pack PACK]
+  python edit/tools/new_edit.py NAME --song media/song.mp3 --section media/NAME_section.json [--from perfect_girl|x_gon|new_person|hold_on|flash] [--pack PACK]
 
 Standards (user-approved):
-  x_gon       Dexter x X Gon' Give It To Ya v3: THE Dexter standard (latest). Default. The hook, built as two
+  perfect_girl  Dexter x The Perfect Girl (Mareux) v11: THE Dexter standard (latest). Default. The user called it
+              "adequate": treat it as the minimum to beat. 12 slots at a gliding pace on a half-time synthwave
+              beat, a few crafted physical Dexter set-pieces (scalpel/blood-bead/slide trophy on the drop, Harry's
+              Code page turn, paper tear, panes on the kick, carving-knife slash-and-split as the focal beat),
+              letterbox that opens on the drop, red Dark Passenger outline, sunglasses-reflection loop, motion
+              blur, soft kick bumps. No text. Replace its transitions with new ones made for the new song.
+  x_gon       Dexter x X Gon' Give It To Ya v3: the previous Dexter standard. The hook, built as two
               mirrored halves whose transitions act out the lyric words (word times from the vocal stem), an
               all-new drawn kit made for that song, sparse lyric hits, gritty grade, soft bumps on the
               strongest kicks, motion blur in every transition, vinyl-scratch loop. 18 slots on even
@@ -80,6 +86,20 @@ ROLES_FLASH = [
     'cold, blue, tech or helmet shot (blue arcs; dips to dark)',
     'END: warm civilian close-up, long hold, looking up (shockwave ripples; the bolt-split loops to OPEN)',
 ]
+ROLES_PERFECT_GIRL = [
+    'OPEN (bar 1, under letterbox): dark night close-up, slight turn (a foreground object passes the lens)',
+    'driving profile, face lit: the signature blood transition on the drop (scalpel nick -> bead -> slide)',
+    'sunlit extreme close-up / profile (the drop shot)',
+    'short warm close-up, PUNCH on a kick',
+    'short frontal stare (notebook page turn out)',
+    'in the car at night, looking out (hard cut)',
+    'frontal stare, cool light (paper tear on the crash)',
+    'lit from above, dramatic (panes on the strongest kick)',
+    'short dark smile (red Dark Passenger outline)',
+    'short warm close-up: the focal beat (carving knife slash-and-split out)',
+    'the one long hold: a smile in daylight (hard cut)',
+    'END: sunglasses on (the loop dives into the first shot reflected in the lenses)',
+]
 ROLES_X_GON = [
     'OPEN: daylight face close-up with an expression change (the opener graphic rises over it on the bass)',
     'short dark beat (hallway, night): hard cut into the first lyric hit',
@@ -118,7 +138,8 @@ ROLES_NEW_PERSON = [
     'looking up, lit from above (case file out)',
     'END: slow profile turn, warm (slide-box loop back to OPEN)',
 ]
-TEMPLATES = {'x_gon': (os.path.join(ROOT, 'edits', 'x_gon', 'config.py'), ROLES_X_GON, 'dexter_mix_1440p'),
+TEMPLATES = {'perfect_girl': (os.path.join(ROOT, 'edits', 'perfect_girl', 'config.py'), ROLES_PERFECT_GIRL, 'dexter_mix_1440p'),
+             'x_gon': (os.path.join(ROOT, 'edits', 'x_gon', 'config.py'), ROLES_X_GON, 'dexter_mix_1440p'),
              'new_person': (os.path.join(ROOT, 'edits', 'new_person', 'config.py'), ROLES_NEW_PERSON, 'dexter_mix_1440p'),
              'hold_on': (os.path.join(ROOT, 'edits', 'hold_on', 'config.py'), ROLES_HOLD_ON, 'dexter_mix_1440p'),
              'flash': (os.path.join(ROOT, 'edits', 'flash', 'config.py'), ROLES_FLASH, 'flash_all_seasons')}
@@ -132,13 +153,13 @@ def standard_shots(STANDARD):
     cwd = os.getcwd(); os.chdir(os.path.dirname(STANDARD))
     try: spec.loader.exec_module(m)
     finally: os.chdir(cwd)
-    extra = {k: getattr(m, k) for k in ('MBLUR', 'BUMP', 'BUMP_DECAY') if hasattr(m, k)}
+    extra = {k: getattr(m, k) for k in ('MBLUR', 'BUMP', 'BUMP_DECAY', 'LETTERBOX') if hasattr(m, k)}
     return m.SHOTS, m.FIRST_CUT, {k: getattr(m, k) for k in ('KICKS', 'SNARES') if hasattr(m, k)}, extra
 
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('name'); ap.add_argument('--song', required=True)
-    ap.add_argument('--section', required=True); ap.add_argument('--pack'); ap.add_argument('--from', dest='frm', default='x_gon', choices=sorted(TEMPLATES)); a = ap.parse_args()
+    ap.add_argument('--section', required=True); ap.add_argument('--pack'); ap.add_argument('--from', dest='frm', default='perfect_girl', choices=sorted(TEMPLATES)); a = ap.parse_args()
     STANDARD, ROLES, defpack = TEMPLATES[a.frm]; a.pack = a.pack or defpack
     sec = json.load(open(a.section)); shots, first, hits, extra = standard_shots(STANDARD)
     assert len(shots) == len(ROLES), 'standard changed: update the ROLES list in new_edit.py'
