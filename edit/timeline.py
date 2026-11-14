@@ -4295,12 +4295,12 @@ def t_neontrace(t, c, A, B, a, b):
     flicker like a sign warming up, and on the drop the outlines become the next shot's, which fills in from them."""
     if t < c:
         fa = layer(A, t); e = _neon_edges(fa)
-        u = clamp((t - a) / (c - 0.10 - a)); dark = 1 - 0.80 * ease(u)
+        u = clamp((t - a) / (c - 0.10 - a)); dark = 1 - 0.68 * ease(u)
         l = luma(fa)[..., None]; base = (fa * 0.5 + l * 0.5) * dark * np.float32([1.06, 0.92, 1.04])
         reveal = ss(0, 1, (lerp(-0.15, 1.15, ease(clamp((t - a) / (c - 0.14 - a)))) * H - YY) / 90)
         fl = 1.0
         for tf in (c - 0.16, c - 0.09):                                                          # warm-up flicker
-            if tf <= t < tf + 0.03: fl = 0.25
+            if tf <= t < tf + 0.03: fl = 0.55
         return _neon_paint(base, e * reveal, fl, t)
     u = clamp((t - c) / (b - c)); fb = layer(B, t); e = _neon_edges(fb)
     fill = ease(clamp((u - 0.10) / 0.80))
