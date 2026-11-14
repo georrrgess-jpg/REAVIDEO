@@ -494,6 +494,9 @@ def sfx_for(name, c, o, up):
     elif name == 'panes':
         for j_ in range(3): put(whoosh(0.16, 600, 3000, peak=0.6), c - 0.12 + 0.04 * j_, pan=-0.5 + 0.5 * j_, gain=0.04)
         put(boom(0.5, 85, 38), c, gain=0.10)
+    elif name == 'codepage':
+        put(crinkle(0.30), c - 0.38, gain=0.05); put(whoosh(0.55, 700, 2500, q=0.7, peak=0.5), c - 0.36, gain=0.06)
+        put(crinkle(0.18), c + 0.05, gain=0.04)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)

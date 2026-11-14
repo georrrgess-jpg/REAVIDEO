@@ -43,7 +43,7 @@ SHOTS = [
  dict(name='neon_drive',  beats=4, out='trophy', fx=['bump'],             pack=B2, src=276.69, x=0.69, push=(1.00, 1.05), **g(0.60, 1.10)),   # B103 driving past neon
  dict(name='sun_profile', beats=4, out='cut', fx=['bump'],                pack=S1, src=227.30, x=0.40, push=(1.00, 1.05), **g(0.55, 0.95)),   # S56 sunlit profile (out of the sun)
  dict(name='smile_down',  beats=2, out='cut', punch={'z': 1.12, 'flash': 0.08}, fx=['bump'], pack=D, src=29.65, x=0.47, push=(1.00, 1.04), **g(0.55, 1.05)),   # D8
- dict(name='turn_stare',  beats=2, out='filmstrip', fx=['bump'],             pack=D,  src=115.00, x=0.61, push=(1.00, 1.04), **g(0.55, 1.00)),   # D56
+ dict(name='turn_stare',  beats=2, out='codepage', fx=['bump'],             pack=D,  src=115.00, x=0.61, push=(1.00, 1.04), **g(0.55, 1.00)),   # D56
  dict(name='night_car',   beats=4, out='lighttrails', fx=['bump'],       pack=D,  src=276.15, x=0.47, push=(1.00, 1.05), **g(0.55, 1.15)),   # D139 in the car at night
  dict(name='corridor',    beats=4, out='tear', fx=['bump'],              pack=S1, src=353.30, x=0.48, push=(1.00, 1.05), **g(0.55, 1.00)),   # S90
  dict(name='top_lit',     beats=4, out='panes', fx=['bump'],                pack=C4, src=24.35,  x=0.52, push=(1.00, 1.05), **g(0.55, 1.30)),   # C7 lit from above (the crash)

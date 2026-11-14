@@ -4758,7 +4758,7 @@ def t_trophy(t, c, A, B, a, b):
     sheen = np.exp(-(((XX * 0.7 + YY * 0.4) - lerp(-200, W + H, u)) / 90) ** 2)[..., None] * 0.10 * (1 - u)
     f = f + sheen * above
     rgb, al = _slide_label(); lh, lw = al.shape; ly0, lx0 = int(0.07 * H), int((W - lw) / 2)
-    la = clamp((yl - (ly0 + lh)) / 60) * (1 - ease(clamp((u - 0.55) / 0.35)))
+    la = clamp((yl - (ly0 + lh)) / 60) * (1 - ease(clamp((u - 0.55) / 0.35))) * 0              # label removed (user, v7)
     if la > 0:
         sub = f[ly0:ly0 + lh, lx0:lx0 + lw]; aa = al[..., None] * la
         f[ly0:ly0 + lh, lx0:lx0 + lw] = sub * (1 - aa) + rgb * aa
@@ -4834,7 +4834,7 @@ def t_lighttrails(t, c, A, B, a, b):
         acc += layer_[..., None] * col
     glow = cv2.GaussianBlur(acc, (0, 0), 6) * 1.5 + cv2.GaussianBlur(acc, (0, 0), 20) * 1.0
     tr = cv2.resize(acc + glow, (W, H), interpolation=cv2.INTER_LINEAR)
-    fade = 1 - ease(clamp((t - c - 0.08) / (b - c - 0.08)))
+    fade = 1 - ease(clamp((t - c - 0.02) / (b - c - 0.12)))
     f = base + tr * fade
     band = math.exp(-((t - c) / 0.045) ** 2)
     f = f + band * (np.exp(-((YY - 0.5 * H) / (0.35 * H)) ** 2)[..., None] * np.float32([0.65, 0.75, 1.0]) * 0.9)
@@ -4862,6 +4862,67 @@ def t_panes(t, c, A, B, a, b, n=3):
             f[max(0, ye - 3):ye + 3, x0:x1] = 0.02
         if 0 < u < 1 and j > 0: f[:, x0 - 3:x0 + 3] = 0.02
     return f + 0.12 * math.exp(-max(0.0, t - c) * 20) * (t >= c)
+
+
+# ---- Harry's Code: the shot turns like a notebook page
+FSERIF_I = '/usr/share/fonts/truetype/freefont/FreeSerifItalic.ttf'
+FSERIF_BI = '/usr/share/fonts/truetype/freefont/FreeSerifBoldItalic.ttf'
+
+
+def _code_page():
+    if 'codepage' in _K4: return _K4['codepage']
+    from PIL import Image, ImageDraw
+    pw, ph = 2 * W, 2 * H
+    img = Image.new('RGB', (pw, ph), (244, 236, 214)); d = ImageDraw.Draw(img)
+    for y in range(0, ph, 58): d.line([(0, y), (pw, y)], fill=(170, 190, 215), width=2)
+    for x in (int(pw * 0.30),): d.line([(x, 0), (x, ph)], fill=(205, 120, 120), width=3)
+    ox, oy = int(pw * 0.33), int(ph * 0.30); ink = (28, 40, 92)
+    d.text((ox, oy), "Harry's Code", font=_font_px(FSERIF_BI, 64), fill=ink)
+    d.line([(ox, oy + 82), (ox + 380, oy + 78)], fill=ink, width=3)
+    lines = ('1. Never get caught.', '2. Never kill an innocent.', '3. Be sure. Always be sure.', '4. Blend in.')
+    for k, ln in enumerate(lines): d.text((ox + 6, oy + 128 + k * 116), ln, font=_font_px(FSERIF_I, 46), fill=ink)
+    _K4['codepage_c'] = (ox + 330, oy + 300)
+    a = np.asarray(img).astype(np.float32)[..., ::-1] / 255
+    n = cv2.resize(fbm(ph // 32, pw // 32, 4, 9, 4), (pw, ph), interpolation=cv2.INTER_CUBIC)
+    a *= (0.90 + 0.12 * n)[..., None]
+    _K4['codepage'] = a.astype(np.float32)
+    return _K4['codepage']
+
+
+def t_codepage(t, c, A, B, a, b):
+    """Harry's Code: the shot is a page in Harry's notebook. It turns from the bottom-right corner (a shaded crease,
+    the flap casting a shadow); on its back, handwritten on ruled paper, is the Code. The next shot is underneath."""
+    d = np.array([0.62, 0.78]); d = d / np.linalg.norm(d)
+    L = 0.5 * (W * d[0] + H * d[1]) + 40
+    v = clamp((t - a) / (b - a)); pm = -0.12 * L                                               # peel, a near-pause to read, flick off
+    if v < 0.30: pos = lerp(L, pm + 0.03 * L, eout(v / 0.30))
+    elif v < 0.72: pos = lerp(pm + 0.03 * L, pm - 0.03 * L, (v - 0.30) / 0.42)
+    else: pos = lerp(pm - 0.03 * L, -1.9 * L, ein((v - 0.72) / 0.28))
+    cx, cy = W / 2 + d[0] * pos, H / 2 + d[1] * pos
+    s = (XX - cx) * d[0] + (YY - cy) * d[1]
+    xr = XX - 2 * s * d[0]; yr = YY - 2 * s * d[1]                                               # where each flap point came from
+    inpage = (xr >= 0) & (xr < W) & (yr >= 0) & (yr < H) & (s < 0)
+    fa = layer(A, min(t, c - 1e-3)) if t < c + 0.05 else layer(A, c - 1e-3); fb = layer(B, t)
+    T = _code_page(); tcx, tcy = _K4['codepage_c']
+    key = ('cp_F', round(pm, 1))
+    if key not in _K4:                                                                            # where the flap sits mid-turn
+        sm = (XX - (W / 2 + d[0] * pm)) * d[0] + (YY - (H / 2 + d[1] * pm)) * d[1]
+        xm = XX - 2 * sm * d[0]; ym = YY - 2 * sm * d[1]
+        mm = (xm >= 0) & (xm < W) & (ym >= 0) & (ym < H) & (sm < 0)
+        _K4[key] = (float(XX[mm].mean()), float(YY[mm].mean())) if mm.any() else (W * 0.3, H * 0.3)
+    Fx, Fy = _K4[key]
+    qx = (XX - 2 * (pos - pm) * d[0] + (tcx - Fx)).astype(np.float32); qy = (YY - 2 * (pos - pm) * d[1] + (tcy - Fy)).astype(np.float32)
+    back = cv2.remap(T, qx, qy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    crease = np.exp(s / 34) * (s < 0)                                                            # the rounded crease catches the light
+    back = back * (0.80 + 0.14 * np.clip(-s / 400, 0, 1))[..., None] + (crease * 0.22)[..., None]
+    fm = inpage.astype(np.float32)
+    fm = cv2.GaussianBlur(fm, (0, 0), 0.8)
+    under = np.where((s < 0)[..., None], fa, fb)
+    shadow_b = (0.55 * np.exp(-np.clip(s, 0, None) / 60) * (s >= 0))[..., None]                  # the lifted page shades what's under it
+    under = under * (1 - shadow_b)
+    fsh = np.roll(np.roll(fm, 18, 0), 12, 1); fsh = cv2.GaussianBlur(fsh, (0, 0), 16) * 0.45 * (1 - fm)
+    under = under * (1 - fsh[..., None])
+    return under * (1 - fm[..., None]) + back * fm[..., None]
 
 
 # ---- spray-paint X ("X gon' give it to ya", second time)
@@ -5115,6 +5176,7 @@ TRANSITIONS = {
     'filmstrip': (lambda c, o: (c - .36, c + .36), lambda t, c, A, B, o: t_filmstrip(t, c, A, B, c - .36, c + .36)),
     'lighttrails': (lambda c, o: (c - .34, c + .34), lambda t, c, A, B, o: t_lighttrails(t, c, A, B, c - .34, c + .34)),
     'panes':     (lambda c, o: (c - .10, c + .30), lambda t, c, A, B, o: t_panes(t, c, A, B, c - .10, c + .30)),
+    'codepage':  (lambda c, o: (c - .40, c + .40), lambda t, c, A, B, o: t_codepage(t, c, A, B, c - .40, c + .40)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
