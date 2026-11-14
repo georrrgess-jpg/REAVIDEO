@@ -270,6 +270,22 @@ def beep(f0=1000, dur=0.08):
     return y
 
 
+def motor(dur=0.3):
+    """Power-window motor: a buzzy low hum gliding up."""
+    n = int(dur * SR); u = np.arange(n) / SR; f0 = 95 + 30 * u / dur
+    ph = np.cumsum(f0) / SR; y = 2 * (ph % 1.0) - 1
+    y = sg.lfilter(*sg.butter(2, 1400 / (SR / 2)), y) * np.minimum(1, np.minimum(u / 0.03, (dur - u) / 0.05))
+    return y / np.abs(y).max()
+
+
+def rainpatter(dur=0.4):
+    """Rain on glass: dense soft ticks."""
+    n = int(dur * SR); y = np.zeros(n)
+    for i in rng.integers(0, n - 100, int(dur * 220)): y[i:i + 80] += rng.standard_normal(80) * np.exp(-np.arange(80) / 12) * rng.uniform(0.2, 1)
+    y = sg.lfilter(*sg.butter(2, [1800 / (SR / 2), 9000 / (SR / 2)], 'band'), y)
+    return y / np.abs(y).max()
+
+
 # ---- SFX follow the plan: each transition type has its sound, placed relative to its cut ----
 def sfx_for(name, c, o, up):
     if name == 'leaf': put(whoosh(0.34, 700, 5200) if up else whoosh(0.34, 5200, 800), c - 0.20, gain=0.085)
@@ -415,6 +431,20 @@ def sfx_for(name, c, o, up):
     elif name == 'bulb':
         put(buzz(0.30), c - 0.32, gain=0.025); put(pop_burst(), c - 0.02, gain=0.14); put(glass(0.6), c - 0.01, gain=0.06)
         put(boom(0.4, 80, 40), c - 0.02, gain=0.08)
+    # Dexter kit VI (Miami night drive)
+    elif name == 'pass': put(whoosh(0.40, 200, 1200, q=0.7, peak=0.5), c - 0.20, gain=0.06)
+    elif name == 'outrun':
+        put(whoosh(0.35, 3000, 300, peak=0.8), c - 0.32, gain=0.05); put(boom(0.8, 60, 30), c, gain=0.12)
+        put(whoosh(0.30, 300, 3000, peak=0.3), c + 0.12, gain=0.05)
+    elif name == 'window':
+        put(motor(0.32), c - 0.38, gain=0.04); put(tick(0.05, 600), c - 0.06, gain=0.06); put(motor(0.28), c, gain=0.04)
+    elif name == 'streetlights':
+        for tp in (c - HALF, c - HALF / 2, c): put(whoosh(0.30, 500, 2500, q=0.9, peak=0.5), tp - 0.15, gain=0.035)
+    elif name == 'wiper':
+        put(rainpatter(0.32), c - 0.42, gain=0.03); put(squeak(0.25), c - 0.10, gain=0.05)
+        put(whoosh(0.30, 800, 300, peak=0.4), c - 0.10, gain=0.04); put(boom(0.4, 90, 40), c, gain=0.07)
+    elif name == 'mirror':
+        put(tick(0.04, 1500), c - 0.57, gain=0.05); put(whoosh(0.40, 300, 3500, peak=0.9), c - 0.40, gain=0.05)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)
