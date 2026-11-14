@@ -5098,6 +5098,101 @@ def t_glove(t, c, A, B, a, b):
     return out * (1 - sh) + 0.12 * math.exp(-(t - c) * 20)
 
 
+# ---- THE CARVE: a carving knife glides through in slow motion (the next shot in its mirror blade), slashes, splits the frame
+def _carve_sprite():
+    """Carving knife sprite (tip at the right): blade mask, steel shading, bevel/edge highlights, handle RGBA."""
+    if 'carve' in _K4: return _K4['carve']
+    Ls, Hs = 1400, 260; oy = 130
+    yy, xx = np.mgrid[0:Hs, 0:Ls].astype(np.float32)
+    blade = np.zeros((Hs, Ls), np.float32)
+    pts = [(1390, oy + 4), (1100, oy - 52), (420, oy - 70), (420, oy + 92), (700, oy + 98), (1000, oy + 82), (1250, oy + 52)]
+    cv2.fillPoly(blade, [np.int32(pts)], 1.0, cv2.LINE_AA)
+    across = np.clip((yy - (oy - 70)) / 170.0, 0, 1)                                          # spine (0) -> edge (1)
+    edge_d = cv2.distanceTransform((blade < 0.5).astype(np.uint8) * 0 + (blade > 0.5).astype(np.uint8), cv2.DIST_L2, 5)
+    steel = 0.55 + 0.25 * np.cos(across * math.pi * 1.2) + 0.06 * np.sin(xx / 37)
+    bevel = ((across > 0.72) & (blade > 0.5)).astype(np.float32)
+    steel = steel * (1 - 0.18 * bevel) + 0.22 * np.exp(-((across - 0.72) / 0.02) ** 2) * (blade > 0.5)
+    edge = np.exp(-(edge_d / 1.6) ** 2) * (yy > oy) * 0.9                                     # bright honed edge
+    handle = np.zeros((Hs, Ls), np.float32); cv2.rectangle(handle, (60, oy - 58), (360, oy + 76), 1.0, -1, cv2.LINE_AA)
+    cv2.circle(handle, (60, oy + 9), 67, 1.0, -1, cv2.LINE_AA)
+    bolster = np.zeros((Hs, Ls), np.float32); cv2.rectangle(bolster, (355, oy - 72), (425, oy + 94), 1.0, -1, cv2.LINE_AA)
+    hcol = np.zeros((Hs, Ls, 3), np.float32) + np.float32([0.035, 0.03, 0.03])
+    hcol += (np.exp(-((yy - (oy - 30)) / 14) ** 2) * 0.10)[..., None]
+    for rx in (130, 220, 310): cv2.circle(hcol, (rx, oy + 9), 13, (0.25, 0.55, 0.75), -1, cv2.LINE_AA)   # brass rivets
+    bcol = (0.50 + 0.35 * np.cos(np.clip((yy - (oy - 72)) / 166, 0, 1) * math.pi))[..., None] * np.float32([1.0, 1.0, 1.02])
+    rgb = hcol * handle[..., None]; al = handle.copy()
+    rgb = rgb * (1 - bolster[..., None]) + bcol * bolster[..., None]; al = np.maximum(al, bolster)
+    _K4['carve'] = dict(blade=blade, steel=steel.astype(np.float32), edge=edge.astype(np.float32), across=across, rgb=rgb.astype(np.float32), al=al, size=(Ls, Hs), piv=(900, oy))
+    return _K4['carve']
+
+
+def t_carve(t, c, A, B, a, b):
+    """The carve: in slow motion a large carving knife glides across the frame, its mirror blade reflecting the next
+    shot, a glint running along it with an anamorphic flare; it swings and slashes diagonally through the frame
+    (a white-hot cut line), and on the beat the two halves slide apart onto the next shot with a flash and a jolt."""
+    K = _carve_sprite(); Ls, Hs = K['size']; px, py = K['piv']; sc = 0.95
+    ts = c - 0.13; u1 = clamp((t - a) / (ts - a)); u2 = clamp((t - ts) / (c - ts))
+    cut_c = np.array([W / 2, H * 0.48]); cut_a = math.radians(38)
+    cd = np.array([math.cos(cut_a), math.sin(cut_a)]); cn = np.array([-cd[1], cd[0]])
+    if t < ts:                                                                                   # the slow glide
+        e = 0.15 * u1 + 0.85 * ease(u1)
+        pos = np.array([lerp(-0.12 * W, 0.40 * W, e), lerp(0.29 * H, 0.33 * H, e)]); ang = lerp(-14, -6, e)
+    else:                                                                                        # the slash
+        e = ein(u2) if t < c else 1.0
+        pos = np.array([lerp(0.42 * W, 1.05 * W, e), lerp(0.33 * H, 0.86 * H, e)]); ang = lerp(-6, 40, ease(min(1.0, u2 * 1.3)))
+        if t >= c: pos = pos + np.array([0.5 * W, 0.5 * H]) * ease(clamp((t - c) / 0.12))
+    th = math.radians(ang); ca, sa = math.cos(th) * sc, math.sin(th) * sc
+    M = np.float32([[ca, -sa, 0], [sa, ca, 0]]); M[:, 2] = pos - M[:, :2] @ np.array([px, py])
+    wp = lambda im: cv2.warpAffine(im, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    fb = layer(B, t, 1 + 0.10 * (1 - ease(clamp((t - c) / (b - c)))))
+    if t < c:
+        fa = layer(A, t, 1 + 0.05 * u1); f = fa * (1 - 0.22 * ease(u1))
+    else:                                                                                        # the split
+        u = clamp((t - c) / (b - c)); e3 = eout(clamp(u / 0.8))
+        fa = layer(A, c - 1e-3)
+        side = ((XX - cut_c[0]) * cn[0] + (YY - cut_c[1]) * cn[1])
+        f = fb.copy(); acc_m = np.zeros((H, W), np.float32)
+        for sg in (-1, 1):
+            m = ss(-1.5 * sg, 1.5 * sg, side) if sg > 0 else ss(1.5, -1.5, side)
+            off = cn * sg * e3 * 1.25 * W + cd * sg * e3 * 0.10 * W
+            Mh = cv2.getRotationMatrix2D((float(cut_c[0]), float(cut_c[1])), -sg * 6 * e3, 1.0); Mh[:, 2] += off
+            pc = cv2.warpAffine(fa * m[..., None], Mh, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            pm = cv2.warpAffine(m, Mh, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            sh = cv2.GaussianBlur(np.roll(pm, int(20 * sg), 1), (0, 0), 22) * 0.55
+            f = f * (1 - (sh * (1 - pm))[..., None]); f = f * (1 - pm[..., None]) + pc; acc_m = np.maximum(acc_m, pm)
+        rim = np.exp(-(np.abs(side) / 3) ** 2) * (1 - e3)
+        f = f + (rim * 0.0)[..., None]
+        jolt = int(14 * math.exp(-(t - c) * 18) * math.sin((t - c) * 90)); f = np.roll(f, jolt, 0)
+        f = f + 0.22 * math.exp(-(t - c) * 18)
+    if t >= ts:                                                                                  # the white-hot cut line
+        k = ein(u2) if t < c else 1.0
+        along = (XX - cut_c[0]) * cd[0] + (YY - cut_c[1]) * cd[1]; side0 = (XX - cut_c[0]) * cn[0] + (YY - cut_c[1]) * cn[1]
+        reach = lerp(-1.2 * H, 1.2 * H, k)
+        cut = np.exp(-(side0 / 3.0) ** 2) * (along < reach) * (1 - (ease(clamp((t - c) / 0.10)) if t >= c else 0))
+        glow = np.exp(-(side0 / 22.0) ** 2) * (along < reach) * 0.35 * (1 - (ease(clamp((t - c) / 0.10)) if t >= c else 0))
+        f = f + (cut * 1.2 + glow)[..., None] * np.float32([0.85, 0.92, 1.0])
+    bm = wp(K['blade'])                                                                          # the knife
+    if bm.max() > 0.003:
+        hal = wp(K['al']); hrgb = wp(K['rgb'] * K['al'][..., None])
+        shd = cv2.GaussianBlur(np.roll(np.roll(np.maximum(bm, hal), 26, 0), 16, 1), (0, 0), 18) * 0.5
+        f = f * (1 - shd[..., None])
+        refl = cv2.GaussianBlur(cv2.flip(fb, 1), (0, 0), 1.5)
+        st = wp(K['steel']); ed = wp(K['edge']); acr = wp(K['across'])
+        gl = lerp(-0.2, 1.2, clamp((t - a) / (c - a)))                                          # glint along the blade
+        al_ = ((XX - pos[0]) * math.cos(th) + (YY - pos[1]) * math.sin(th)) / (Ls * sc) + 0.36
+        band = np.exp(-((al_ - gl) / 0.05) ** 2) * bm
+        steel = (refl * 0.62 + st[..., None] * 0.48) * np.float32([1.02, 1.0, 0.98]) + (band * 0.9)[..., None] + (ed * 0.8)[..., None]
+        f = f * (1 - bm[..., None]) + steel * bm[..., None]
+        f = f * (1 - hal[..., None]) + hrgb
+        if band.max() > 0.2:                                                                     # anamorphic flare off the glint
+            iy, ix = np.unravel_index(int(np.argmax(band)), band.shape)
+            fl = np.exp(-((YY - iy) / 5) ** 2) * np.exp(-np.abs(XX - ix) / 320) * 0.7 + np.exp(-(((XX - ix) ** 2 + (YY - iy) ** 2) / 60 ** 2)) * 0.6
+            f = f + fl[..., None] * np.float32([1.0, 0.85, 0.70])
+    if ts <= t < c + 0.02 and u2 > 0.2:                                                          # motion blur on the slash
+        f = 0.5 * f + 0.5 * cv2.blur(f, (9, 9))
+    return f
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -5352,6 +5447,7 @@ TRANSITIONS = {
     'codepage':  (lambda c, o: (c - .40, c + .40), lambda t, c, A, B, o: t_codepage(t, c, A, B, c - .40, c + .40)),
     'eyedive':   (lambda c, o: (c - .62, c + .34), lambda t, c, A, B, o: t_eyedive(t, c, A, B, c - .62, c + .34)),
     'glove':     (lambda c, o: (c - .60, c + .34), lambda t, c, A, B, o: t_glove(t, c, A, B, c - .60, c + .34)),
+    'carve':     (lambda c, o: (c - .62, c + .40), lambda t, c, A, B, o: t_carve(t, c, A, B, c - .62, c + .40)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
