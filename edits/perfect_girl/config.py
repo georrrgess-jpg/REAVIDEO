@@ -16,6 +16,7 @@ v5 (user feedback): tee, drain, the neon trace and the end narration removed; a 
 v6 (user feedback): all the blood spatter removed; one signature blood transition, THE TROPHY, on the drop (a scalpel
 nick, a bead of blood that is a lens onto the next shot, a dive into it, a glass slide pressing it flat), plus a 35mm
 film strip, long-exposure light trails and sliding panes on the kick.
+v8 (user): the subtitle and the light trails at 0:09 removed (a clean cut there).
 Look: neon-noir grade (a little magenta in the lights, reds kept), soft bumps on the strongest kicks, motion blur.
 Plain 720p extract, no AI upscaling (user's request).
 Build: bash ../../edit/build.sh .
@@ -44,7 +45,7 @@ SHOTS = [
  dict(name='sun_profile', beats=4, out='cut', fx=['bump'],                pack=S1, src=227.30, x=0.40, push=(1.00, 1.05), **g(0.55, 0.95)),   # S56 sunlit profile (out of the sun)
  dict(name='smile_down',  beats=2, out='cut', punch={'z': 1.12, 'flash': 0.08}, fx=['bump'], pack=D, src=29.65, x=0.47, push=(1.00, 1.04), **g(0.55, 1.05)),   # D8
  dict(name='turn_stare',  beats=2, out='codepage', fx=['bump'],             pack=D,  src=115.00, x=0.61, push=(1.00, 1.04), **g(0.55, 1.00)),   # D56
- dict(name='night_car',   beats=4, out='lighttrails', fx=['bump'],       pack=D,  src=276.15, x=0.47, push=(1.00, 1.05), **g(0.55, 1.15)),   # D139 in the car at night
+ dict(name='night_car',   beats=4, out='cut', fx=['bump'],       pack=D,  src=276.15, x=0.47, push=(1.00, 1.05), **g(0.55, 1.15)),   # D139 in the car at night
  dict(name='corridor',    beats=4, out='tear', fx=['bump'],              pack=S1, src=353.30, x=0.48, push=(1.00, 1.05), **g(0.55, 1.00)),   # S90
  dict(name='top_lit',     beats=4, out='panes', fx=['bump'],                pack=C4, src=24.35,  x=0.52, push=(1.00, 1.05), **g(0.55, 1.30)),   # C7 lit from above (the crash)
  dict(name='dark_smile',  beats=2, out='cut', fx=['bump', 'passenger'],                pack=C4, src=43.60,  x=0.40, push=(1.00, 1.04), **g(0.55, 1.25)),   # C14
@@ -59,9 +60,7 @@ for s in SHOTS: s.setdefault('z', 1.0); s.setdefault('frame', 'auto')
 # and again." -- v5: only the first line is kept, at the user's request).
 LETTERBOX = dict(h=0.095, open=[(3.58, 3.86)], close=[(18.15, 18.55)])
 RED = (0.18, 0.13, 0.90)
-TEXT = [
- dict(y=0.952, size=46, out=3.55, exit='fade', words=[(0.40, "TONIGHT'S", 'type'), (0.95, 'THE', 'type'), (1.20, 'NIGHT.', 'type', RED)]),
-]
+TEXT = []                                                     # v8: the subtitle was removed at the user's request
 
 from timing import build_cuts
 CUTS, DUR = build_cuts(SHOTS, GRID0, HALF, FIRST_CUT, TAIL)
