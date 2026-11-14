@@ -481,6 +481,19 @@ def sfx_for(name, c, o, up):
         put(boom(0.4, 80, 40), c, gain=0.08); put(whoosh(0.35, 900, 200, q=0.7, peak=0.3), c, gain=0.05)
     elif name == 'splatburst':
         put(splat(0.25), c - 0.06, gain=0.15); put(boom(0.5, 90, 40), c - 0.06, gain=0.10)
+    elif name == 'trophy':
+        put(whoosh(0.20, 2500, 900, peak=0.6), c - 0.62, gain=0.04); put(shing(0.35), c - 0.52, gain=0.05)
+        put(shimmer(0.35), c - 0.40, gain=0.03); put(whoosh(0.32, 200, 1600, q=0.7, peak=0.9), c - 0.30, gain=0.06)
+        put(tick(0.05, 3600), c, gain=0.07); put(boom(0.8, 60, 30), c, gain=0.12)
+    elif name == 'filmstrip':
+        for k_ in range(9): put(tick(0.025, 1300 + 80 * (k_ % 2)), c - 0.10 + 0.022 * k_, gain=0.05)
+        put(whoosh(0.30, 400, 2000, peak=0.5), c - 0.34, gain=0.04); put(boom(0.4, 90, 40), c, gain=0.07)
+    elif name == 'lighttrails':
+        put(whoosh(0.40, 300, 3500, peak=0.6), c - 0.34, pan=-0.6, gain=0.05); put(whoosh(0.35, 400, 4000, peak=0.6), c - 0.18, pan=0.6, gain=0.05)
+        put(boom(0.6, 70, 32), c, gain=0.10); put(shimmer(0.4), c, gain=0.03)
+    elif name == 'panes':
+        for j_ in range(3): put(whoosh(0.16, 600, 3000, peak=0.6), c - 0.12 + 0.04 * j_, pan=-0.5 + 0.5 * j_, gain=0.04)
+        put(boom(0.5, 85, 38), c, gain=0.10)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)

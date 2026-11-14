@@ -12,9 +12,10 @@ sunglasses, the camera easing in and diving into the lens.
 v3 (user feedback): the sun, the mirror and the split-flap were replaced; the loop was smoothed and made cinematic.
 v4: more Dexter -- tee and drain (opening-credits rituals) replace the car window and rack focus, letterbox bars,
 his narration as subtitles, and a red Dark Passenger double on the dark smile.
-v5 (user feedback): tee, drain, the neon trace and the end narration removed; a blood kit instead -- a blood drop
-hitting the lens on the drop, a cast-off arc, a bleeding screen, an impact spatter on the big kick, and a slow drip
-over the final hold.
+v5 (user feedback): tee, drain, the neon trace and the end narration removed; a blood kit instead.
+v6 (user feedback): all the blood spatter removed; one signature blood transition, THE TROPHY, on the drop (a scalpel
+nick, a bead of blood that is a lens onto the next shot, a dive into it, a glass slide pressing it flat), plus a 35mm
+film strip, long-exposure light trails and sliding panes on the kick.
 Look: neon-noir grade (a little magenta in the lights, reds kept), soft bumps on the strongest kicks, motion blur.
 Plain 720p extract, no AI upscaling (user's request).
 Build: bash ../../edit/build.sh .
@@ -39,16 +40,16 @@ def g(sat, gain, **kw): return dict(NEON, sat=sat * 0.9, rk=1.0, gain=gain, **kw
 
 SHOTS = [
  dict(name='night_turn',  out='pass', fx=['bump'],                        pack=A2, src=189.60, x=0.44, push=(1.00, 1.05), **g(0.55, 1.65)),   # A39 night walk, turns
- dict(name='neon_drive',  beats=4, out='lensdrop', fx=['bump'],             pack=B2, src=276.69, x=0.69, push=(1.00, 1.05), **g(0.60, 1.10)),   # B103 driving past neon
+ dict(name='neon_drive',  beats=4, out='trophy', fx=['bump'],             pack=B2, src=276.69, x=0.69, push=(1.00, 1.05), **g(0.60, 1.10)),   # B103 driving past neon
  dict(name='sun_profile', beats=4, out='cut', fx=['bump'],                pack=S1, src=227.30, x=0.40, push=(1.00, 1.05), **g(0.55, 0.95)),   # S56 sunlit profile (out of the sun)
  dict(name='smile_down',  beats=2, out='cut', punch={'z': 1.12, 'flash': 0.08}, fx=['bump'], pack=D, src=29.65, x=0.47, push=(1.00, 1.04), **g(0.55, 1.05)),   # D8
- dict(name='turn_stare',  beats=2, out='castoff', fx=['bump'],             pack=D,  src=115.00, x=0.61, push=(1.00, 1.04), **g(0.55, 1.00)),   # D56
- dict(name='night_car',   beats=4, out='bleed', fx=['bump'],       pack=D,  src=276.15, x=0.47, push=(1.00, 1.05), **g(0.55, 1.15)),   # D139 in the car at night
+ dict(name='turn_stare',  beats=2, out='filmstrip', fx=['bump'],             pack=D,  src=115.00, x=0.61, push=(1.00, 1.04), **g(0.55, 1.00)),   # D56
+ dict(name='night_car',   beats=4, out='lighttrails', fx=['bump'],       pack=D,  src=276.15, x=0.47, push=(1.00, 1.05), **g(0.55, 1.15)),   # D139 in the car at night
  dict(name='corridor',    beats=4, out='tear', fx=['bump'],              pack=S1, src=353.30, x=0.48, push=(1.00, 1.05), **g(0.55, 1.00)),   # S90
- dict(name='top_lit',     beats=4, out='splatburst', fx=['bump'],                pack=C4, src=24.35,  x=0.52, push=(1.00, 1.05), **g(0.55, 1.30)),   # C7 lit from above (the crash)
+ dict(name='top_lit',     beats=4, out='panes', fx=['bump'],                pack=C4, src=24.35,  x=0.52, push=(1.00, 1.05), **g(0.55, 1.30)),   # C7 lit from above (the crash)
  dict(name='dark_smile',  beats=2, out='cut', fx=['bump', 'passenger'],                pack=C4, src=43.60,  x=0.40, push=(1.00, 1.04), **g(0.55, 1.25)),   # C14
  dict(name='sunset',      beats=2, out='whip', out_opts={'d': 1}, fx=['bump'], pack=S1, src=402.15, x=0.56, push=(1.00, 1.04), **g(0.60, 1.00)),   # S1 sunset
- dict(name='street_smile', beats=5, out='cut', fx=['bump', 'drip'],               pack=C4, src=47.70,  x=0.48, push=(1.00, 1.06), **g(0.55, 1.00)),   # C17 the one long hold
+ dict(name='street_smile', beats=5, out='cut', fx=['bump'],               pack=C4, src=47.70,  x=0.48, push=(1.00, 1.06), **g(0.55, 1.00)),   # C17 the one long hold
  dict(name='sunglasses',  beats=2, out='shades', fx=['bump'],             pack=S1, src=158.60, x=0.46, push=(1.00, 1.04), **g(0.55, 1.00)),   # S37 shades on: the loop dives into a lens
 ]
 for s in SHOTS: s.setdefault('z', 1.0); s.setdefault('frame', 'auto')

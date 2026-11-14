@@ -4671,6 +4671,199 @@ def drip_fx(f, i, t, s):
     return _blood(f, cv2.GaussianBlur(m, (0, 0), 1.5), depth=1.6)
 
 
+# ---- THE TROPHY: scalpel nick -> blood bead (a lens onto the next shot) -> dive -> glass slide press
+def _scalpel(f, tip, ang, z=1.0, alpha=1.0):
+    """A drawn steel scalpel: curved #10 blade (bevel, edge glint) on a ribbed handle, tip at `tip`, pointing along ang."""
+    L = 230 * z; ca, sa = math.cos(ang), math.sin(ang); nx, ny = -sa, ca
+    P = lambda u, v: (tip[0] - ca * u + nx * v, tip[1] - sa * u + ny * v)
+    blade = [P(0, 0), P(40 * z, 26 * z), P(120 * z, 34 * z), P(150 * z, 18 * z), P(150 * z, -8 * z), P(70 * z, -6 * z)]
+    m = np.zeros((H, W), np.float32); cv2.fillPoly(m, [np.int32(blade)], 1.0, cv2.LINE_AA)
+    hl = np.zeros((H, W), np.float32); cv2.polylines(hl, [np.int32([P(4 * z, 3 * z), P(40 * z, 24 * z), P(118 * z, 31 * z)])], False, 1.0, max(1, int(3 * z)), cv2.LINE_AA)
+    bev = np.zeros((H, W), np.float32); cv2.fillPoly(bev, [np.int32([P(10 * z, 5 * z), P(40 * z, 22 * z), P(120 * z, 30 * z), P(120 * z, 20 * z), P(40 * z, 12 * z)])], 1.0, cv2.LINE_AA)
+    hd = np.zeros((H, W), np.float32); cv2.fillPoly(hd, [np.int32([P(150 * z, 12 * z), P(L + 150 * z, 14 * z), P(L + 150 * z, -16 * z), P(150 * z, -10 * z)])], 1.0, cv2.LINE_AA)
+    rib = 0.5 + 0.5 * np.cos(((XX - tip[0]) * ca + (YY - tip[1]) * sa) / (6 * z))
+    sh = cv2.GaussianBlur(np.roll(np.roll(np.maximum(m, hd), int(18 * z), 0), int(10 * z), 1), (0, 0), 10 * z) * 0.5 * alpha
+    f = f * (1 - sh[..., None])
+    steel = (0.62 + 0.18 * bev)[..., None] * np.float32([1.0, 0.99, 0.97])
+    f = f * (1 - (m * alpha)[..., None]) + steel * (m * alpha)[..., None] + (hl * 0.9 * alpha)[..., None]
+    hcol = (0.55 + 0.18 * rib)[..., None] * np.float32([0.95, 0.95, 0.97])
+    return f * (1 - (hd * alpha)[..., None]) + hcol * (hd * alpha)[..., None]
+
+
+def _slide_label():
+    if 'slabel' in _K4: return _K4['slabel']
+    from PIL import Image, ImageDraw
+    w, h = int(0.84 * W), int(0.075 * H); img = Image.new('RGBA', (w, h), (236, 238, 240, 225)); d = ImageDraw.Draw(img)
+    fm = _font_px(MONO, 34); txt = 'MIAMI METRO PD  ·  CASE 0915-07  ·  No. 13'
+    tw = d.textlength(txt, font=fm); d.text(((w - tw) / 2, (h - 38) / 2), txt, font=fm, fill=(140, 40, 40, 255))
+    a = np.asarray(img).astype(np.float32) / 255
+    _K4['slabel'] = (a[..., 2::-1].copy(), a[..., 3].copy())
+    return _K4['slabel']
+
+
+def t_trophy(t, c, A, B, a, b):
+    """Dexter's trophy, in one move: a scalpel nicks the cheek, a single glossy bead of blood wells up with the next
+    shot inside it like a lens, the camera dives into the bead until it fills the frame, then a glass microscope
+    slide presses down, squeezing the blood into a thin film that clears onto the shot."""
+    P = np.array([0.55 * W, 0.37 * H]); R = 0.095 * W
+    t_cut0, t_cut1, t_bead, tz = a + 0.10, a + 0.20, a + 0.20, c - 0.30
+    if t < c:
+        ph = ease(clamp((t - tz) / (c - tz)))
+        z = math.exp(math.log(RFULL / R) * ph ** 1.8); push = 1 + 0.06 * ease(clamp((t - a) / (tz - a)))
+        z *= push
+        ctr = P + (np.array([W / 2, H / 2]) - P) * ph
+        M = np.float32([[z, 0, ctr[0] - z * P[0]], [0, z, ctr[1] - z * P[1]]])
+        f = cv2.warpAffine(layer(A, t), M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        sc = lambda q: (M[:, :2] @ np.asarray(q, np.float64) + M[:, 2])
+        k = clamp((t - t_cut0) / (t_cut1 - t_cut0))                                               # the nick
+        if t >= t_cut0:
+            nk = np.zeros((H, W), np.float32); p0 = sc(P + [30, -4]); p1 = sc(P + [30 - 70 * k, 6 * k])
+            cv2.line(nk, (int(p0[0]), int(p0[1])), (int(p1[0]), int(p1[1])), 1.0, max(3, int(6 * z)), cv2.LINE_AA)
+            f = f * (1 - nk[..., None] * 0.9) + BLOOD * 0.9 * nk[..., None]
+        if t < t_cut1 + 0.10:                                                                    # the scalpel comes in, cuts, withdraws
+            if t < t_cut0: e = eout(clamp((t - a) / (t_cut0 - a))); off = (1 - e) * 600
+            elif t < t_cut1: off = 0.0
+            else: off = ein(clamp((t - t_cut1) / 0.10)) * 700
+            ang = math.radians(-35)
+            tipw = P + [30 - 70 * k, 6 * k] + np.array([math.cos(ang + math.pi), math.sin(ang + math.pi)]) * -off * 0 + np.array([off * 0.8, -off * 0.6])
+            f = _scalpel(f, sc(tipw), ang + math.pi, z=z * 1.7)
+        if t >= t_bead:                                                                          # the bead wells up: a lens onto the next shot
+            g = eout(clamp((t - t_bead) / (tz + 0.05 - t_bead)))
+            r = R * (0.15 + 0.85 * g)
+            cpos = sc(P + [0, r * 0.12]); Rs = r * z
+            fb = layer(B, t)
+            tint = fb * np.float32([0.42, 0.36, 1.0]) * 0.90 + BLOOD * 0.18
+            f, rr = _live_circle(f, tint, cpos[0], cpos[1], Rs, feather=1.5)
+            rim = np.exp(-((rr - Rs) / (0.07 * Rs + 2)) ** 2) * (Rs < RFULL * 0.98)
+            f = f * (1 - 0.65 * rim[..., None]) + (rim * 0.65)[..., None] * BLOOD * 0.6
+            inside = ss(Rs, Rs * 0.85, rr)
+            dark = np.clip((rr / max(Rs, 1)) ** 3, 0, 1) * inside * 0.45                         # darker towards the rim: a dome
+            f = f * (1 - dark[..., None])
+            sx, sy = cpos[0] - 0.36 * Rs, cpos[1] - 0.42 * Rs
+            spec = np.exp(-(((XX - sx) / (0.16 * Rs + 1)) ** 2 + ((YY - sy) / (0.10 * Rs + 1)) ** 2)) * 0.9
+            spec += np.exp(-(((XX - cpos[0] - 0.30 * Rs) / (0.05 * Rs + 1)) ** 2 + ((YY - cpos[1] + 0.25 * Rs) / (0.05 * Rs + 1)) ** 2)) * 0.5
+            f = f + (spec * inside * (Rs < RFULL * 0.9))[..., None]
+        return f
+    u = clamp((t - c) / (b - c)); fb = layer(B, t)                                               # the slide presses the bead flat
+    yl = lerp(-0.05 * H, 1.06 * H, eout(clamp(u / 0.45)))
+    above = ss(yl + 2, yl - 2, YY)[..., None]
+    film = lerp(0.35, 0.0, ease(clamp((u - 0.25) / 0.70)))
+    tint_full = fb * np.float32([0.42, 0.36, 1.0]) * 0.90 + BLOOD * 0.18
+    tint_film = fb * (1 - film) + (fb * np.float32([0.55, 0.50, 1.0])) * film
+    f = tint_full * (1 - above) + tint_film * above
+    squeeze = np.exp(-((YY - yl) / 26) ** 2)[..., None] * (u < 0.5)                              # blood pushed ahead of the glass edge
+    f = f * (1 - squeeze * 0.6) + BLOOD * 0.6 * squeeze
+    edge = np.exp(-((YY - yl + 8) / 3) ** 2)[..., None] * (u < 0.5)
+    f = f + edge * np.float32([0.70, 0.85, 0.75]) * 0.9
+    sheen = np.exp(-(((XX * 0.7 + YY * 0.4) - lerp(-200, W + H, u)) / 90) ** 2)[..., None] * 0.10 * (1 - u)
+    f = f + sheen * above
+    rgb, al = _slide_label(); lh, lw = al.shape; ly0, lx0 = int(0.07 * H), int((W - lw) / 2)
+    la = clamp((yl - (ly0 + lh)) / 60) * (1 - ease(clamp((u - 0.55) / 0.35)))
+    if la > 0:
+        sub = f[ly0:ly0 + lh, lx0:lx0 + lw]; aa = al[..., None] * la
+        f[ly0:ly0 + lh, lx0:lx0 + lw] = sub * (1 - aa) + rgb * aa
+    return f + 0.20 * math.exp(-(t - c) * 18)
+
+
+# ---- 35mm film strip
+def _strip_print():
+    if 'strip' in _K4: return _K4['strip']
+    m = _text_mask('KODAK VISION3 5219  ·  MIAMI  ·  D.M.  ·  ', INTER_SEMI, 26)
+    _K4['strip'] = np.ascontiguousarray(np.rot90(m))
+    return _K4['strip']
+
+
+def t_filmstrip(t, c, A, B, a, b):
+    """The shot shrinks into a frame of 35mm film (warm black base, sprocket holes, orange edge code), the strip
+    rattles up one frame to the next shot, and the camera zooms back in."""
+    s0 = 0.60; t1, t2 = c - 0.10, c + 0.10
+    if t < t1: s = lerp(1.0, s0, ease(clamp((t - a) / (t1 - a)))); sh = 0.0
+    elif t < t2: s = s0; sh = ease(clamp((t - t1) / (t2 - t1)))
+    else: s = lerp(s0, 1.0, ease(clamp((t - t2) / (b - t2)))); sh = 1.0
+    pitch = s * H + 70 * s
+    base = np.float32([0.035, 0.045, 0.055]); f = np.zeros((H, W, 3), np.float32) + base
+    fa, fb = layer(A, min(t, c - 1e-3)), layer(B, t)
+    frames = {-1: fa * 0.35, 0: fa, 1: fb, 2: fb * 0.35}
+    for k, img in frames.items():
+        yc = H / 2 + (k - sh) * pitch
+        if abs(yc - H / 2) > H / 2 + pitch: continue
+        M = np.float32([[s, 0, W / 2 - s * W / 2], [0, s, yc - s * H / 2]])
+        im = cv2.warpAffine(img, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        mk = cv2.warpAffine(np.ones((H, W), np.float32), M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)[..., None]
+        f = f * (1 - mk) + im * mk
+    if s < 0.999:
+        hx = W / 2 + s * W / 2 + (W / 2 - s * W / 2) * 0.5                                       # sprocket holes in the margins
+        hw, hh, gap = max(4, int(0.18 * (W / 2 - s * W / 2))), int(26 * s + 6), int(64 * s + 10)
+        off = (-sh * pitch) % gap
+        holes = np.zeros((H, W), np.float32)
+        for xc in (W - hx, hx):
+            y = -gap + off
+            while y < H + gap:
+                cv2.rectangle(holes, (int(xc - hw / 2), int(y)), (int(xc + hw / 2), int(y + hh)), 1.0, -1, cv2.LINE_AA); y += gap
+        f = f * (1 - holes[..., None]) + holes[..., None] * np.float32([0.80, 0.84, 0.86]) * 0.85
+        txt = _strip_print(); th, tw = txt.shape; x0 = int(W - (W / 2 - s * W / 2) * 0.22 - tw / 2)
+        if 0 <= x0 < W - tw:
+            col = np.zeros((H, tw), np.float32); y = int((-sh * pitch) % th) - th
+            while y < H: ya, yb = max(0, y), min(H, y + th); col[ya:yb] = np.maximum(col[ya:yb], txt[ya - y:yb - y]); y += th
+            f[:, x0:x0 + tw] = f[:, x0:x0 + tw] * (1 - col[..., None] * 0.8) + col[..., None] * np.float32([0.15, 0.45, 0.95]) * 0.8
+    if t1 <= t < t2:
+        v = math.sin(math.pi * sh); kb = int(1 + 70 * v) | 1; f = cv2.blur(f, (1, kb))
+    return f
+
+
+# ---- long-exposure light trails
+def t_lighttrails(t, c, A, B, a, b):
+    """Long-exposure light trails: red tail-lights, white headlights and amber streetlight streak across the frame
+    in curves; they flare into a bright band on the beat and the next shot is behind them as they pass."""
+    rng = np.random.default_rng(77); n = 18
+    base = layer(A, t) * (1 - 0.35 * ease(clamp((t - a) / (c - a)))) if t < c else layer(B, t) * lerp(0.65, 1.0, ease(clamp((t - c) / (b - c))))
+    q = 2; acc = np.zeros((H // q, W // q, 3), np.float32)
+    cols = (np.float32([0.15, 0.15, 1.0]), np.float32([0.85, 0.92, 1.0]), SODIUM, np.float32([0.25, 0.25, 0.95]))
+    for i in range(n):
+        y0 = rng.uniform(0.05, 0.95) * H; bend = rng.uniform(-0.12, 0.12) * H; d = 1 if i % 2 == 0 else -1
+        t0 = a + rng.uniform(0, 0.25); sp = rng.uniform(2.5, 4.5) * W
+        head = (t - t0) * sp - 0.2 * W
+        if head <= 0: continue
+        tail = max(-0.2 * W, head - rng.uniform(0.7, 1.4) * W)
+        xs = np.linspace(tail, min(head, 1.2 * W), 40)
+        xx = xs if d > 0 else W - xs
+        ys = y0 + bend * np.sin(xs / W * math.pi)
+        pts = np.int32(np.stack([xx / q, ys / q], 1)); col = cols[i % 4] * rng.uniform(0.6, 1.0)
+        layer_ = np.zeros((H // q, W // q), np.float32)
+        cv2.polylines(layer_, [pts], False, 1.0, max(1, int(rng.uniform(2, 6) / q)), cv2.LINE_AA)
+        acc += layer_[..., None] * col
+    glow = cv2.GaussianBlur(acc, (0, 0), 6) * 1.5 + cv2.GaussianBlur(acc, (0, 0), 20) * 1.0
+    tr = cv2.resize(acc + glow, (W, H), interpolation=cv2.INTER_LINEAR)
+    fade = 1 - ease(clamp((t - c - 0.08) / (b - c - 0.08)))
+    f = base + tr * fade
+    band = math.exp(-((t - c) / 0.045) ** 2)
+    f = f + band * (np.exp(-((YY - 0.5 * H) / (0.35 * H)) ** 2)[..., None] * np.float32([0.65, 0.75, 1.0]) * 0.9)
+    return f
+
+
+# ---- sliding panes
+def t_panes(t, c, A, B, a, b, n=3):
+    """On the kick the next shot slams in as three vertical panes from alternating directions, staggered."""
+    fa = layer(A, t) * (1 - 0.3 * clamp((t - a) / (c - a + 0.15))); fb = layer(B, t); f = fa.copy()
+    pw = W / n
+    for j in range(n):
+        x0, x1 = int(j * pw), int((j + 1) * pw); d = -1 if j % 2 == 0 else 1
+        u = eout(clamp((t - (a + 0.04 * j)) / 0.18)); off = int(round(d * (1 - u) * H))
+        if u <= 0: continue
+        src = fb[:, x0:x1]
+        pane = np.roll(src, off, 0)
+        if off > 0: pane[:off] = fa[:off, x0:x1]
+        elif off < 0: pane[off:] = fa[off:, x0:x1]
+        spd = (1 - u)
+        if spd > 0.05: pane = cv2.blur(pane, (1, int(1 + 80 * spd) | 1))
+        f[:, x0:x1] = pane
+        if 0 < u < 1:
+            ye = (off if off > 0 else H + off)
+            f[max(0, ye - 3):ye + 3, x0:x1] = 0.02
+        if 0 < u < 1 and j > 0: f[:, x0 - 3:x0 + 3] = 0.02
+    return f + 0.12 * math.exp(-max(0.0, t - c) * 20) * (t >= c)
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -4918,6 +5111,10 @@ TRANSITIONS = {
     'castoff':   (lambda c, o: (c - .30, c + .36), lambda t, c, A, B, o: t_castoff(t, c, A, B, c - .30, c + .36)),
     'bleed':     (lambda c, o: (c - .42, c + .38), lambda t, c, A, B, o: t_bleed(t, c, A, B, c - .42, c + .38)),
     'splatburst': (lambda c, o: (c - .06, c + .30), lambda t, c, A, B, o: t_splatburst(t, c, A, B, c - .06, c + .30)),
+    'trophy':    (lambda c, o: (c - .62, c + .42), lambda t, c, A, B, o: t_trophy(t, c, A, B, c - .62, c + .42)),
+    'filmstrip': (lambda c, o: (c - .36, c + .36), lambda t, c, A, B, o: t_filmstrip(t, c, A, B, c - .36, c + .36)),
+    'lighttrails': (lambda c, o: (c - .34, c + .34), lambda t, c, A, B, o: t_lighttrails(t, c, A, B, c - .34, c + .34)),
+    'panes':     (lambda c, o: (c - .10, c + .30), lambda t, c, A, B, o: t_panes(t, c, A, B, c - .10, c + .30)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
