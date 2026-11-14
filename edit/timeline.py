@@ -4210,34 +4210,184 @@ def _lens_masks(f):
     return mask, (cent[big][0] * q, cent[big][1] * q), (w * q, h_ * q)
 
 
+def _lens_track(A, a, end):
+    key = ('lens', A, round(a, 3))
+    if key in _K4: return _K4[key]
+    ts = np.arange(a - 0.05, end + 0.05, 1 / 60.0); cs = []; ss_ = []
+    for ti in ts:
+        r = _lens_masks(layer(A, ti))
+        cs.append(r[1] if r else (np.nan, np.nan)); ss_.append(r[2] if r else (np.nan, np.nan))
+    cs = np.array(cs, np.float64); ss_ = np.array(ss_, np.float64)
+    for arr in (cs, ss_):
+        for j in range(2):
+            v = arr[:, j]; ok = ~np.isnan(v)
+            if ok.sum() == 0: v[:] = (W / 2 if j == 0 else 0.3 * H); continue
+            v[~ok] = np.interp(np.flatnonzero(~ok), np.flatnonzero(ok), v[ok])
+            arr[:, j] = np.convolve(np.pad(v, 7, mode='edge'), np.ones(15) / 15, 'valid')
+    _K4[key] = (ts, cs, ss_)
+    return _K4[key]
+
+
 def t_shades(t, A, a, end):
-    """Loop: the edit ends on Dexter in his sunglasses. The first shot of the edit appears reflected in the dark
-    lenses (curved, cool, a sheen sliding over the glass); then the camera dives into one lens until the reflection
-    is the frame, and the edit starts again."""
+    """Loop: the edit ends on Dexter in his sunglasses. The camera eases in, the first shot of the edit surfaces as a
+    reflection in the dark lenses (curved, cool, a sheen gliding across), then the camera dives into one lens with a
+    radial motion blur until the reflection is the frame, and the edit starts again."""
     if t >= end: return layer(0, t - DUR)
     fa = layer(A, t); f0 = layer(0, t - DUR)
     lm = _lens_masks(fa)
-    if lm is None: return fa
-    mask, (lx0, ly0), (lw, lh) = lm
-    td = a + 0.42; u = clamp((t - td) / (end - td)); show = ease(clamp((t - a) / 0.30))
-    zend = min(14.0, 1.25 * max(W / max(lw, 1), H / max(lh, 1))); z = math.exp(math.log(zend) * ein(u) ** 0.9)
+    ts, cs, szs = _lens_track(A, a, end)
+    lx0, ly0 = np.interp(t, ts, cs[:, 0]), np.interp(t, ts, cs[:, 1]); lw, lh = np.interp(t, ts, szs[:, 0]), np.interp(t, ts, szs[:, 1])
+    mask = lm[0] if lm is not None else np.zeros((H, W), np.float32)
+    td = a + 0.38; u = clamp((t - td) / (end - td)); show = ease(clamp((t - a) / 0.32))
+    zend = min(16.0, 1.4 * max(W / max(lw, 1), H / max(lh, 1)))
+    zp = 1 + 0.07 * ease(clamp((t - a) / 0.38))                                                   # the slow push-in before the dive
+    z = zp * math.exp(math.log(zend / zp) * ease(u) ** 1.6)
     cx, cy = lerp(lx0, W / 2, ease(u)), lerp(ly0, H / 2, ease(u))
     M = np.float32([[z, 0, cx - z * lx0], [0, z, cy - z * ly0]])
-    fz = cv2.warpAffine(fa, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT) if z > 1.001 else fa
-    mz = cv2.warpAffine(mask, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0) if z > 1.001 else mask
-    sc = lerp(1.15 * lw * z / W, 1.0, ease(u))                                                  # the reflection: shot 0 in the lens, curved
+    fz = cv2.warpAffine(fa, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    mz = cv2.warpAffine(mask, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    sc = lerp(1.15 * lw * z / W, 1.0, ease(u) ** 0.8)
     rr = np.sqrt(((XX - cx) / (lw * z * 0.6)) ** 2 + ((YY - cy) / (lh * z * 0.6)) ** 2)
-    bulge = 1 + 0.18 * (1 - u) * np.clip(1 - rr ** 2, 0, 1)
+    bulge = 1 + 0.16 * (1 - u) * np.clip(1 - rr ** 2, 0, 1)
     mx = (W / 2 + (XX - cx) / (sc * bulge)).astype(np.float32); my = (H / 2 + (YY - cy) / (sc * bulge)).astype(np.float32)
     refl = cv2.remap(f0, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-    dark = lerp(0.62, 1.0, ease(u))
-    refl = refl * dark * np.float32([1.10, 1.0, 0.92]) ** (1 - u)
-    sweep = lerp(-0.6, 1.6, clamp((t - a - 0.05) / 0.45))
-    sheen = np.exp(-((((XX - cx) / (lw * z) + (YY - cy) / (lh * z) * 0.5) - sweep) / 0.12) ** 2) * 0.28 * (1 - u)
-    refl = refl + sheen[..., None]
+    refl = refl * lerp(0.72, 1.0, ease(u)) * np.float32([1.10, 1.0, 0.92]) ** (1 - u)
+    sweep = lerp(-0.6, 1.6, clamp((t - a - 0.05) / 0.5))
+    refl = refl + (np.exp(-((((XX - cx) / (lw * z) + (YY - cy) / (lh * z) * 0.5) - sweep) / 0.12) ** 2) * 0.22 * (1 - u))[..., None]
     k = (mz * show)[..., None]
-    if u > 0.85: k = np.maximum(k, ss(0.85, 1.0, u))                                           # land exactly on the first shot
-    return fz * (1 - k) + refl * k
+    land = ss(0.62, 0.92, u)                                                                      # resolve onto the first shot before the rim can show
+    k = k * (1 - land) + land
+    vig = 1 - 0.35 * ease(clamp(u / 0.5)) * (1 - land) * np.clip(rr / 3, 0, 1)[..., None]
+    f = (fz * (1 - k) + refl * k) * vig
+    sp = (ease(u) - ease(max(0.0, u - 0.08))) * (1 - land)                                        # radial motion blur while diving
+    if sp > 0.01:
+        acc = f.copy()
+        for j in (1, 2, 3):
+            s_ = 1 + 0.06 * sp * j * 4; Mr = np.float32([[s_, 0, cx * (1 - s_)], [0, s_, cy * (1 - s_)]])
+            acc += cv2.warpAffine(f, Mr, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        f = acc / 4
+    return f
+
+
+# ---- neon line-art trace (the drop)
+def _neon_edges(f):
+    """Clean outline drawing of a frame: Canny on a softened half-res luminance, small specks removed."""
+    q = 2; g = cv2.resize(luma(f), (W // q, H // q), interpolation=cv2.INTER_AREA)
+    g8 = np.clip(cv2.bilateralFilter(cv2.GaussianBlur(g, (0, 0), 2.4), 9, 0.12, 9) * 255, 0, 255).astype(np.uint8)
+    e = cv2.Canny(g8, 34, 96)
+    n, lab, st, _ = cv2.connectedComponentsWithStats((e > 0).astype(np.uint8), connectivity=8)
+    span = np.maximum(st[:, cv2.CC_STAT_WIDTH], st[:, cv2.CC_STAT_HEIGHT])
+    keep = np.zeros(n, bool); keep[1:] = (st[1:, cv2.CC_STAT_AREA] >= 45) & (span[1:] >= 22)
+    m = keep[lab].astype(np.float32)
+    m = cv2.resize(m, (W, H), interpolation=cv2.INTER_LINEAR)
+    return np.clip(cv2.GaussianBlur(m, (0, 0), 0.8) * 1.6, 0, 1)
+
+
+def _neon_paint(base, edges, k, t):
+    """Edges as neon tubes: a white-hot core, a coloured tube and a soft glow; pink at the top, cyan below."""
+    yn = (YY / H)[..., None]; col = NEON_PINK * (1 - yn) + NEON_CYAN * yn
+    glow = cv2.GaussianBlur(edges, (0, 0), 7) * 1.6 + cv2.GaussianBlur(edges, (0, 0), 22) * 0.9
+    return base + (edges * k)[..., None] * (col * 0.8 + 0.45) + (glow * k)[..., None] * col
+
+
+def t_neontrace(t, c, A, B, a, b):
+    """The drop: the shot goes dark as its own outlines are drawn on in neon (pink to cyan, a white-hot core), they
+    flicker like a sign warming up, and on the drop the outlines become the next shot's, which fills in from them."""
+    if t < c:
+        fa = layer(A, t); e = _neon_edges(fa)
+        u = clamp((t - a) / (c - 0.10 - a)); dark = 1 - 0.80 * ease(u)
+        l = luma(fa)[..., None]; base = (fa * 0.5 + l * 0.5) * dark * np.float32([1.06, 0.92, 1.04])
+        reveal = ss(0, 1, (lerp(-0.15, 1.15, ease(clamp((t - a) / (c - 0.14 - a)))) * H - YY) / 90)
+        fl = 1.0
+        for tf in (c - 0.16, c - 0.09):                                                          # warm-up flicker
+            if tf <= t < tf + 0.03: fl = 0.25
+        return _neon_paint(base, e * reveal, fl, t)
+    u = clamp((t - c) / (b - c)); fb = layer(B, t); e = _neon_edges(fb)
+    fill = ease(clamp((u - 0.10) / 0.80))
+    l = luma(fb)[..., None]; base = (fb * 0.5 + l * 0.5) * 0.2 * (1 - fill) + fb * fill
+    f = _neon_paint(base, e, (1 - ease(clamp((u - 0.25) / 0.75))) * 1.2, t)
+    return f + 0.30 * math.exp(-(t - c) * 16)
+
+
+# ---- rack focus through bokeh (0:08)
+def _disc_blur(f, r):
+    """Lens (disc) blur at quarter resolution, highlights boosted so they bloom into bokeh."""
+    if r < 0.6: return f
+    q = 4; sm = cv2.resize(f, (W // q, H // q), interpolation=cv2.INTER_AREA)
+    hl = np.clip(sm - 0.55, 0, None) * 4.0; sm = sm + hl
+    rr = max(1, int(round(r / q))); k = np.zeros((2 * rr + 1, 2 * rr + 1), np.float32)
+    cv2.circle(k, (rr, rr), rr, 1.0, -1, cv2.LINE_AA); k /= k.sum()
+    bl = cv2.filter2D(sm, -1, k, borderType=cv2.BORDER_REFLECT)
+    return cv2.resize(bl, (W, H), interpolation=cv2.INTER_LINEAR)
+
+
+def t_rackfocus(t, c, A, B, a, b):
+    """A cinematic rack focus: the shot falls out of focus, its lights blooming into round bokeh with soft neon
+    discs drifting in front, and the next shot pulls back into sharp focus on the beat (with a touch of focus
+    breathing)."""
+    if t < c: u = clamp((t - a) / (c - a)); r = 70 * ease(u) ** 1.2; src = layer(A, t, 1 + 0.05 * ease(u))
+    else: u = clamp((t - c) / (b - c)); r = 70 * (1 - ease(u)) ** 1.3; src = layer(B, t, 1.05 - 0.05 * ease(u))
+    f = _disc_blur(src, r)
+    amt = clamp(r / 70)
+    if amt > 0.02:                                                                               # foreground neon bokeh
+        rng = np.random.default_rng(21); bk = np.zeros((H // 2, W // 2, 3), np.float32)
+        for i in range(26):
+            x = rng.uniform(0, W / 2) + (t - a) * rng.uniform(-30, 30); y = rng.uniform(0, H / 2) + (t - a) * rng.uniform(-40, 10)
+            rad = rng.uniform(14, 46) * (0.6 + 0.4 * amt); col = (NEON_PINK, NEON_CYAN, SODIUM)[i % 3] * rng.uniform(0.25, 0.6)
+            disc = np.zeros((H // 2, W // 2), np.float32); cv2.circle(disc, (int(x), int(y)), int(rad), 1.0, -1, cv2.LINE_AA)
+            edge = disc - cv2.erode(disc, np.ones((3, 3), np.uint8)) * 0.6
+            bk += (disc * 0.55 + np.clip(edge, 0, 1) * 0.45)[..., None] * col
+        f = f + cv2.resize(cv2.GaussianBlur(bk, (0, 0), 1.2), (W, H)) * amt
+    return f
+
+
+# ---- paper tear (the crash)
+def _tear_path(seed=4):
+    if ('tear', seed) in _K4: return _K4[('tear', seed)]
+    rng = np.random.default_rng(seed); ys = np.arange(H, dtype=np.float32)
+    x = np.zeros(H, np.float32)
+    for k, (amp, per) in enumerate(((70, 900), (28, 260), (10, 70), (4, 18))):
+        ph = rng.uniform(0, 2 * math.pi); x += amp * np.sin(ys / per * 2 * math.pi + ph)
+    x += W / 2 + 40 * (ys / H - 0.5)
+    fib = cv2.resize(np.random.default_rng(seed + 1).random((H // 3, W // 3)).astype(np.float32), (W, H))
+    _K4[('tear', seed)] = (x, fib)
+    return _K4[('tear', seed)]
+
+
+def t_tear(t, c, A, B, a, b):
+    """The crash: the shot is a print that rips from top to bottom along a jagged line (white fibrous paper core on
+    both torn edges); on the hit the halves peel apart toward the lens, throwing a few scraps, onto the next shot."""
+    xp, fib = _tear_path(); fa = layer(A, min(t, c - 1e-3)); fb = layer(B, t, 1 + 0.06 * (1 - eout(clamp((t - c) / (b - c)))))
+    ytip = H * eout(clamp((t - a) / (c - a)))                                                    # how far the tear has run
+    px = xp[np.clip(YY.astype(np.int32), 0, H - 1)]
+    dx = XX - px; torn = YY < ytip
+    core = (np.abs(dx) < 4 + 10 * fib) & torn                                                     # exposed white paper fibres
+    if t < c:
+        gapw = 3 * (YY < ytip)
+        f = fa.copy(); m = (np.abs(dx) < gapw)
+        f = np.where(m[..., None], fb, f)
+        f = np.where((core & ~m)[..., None], np.float32([0.86, 0.90, 0.93]) * (0.8 + 0.2 * fib[..., None]), f)
+        return f
+    u = clamp((t - c) / (b - c)); e = ease(u) ** 0.8
+    left = ss(1.5, -1.5, dx); acc = fb.copy(); am = np.zeros((H, W), np.float32)
+    paper = np.where(core[..., None], np.float32([0.86, 0.90, 0.93]) * (0.8 + 0.2 * fib[..., None]), fa)
+    for side, m in ((-1, left), (1, 1 - left)):
+        lift = 1 - 0.35 * np.exp(-np.abs(dx) / 60)[..., None] * e                                 # the torn edge lifts toward the lens
+        M = cv2.getRotationMatrix2D((W / 2 + side * W * 0.5, H / 2), side * 12 * e, 1 + 0.12 * e); M[0, 2] += side * W * 0.80 * e; M[1, 2] += 0.04 * H * e
+        pc = cv2.warpAffine(paper * lift * m[..., None], M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        pm = cv2.warpAffine(m, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        lit = 1 + 0.12 * e * (0.5 + 0.5 * side)
+        acc = acc * (1 - pm[..., None]) + pc * lit; am = np.maximum(am, pm)
+    sh = cv2.GaussianBlur(np.roll(np.roll(am, 24, 0), 16, 1), (0, 0), 22) * 0.55
+    f = acc * (1 - (sh * (1 - am))[..., None])
+    sc = np.zeros((H, W), np.float32); rng = np.random.default_rng(8)                             # a few paper scraps
+    for i in range(12):
+        y0 = rng.uniform(0.1, 0.9) * H; x0 = xp[int(y0)]; vx = rng.uniform(-500, 500); vy = rng.uniform(-300, 200)
+        px_, py_ = x0 + vx * (t - c), y0 + vy * (t - c) + 1400 * (t - c) ** 2; s_ = rng.uniform(5, 13); ang = rng.uniform(0, 6) + (t - c) * 12
+        poly = [(px_ + s_ * math.cos(ang + q * 2.1), py_ + s_ * math.sin(ang + q * 2.1)) for q in range(3)]
+        cv2.fillConvexPoly(sc, np.int32(poly), 1.0 - u, cv2.LINE_AA)
+    f = f * (1 - sc[..., None]) + sc[..., None] * np.float32([0.86, 0.90, 0.93])
+    return f + 0.20 * math.exp(-(t - c) * 18)
 
 
 # ---- spray-paint X ("X gon' give it to ya", second time)
@@ -4478,6 +4628,9 @@ TRANSITIONS = {
     'sunwindow': (lambda c, o: (c - .40, c + .30), lambda t, c, A, B, o: t_sunwindow(t, c, A, B, c - .40, c + .30)),
     'mirror2':   (lambda c, o: (c - .40, c + .40), lambda t, c, A, B, o: t_mirror2(t, c, A, B, c - .40, c + .40)),
     'flaps':     (lambda c, o: (c - .20, c + .25), lambda t, c, A, B, o: t_flaps(t, c, A, B, c - .20, c + .25)),
+    'neontrace': (lambda c, o: (c - .50, c + .40), lambda t, c, A, B, o: t_neontrace(t, c, A, B, c - .50, c + .40)),
+    'rackfocus': (lambda c, o: (c - .40, c + .36), lambda t, c, A, B, o: t_rackfocus(t, c, A, B, c - .40, c + .36)),
+    'tear':      (lambda c, o: (c - .14, c + .32), lambda t, c, A, B, o: t_tear(t, c, A, B, c - .14, c + .32)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),

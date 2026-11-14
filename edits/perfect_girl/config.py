@@ -5,11 +5,11 @@ rather than chatter. 5 of sections.py's bars = 40 steps = 18.6 s: one bar of the
 full groove at step 8 (3.72 s), another crash at step 24 (11.16 s), and the end of the phrase loops back into the build.
 The song is effectively instrumental (the vocal stem is synth bleed), so there is no lyric text.
 Built from the Dexter standard (edits/x_gon) with a new, deliberately restrained kit (kit VI): a night drive
-through Miami -- a palm trunk passing the lens; on the drop the outrun horizon, whose striped sun is made of the
-next shot, flown into until it fills the frame; a tinted car window rolling down; the rear-view mirror (dive into
-the glass); a split-flap board flipping over on the crash; and the loop: the first shot reflected in Dexter's
-sunglasses, the camera diving into the lens.
-v2 (user feedback): the sun now carries the next shot; streetlights, rain/wiper and the mirror loop were replaced.
+through Miami -- a palm trunk passing the lens; on the drop the shot turns into neon line art traced from its own
+outlines, which become the next shot's and fill in; a tinted car window rolling down; a cinematic rack focus
+through neon bokeh; the print tearing in two on the crash; and the loop: the first shot reflected in Dexter's
+sunglasses, the camera easing in and diving into the lens.
+v3 (user feedback): the sun, the mirror and the split-flap were replaced; the loop was smoothed and made cinematic.
 Look: neon-noir grade (a little magenta in the lights, reds kept), soft bumps on the strongest kicks, motion blur.
 Plain 720p extract, no AI upscaling (user's request).
 Build: bash ../../edit/build.sh .
@@ -34,12 +34,12 @@ def g(sat, gain, **kw): return dict(NEON, sat=sat * 0.9, rk=1.0, gain=gain, **kw
 
 SHOTS = [
  dict(name='night_turn',  out='pass', fx=['bump'],                        pack=A2, src=189.60, x=0.44, push=(1.00, 1.05), **g(0.55, 1.65)),   # A39 night walk, turns
- dict(name='neon_drive',  beats=4, out='sunwindow', fx=['bump'],             pack=B2, src=276.69, x=0.69, push=(1.00, 1.05), **g(0.60, 1.10)),   # B103 driving past neon
+ dict(name='neon_drive',  beats=4, out='neontrace', fx=['bump'],             pack=B2, src=276.69, x=0.69, push=(1.00, 1.05), **g(0.60, 1.10)),   # B103 driving past neon
  dict(name='sun_profile', beats=4, out='cut', fx=['bump'],                pack=S1, src=227.30, x=0.40, push=(1.00, 1.05), **g(0.55, 0.95)),   # S56 sunlit profile (out of the sun)
  dict(name='smile_down',  beats=2, out='cut', punch={'z': 1.12, 'flash': 0.08}, fx=['bump'], pack=D, src=29.65, x=0.47, push=(1.00, 1.04), **g(0.55, 1.05)),   # D8
  dict(name='turn_stare',  beats=2, out='window', fx=['bump'],             pack=D,  src=115.00, x=0.61, push=(1.00, 1.04), **g(0.55, 1.00)),   # D56
- dict(name='night_car',   beats=4, out='mirror2', fx=['bump'],       pack=D,  src=276.15, x=0.47, push=(1.00, 1.05), **g(0.55, 1.15)),   # D139 in the car at night
- dict(name='corridor',    beats=4, out='flaps', fx=['bump'],              pack=S1, src=353.30, x=0.48, push=(1.00, 1.05), **g(0.55, 1.00)),   # S90
+ dict(name='night_car',   beats=4, out='rackfocus', fx=['bump'],       pack=D,  src=276.15, x=0.47, push=(1.00, 1.05), **g(0.55, 1.15)),   # D139 in the car at night
+ dict(name='corridor',    beats=4, out='tear', fx=['bump'],              pack=S1, src=353.30, x=0.48, push=(1.00, 1.05), **g(0.55, 1.00)),   # S90
  dict(name='top_lit',     beats=4, out='cut', fx=['bump'],                pack=C4, src=24.35,  x=0.52, push=(1.00, 1.05), **g(0.55, 1.30)),   # C7 lit from above (the crash)
  dict(name='dark_smile',  beats=2, out='cut', fx=['bump'],                pack=C4, src=43.60,  x=0.40, push=(1.00, 1.04), **g(0.55, 1.25)),   # C14
  dict(name='sunset',      beats=2, out='whip', out_opts={'d': 1}, fx=['bump'], pack=S1, src=402.15, x=0.56, push=(1.00, 1.04), **g(0.60, 1.00)),   # S1 sunset

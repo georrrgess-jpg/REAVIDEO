@@ -456,6 +456,13 @@ def sfx_for(name, c, o, up):
         put(boom(0.4, 90, 40), c, gain=0.08)
     elif name == 'shades':
         put(shimmer(0.5), c - 0.80, gain=0.035); put(whoosh(0.45, 300, 4000, peak=0.9), c - 0.40, gain=0.06)
+    elif name == 'neontrace':
+        put(buzz(0.45), c - 0.50, gain=0.03); put(tick(0.03, 2400), c - 0.16, gain=0.04); put(tick(0.03, 2600), c - 0.09, gain=0.04)
+        put(boom(0.8, 60, 30), c, gain=0.12); put(shimmer(0.5), c, gain=0.03)
+    elif name == 'rackfocus':
+        put(whoosh(0.50, 900, 200, q=0.6, peak=0.7), c - 0.40, gain=0.04); put(whoosh(0.40, 200, 900, q=0.6, peak=0.3), c, gain=0.04)
+    elif name == 'tear':
+        put(rip(0.14), c - 0.14, gain=0.09); put(rip(0.25), c, gain=0.07); put(boom(0.4, 90, 40), c, gain=0.08)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)
