@@ -463,6 +463,12 @@ def sfx_for(name, c, o, up):
         put(whoosh(0.50, 900, 200, q=0.6, peak=0.7), c - 0.40, gain=0.04); put(whoosh(0.40, 200, 900, q=0.6, peak=0.3), c, gain=0.04)
     elif name == 'tear':
         put(rip(0.14), c - 0.14, gain=0.09); put(rip(0.25), c, gain=0.07); put(boom(0.4, 90, 40), c, gain=0.08)
+    elif name == 'tee':
+        put(whoosh(0.36, 900, 250, q=0.6, peak=0.6), c - 0.40, gain=0.05); put(crinkle(0.2), c - 0.10, gain=0.025)
+        put(whoosh(0.32, 250, 1200, q=0.6, peak=0.4), c, gain=0.05)
+    elif name == 'drain':
+        put(bubbles(0.8, 24), c - 0.46, gain=0.05); put(whoosh(0.5, 900, 150, q=0.7, peak=0.85), c - 0.46, gain=0.05)
+        put(boom(0.4, 70, 35), c, gain=0.08); put(whoosh(0.4, 150, 1100, q=0.7, peak=0.2), c, gain=0.05)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)

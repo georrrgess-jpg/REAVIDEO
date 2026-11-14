@@ -101,6 +101,7 @@ def layer(i, t, ez=1.0):
         elif name.startswith('stamp:'): f = stamp_fx(f, t, s, name[6:])
         elif name == 'glint': f = glint_fx(f, t, s)
         elif name == 'ghost': f = ghost_fx(f, i, t, s)
+        elif name == 'passenger': f = ghost_fx(f, i, t, s, col=(0.20, 0.16, 0.95))   # the Dark Passenger: a red double
         elif name == 'trails': f = trails_fx(f, i, t, s)
         elif name == 'crackle_build': f = crackle_fx(f, i, t, s, build=True)
         elif name == 'pulse': f = pulse_fx(f, t, s)
@@ -1215,7 +1216,7 @@ def glint_fx(f, t, s):
     return out
 
 
-def ghost_fx(f, i, t, s):
+def ghost_fx(f, i, t, s, col=(0.98, 0.97, 1.0)):
     """Glowing outline double: the frame's edges, drawn as white light, drifting off the subject (voidfx-style)."""
     g = cv2.GaussianBlur(cv2.resize(luma(f), (W // 2, H // 2)), (0, 0), 1.4)
     e = cv2.Canny((np.clip(g, 0, 1) * 255).astype(np.uint8), 30, 90).astype(np.float32) / 255
@@ -1230,7 +1231,7 @@ def ghost_fx(f, i, t, s):
         M = cv2.getRotationMatrix2D((W / 2, H * 0.42), sgn * 1.5 * u, z); M[0, 2] += dx; M[1, 2] += dy
         ed = cv2.warpAffine(e, M, (W, H))
         glow = cv2.GaussianBlur(ed, (0, 0), 7)
-        out = out + ((ed * 0.9 + glow * 1.4) * a0 * (0.45 + 0.8 * pulse))[..., None] * np.float32([0.98, 0.97, 1.0])
+        out = out + ((ed * 0.9 + glow * 1.4) * a0 * (0.45 + 0.8 * pulse))[..., None] * np.float32(col)
     return out
 
 
@@ -4390,6 +4391,119 @@ def t_tear(t, c, A, B, a, b):
     return f + 0.20 * math.exp(-(t - c) * 18)
 
 
+# ---- the white tee from the opening credits (0:07)
+def _knit():
+    if 'knit' in _K4: return _K4['knit']
+    rng = np.random.default_rng(12)
+    col = 0.5 + 0.5 * np.cos(XX * 1.15) ** 2                                                    # jersey knit columns
+    row = 0.5 + 0.5 * np.cos(YY * 1.6 + 0.6 * np.sin(XX * 0.21))
+    k = 0.7 * col + 0.3 * row
+    fz = cv2.resize(fbm(H // 24, W // 24, 4, 13, 4), (W, H), interpolation=cv2.INTER_CUBIC)
+    _K4['knit'] = (k.astype(np.float32), fz.astype(np.float32), cv2.GaussianBlur(rng.random((H, W)).astype(np.float32), (0, 0), 0.7))
+    return _K4['knit']
+
+
+def _cloth(under, t, edge_y, press, rise):
+    """Thin white cotton over the frame above edge_y: the face beneath pushes into it (relief from the frame's
+    luminance), knit texture, folds dragged toward the hem, a ribbed hem band and its shadow."""
+    knit, fz, sp = _knit()
+    h = cv2.GaussianBlur(luma(under), (0, 0), 9) * (0.6 + 0.8 * press)
+    folds = 0.35 * np.sin(XX / 55 + fz * 6 + YY * 0.004 * rise) * np.exp(-np.clip(edge_y - YY, 0, None) / 500)
+    hh = h * 22 + folds * 8 + fz * 6
+    gy, gx = np.gradient(hh)
+    nx, ny = -gx * 0.5, -gy * 0.5; nz = np.ones_like(nx); n = np.sqrt(nx * nx + ny * ny + nz * nz)
+    shade = _shade(nx / n, ny / n, nz / n, 0.95, ks=0.12, pw=8, amb=0.55)
+    tex = shade * (0.90 + 0.10 * knit) * (0.97 + 0.06 * (sp - 0.5))
+    cloth = tex[..., None] * np.float32([0.96, 0.97, 0.98])
+    see = cv2.GaussianBlur(under, (0, 0), 6) * 0.14                                             # thin cotton: a little shows through
+    cloth = cloth * 0.90 + see * 0.8
+    d = edge_y + 40 * np.sin(XX / W * math.pi) - YY
+    hem = (d >= 0) & (d < 46)
+    rib = 0.88 + 0.12 * np.cos(XX * 0.9)
+    cloth = np.where(hem[..., None], cloth * rib[..., None] * (0.92 + 0.08 * (d / 46))[..., None], cloth)
+    m = ss(-1.5, 1.5, d)[..., None]
+    shadow = (np.exp(-np.clip(-d, 0, None) / 40) * (d < 0) * 0.55)[..., None]
+    return under * (1 - shadow) * (1 - m) + cloth * m
+
+
+def t_tee(t, c, A, B, a, b):
+    """The opening-credits tee: a white cotton T-shirt is pulled down over the frame, the face pressing up through
+    the knit; on the beat it is pulled off upward and the next shot is underneath."""
+    if t < c:
+        p = clamp((t - a) / (c - 0.06 - a)); ey = lerp(-0.08 * H, 1.06 * H, ease(p) ** 0.85)
+        under = layer(A, t); return _cloth(under, t, ey, ease(clamp((t - (c - 0.14)) / 0.12)), 1.0)
+    q = clamp((t - c) / (b - c)); ey = lerp(1.06 * H, -0.10 * H, ease(q) ** 1.2)
+    under = layer(B, t, 1 + 0.05 * (1 - ease(q)))
+    return _cloth(under, t, ey, 1 - ease(q), 1 + 2 * q)
+
+
+# ---- sink drain (0:09)
+def _sink(t, cx, cy):
+    r, th = _polar(cx, cy)
+    if 'sinkn' not in _K4: _K4['sinkn'] = (cv2.resize(fbm(H // 32, W // 32, 4, 44, 4), (W, H), interpolation=cv2.INTER_CUBIC) - 0.5)
+    nz = _K4['sinkn']
+    basin = 0.88 - 0.22 * np.exp(-r / 360) + 0.08 * np.exp(-((r - 560) / 150) ** 2) - 0.10 * ss(700, 900, r)
+    f = basin[..., None] * np.float32([0.95, 0.96, 0.97])
+    rf = (r + 1.0) / 120; ph = th + 1.9 * np.log(rf) - 7 * t + 2.2 * nz                         # thin, irregular trails spiralling in
+    trail = np.zeros_like(r)
+    for k, (n_, w_, amp) in enumerate(((2, 0.035, 1.0), (3, 0.020, 0.7), (5, 0.012, 0.5))):
+        d = np.abs(np.mod(n_ * ph / (2 * math.pi) + 0.37 * k, 1.0) - 0.5) / n_
+        trail = np.maximum(trail, amp * np.exp(-(d / (w_ * (0.6 + 0.8 * ss(800, 100, r)))) ** 2))
+    trail = trail * ss(70, 110, r) * ss(900, 250, r) * (0.7 + 0.6 * nz)
+    trail = np.clip(trail, 0, 1)
+    dilute = ss(500, 120, r)[..., None]                                                         # thick red near the drain, pinker further out
+    col = BLOOD * dilute + np.float32([0.38, 0.36, 0.80]) * (1 - dilute)
+    f = f * (1 - trail[..., None] * 0.9) + col * trail[..., None] * 0.9
+    wet = np.exp(-((np.mod(th * 2 + np.log(rf) * 3 - 10 * t, 2 * math.pi) - 1) / 0.12) ** 2) * 0.06 * ss(80, 200, r)
+    f = f + wet[..., None]
+    Rd = 78.0                                                                                   # chrome drain with a slotted grate
+    ring = ss(Rd + 22, Rd + 18, r) * ss(Rd - 2, Rd + 2, r)
+    chrome = 0.55 + 0.35 * np.cos(th - math.radians(-130)) ** 8 + 0.15 * np.cos(r * 0.4)
+    f = f * (1 - ring[..., None]) + (chrome * ring)[..., None] * np.float32([1.0, 1.0, 1.02])
+    inner = ss(Rd + 1, Rd - 1, r)
+    slots = ((np.mod(th + math.pi, math.pi / 4) < 0.22) & (r > 18) & (r < Rd - 8)) | (r < 12)
+    grate = np.where(slots, 0.03, 0.62 + 0.25 * np.cos(th - math.radians(-130)) ** 6)
+    f = f * (1 - inner[..., None]) + (grate * inner)[..., None]
+    return f, r, th
+
+
+def t_drain(t, c, A, B, a, b):
+    """The opening-credits sink: the frame swirls with blood and is sucked down a chrome drain in a white porcelain
+    basin, then the next shot spirals back up out of the drain on the beat."""
+    cx, cy = W / 2, 0.48 * H
+    if t < c: p = ease(clamp((t - a) / (c - 0.03 - a))); fr = layer(A, t); sgn = 1
+    else: p = 1 - ease(clamp((t - c) / (b - 0.03 - c))); fr = layer(B, t); sgn = -1
+    sink, r, th = _sink(t, cx, cy)
+    g = math.exp(math.log(30.0) * p ** 2.4)                                                   # the picture shrinks into the drain
+    tw = sgn * 7.0 * p * np.exp(-r / (0.30 * W))
+    rs = r * g; ths = th - tw
+    mx = (cx + rs * np.cos(ths)).astype(np.float32); my = (cy + rs * np.sin(ths)).astype(np.float32)
+    img = cv2.remap(fr, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    vis = cv2.remap(np.ones((H, W), np.float32), mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    rim = math.hypot(W, H) / 2 / g
+    edge = ss(rim * 1.0, rim * 0.75, r)
+    vis = vis * edge
+    img = img * (1 - 0.35 * p) + BLOOD * 0.35 * p                                              # the picture reddens as it goes down
+    return sink * (1 - vis[..., None]) + img * vis[..., None]
+
+
+# ---- cinematic letterbox (config LETTERBOX: bars on the build, opening on the drop, back for the loop seam)
+def letterbox(f, t):
+    import config as _c
+    lb = getattr(_c, 'LETTERBOX', None)
+    if not lb: return f
+    k = 0.0
+    for t0, t1 in lb.get('open', []):
+        if t < t0: k = 1.0; break
+        if t < t1: k = 1 - ease((t - t0) / (t1 - t0)); break
+    for t0, t1 in lb.get('close', []):
+        if t >= t0: k = max(k, ease(clamp((t - t0) / (t1 - t0))))
+    if k <= 0.001: return f
+    hb = lb.get('h', 0.09) * H * k
+    m = ((YY < hb) | (YY > H - hb)).astype(np.float32)[..., None]
+    return f * (1 - m) + np.float32([0.01, 0.01, 0.012]) * m
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -4631,6 +4745,8 @@ TRANSITIONS = {
     'neontrace': (lambda c, o: (c - .50, c + .40), lambda t, c, A, B, o: t_neontrace(t, c, A, B, c - .50, c + .40)),
     'rackfocus': (lambda c, o: (c - .40, c + .36), lambda t, c, A, B, o: t_rackfocus(t, c, A, B, c - .40, c + .36)),
     'tear':      (lambda c, o: (c - .14, c + .32), lambda t, c, A, B, o: t_tear(t, c, A, B, c - .14, c + .32)),
+    'tee':       (lambda c, o: (c - .40, c + .34), lambda t, c, A, B, o: t_tee(t, c, A, B, c - .40, c + .34)),
+    'drain':     (lambda c, o: (c - .46, c + .40), lambda t, c, A, B, o: t_drain(t, c, A, B, c - .46, c + .40)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
@@ -4720,4 +4836,5 @@ def frame(t):
             break
     else:
         f = layer(base_index(t), t)
+    f = letterbox(f, t)
     return typo.overlay(f, t, getattr(_c, 'TEXT', None), W, H)
