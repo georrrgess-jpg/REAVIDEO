@@ -49,7 +49,7 @@ SHOTS = [
  dict(name='corridor',    beats=4, out='tear', fx=['bump'],              pack=S1, src=353.30, x=0.48, push=(1.00, 1.05), **g(0.55, 1.00)),   # S90
  dict(name='top_lit',     beats=4, out='panes', fx=['bump'],                pack=C4, src=24.35,  x=0.52, push=(1.00, 1.05), **g(0.55, 1.30)),   # C7 lit from above (the crash)
  dict(name='dark_smile',  beats=2, out='cut', fx=['bump', 'passenger'],                pack=C4, src=43.60,  x=0.40, push=(1.00, 1.04), **g(0.55, 1.25)),   # C14
- dict(name='sunset',      beats=2, out='eyedive', fx=['bump'], pack=S1, src=402.15, x=0.56, push=(1.00, 1.04), **g(0.60, 1.00)),   # S1 sunset
+ dict(name='sunset',      beats=2, out='glove', fx=['bump'], pack=S1, src=402.15, x=0.56, push=(1.00, 1.04), **g(0.60, 1.00)),   # S1 sunset
  dict(name='street_smile', beats=5, out='cut', fx=['bump'],               pack=C4, src=47.70,  x=0.48, push=(1.00, 1.06), **g(0.55, 1.00)),   # C17 the one long hold
  dict(name='sunglasses',  beats=2, out='shades', fx=['bump'],             pack=S1, src=158.60, x=0.46, push=(1.00, 1.04), **g(0.55, 1.00)),   # S37 shades on: the loop dives into a lens
 ]

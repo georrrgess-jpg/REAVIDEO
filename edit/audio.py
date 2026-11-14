@@ -500,6 +500,9 @@ def sfx_for(name, c, o, up):
     elif name == 'eyedive':
         put(whoosh(0.62, 120, 900, q=0.6, peak=0.9), c - 0.62, gain=0.06); put(heartbeat(), c - 0.30, gain=0.06)
         put(shimmer(0.4), c - 0.22, gain=0.03); put(boom(0.8, 55, 28), c, gain=0.12)
+    elif name == 'glove':
+        put(squeak(0.40), c - 0.55, gain=0.05); put(whoosh(0.55, 150, 700, q=0.6, peak=0.9), c - 0.56, gain=0.05)
+        put(squeak(0.25), c - 0.20, gain=0.04); put(rip(0.18), c, gain=0.09); put(boom(0.6, 60, 30), c, gain=0.11)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)

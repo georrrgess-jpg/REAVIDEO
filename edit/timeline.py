@@ -5036,6 +5036,68 @@ def t_eyedive(t, c, A, B, a, b):
     return f
 
 
+# ---- THE GLOVE: a gloved hand pushes through the screen as if it were stretched latex, then tears it open
+def _hand_field(p, spread):
+    """Height field of a hand pressing into a membrane from behind (palm + four fingers + thumb), grown by p."""
+    q = 2; m = np.zeros((H // q, W // q), np.float32)
+    pcx, pcy = 0.50 * W, 0.58 * H; s = (0.9 + 0.2 * p)
+    cv2.ellipse(m, (int(pcx / q), int(pcy / q)), (int(215 * s / q), int(255 * s / q)), 0, 0, 360, 1.0, -1, cv2.LINE_AA)
+    for k, (ang, L) in enumerate(((-21, 300), (-7, 345), (7, 330), (21, 270))):
+        a_ = math.radians(-90 + ang * (1 + 0.6 * spread)); bx = pcx + (k - 1.5) * 112 * s; by = pcy - 200 * s
+        ex, ey = bx + math.cos(a_) * L * s, by + math.sin(a_) * L * s
+        cv2.line(m, (int(bx / q), int(by / q)), (int(ex / q), int(ey / q)), 1.0, int(100 * s / q), cv2.LINE_AA)
+        cv2.circle(m, (int(ex / q), int(ey / q)), int(50 * s / q), 1.0, -1, cv2.LINE_AA)
+    a_ = math.radians(-150 - 15 * spread); bx, by = pcx - 170 * s, pcy + 20 * s
+    ex, ey = bx + math.cos(a_) * 230 * s, by + math.sin(a_) * 230 * s
+    cv2.line(m, (int(bx / q), int(by / q)), (int(ex / q), int(ey / q)), 1.0, int(80 * s / q), cv2.LINE_AA)
+    cv2.circle(m, (int(ex / q), int(ey / q)), int(40 * s / q), 1.0, -1, cv2.LINE_AA)
+    d = cv2.distanceTransform((m > 0.5).astype(np.uint8), cv2.DIST_L2, 5)                     # rounded 3-D bulge, not a flat plate
+    m = np.sqrt(np.clip(d / 115.0, 0, 1)) * (m > 0.5)
+    m = cv2.GaussianBlur(m.astype(np.float32), (0, 0), 7)
+    m = cv2.resize(m, (W, H), interpolation=cv2.INTER_LINEAR)
+    return m * p, (pcx, pcy)
+
+
+def t_glove(t, c, A, B, a, b):
+    """The screen is a sheet of blue nitrile: a gloved hand presses into it from behind -- fingers and palm bulging
+    toward the camera, the picture stretched and refracted, a wet sheen on the latex, stress lines around the
+    knuckles -- and on the beat the latex tears open from the palm and the torn flaps snap back onto the next shot."""
+    pr = ease(clamp((t - a) / (c - 0.04 - a))) ** 1.2
+    spread = ease(clamp((t - (c - 0.22)) / 0.18))
+    h, (pcx, pcy) = _hand_field(pr, spread)
+    hh = cv2.GaussianBlur(h, (0, 0), 8)
+    gy, gx = np.gradient(hh * 90)
+    fa = layer(A, min(t, c - 1e-3))
+    k = 1.0 + 0.35 * pr
+    mx = (XX - gx * 0.9 + (XX - pcx) * (-0.10 * hh)).astype(np.float32)                         # stretched over the knuckles
+    my = (YY - gy * 0.9 + (YY - pcy) * (-0.10 * hh)).astype(np.float32)
+    f = cv2.remap(fa, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    n = np.sqrt(gx * gx + gy * gy + 1.0); nx, ny, nz = -gx / n, -gy / n, 1 / n
+    diff = np.clip(nx * _LB[0] + ny * _LB[1] + nz * _LB[2], 0, 1)
+    spec = np.clip(nx * _HB[0] + ny * _HB[1] + nz * _HB[2], 0, 1) ** 40
+    latex = np.float32([0.98, 0.72, 0.42])                                                       # blue nitrile (BGR)
+    tint = np.clip(0.14 * pr + 0.32 * hh, 0, 0.55)[..., None]
+    f = f * (1 - tint) + latex * (0.35 + 0.75 * diff)[..., None] * tint
+    f = f * (0.80 + 0.20 * diff)[..., None] + (spec * (0.25 + 0.9 * hh))[..., None]
+    gm = np.sqrt(gx * gx + gy * gy)                                                              # stress lines: fine streaks radiating off the bulges
+    ang = np.arctan2(YY - pcy, XX - pcx)
+    streak = (0.5 + 0.5 * np.sin(ang * 70 + 3 * np.sin(ang * 7))) ** 6 * np.clip(gm / 6, 0, 1) * (1 - hh) * pr
+    f = f + (streak * 0.12)[..., None]
+    if t < c: return f
+    u = clamp((t - c) / (b - c)); e = ease(u) ** 0.75                                            # the tear opens from the palm
+    nz_ = _ring_noise(151, s=1) - 0.5
+    dr = np.sqrt(((XX - pcx) / 1.0) ** 2 + ((YY - pcy) / 1.15) ** 2) * (1 + 0.35 * nz_) + 26 * np.sin(ang * 5 + 1.3) + 14 * np.sin(ang * 13)
+    Rt = lerp(30, 1.7 * H, ease(u) ** 1.5)
+    hole = ss(Rt + 6, Rt - 6, dr)[..., None]
+    fb = layer(B, t, 1 + 0.10 * (1 - e))
+    rim = np.exp(-((dr - Rt - 14) / 26) ** 2)[..., None]
+    lip = latex * (0.30 + 0.25 * np.clip((dr - Rt) / 40, 0, 1))[..., None]                   # the torn latex lip, matte, curling back
+    out = f * (1 - hole) + fb * hole
+    out = out * (1 - rim * 0.85) + lip * rim * 0.85
+    sh = np.exp(-np.clip(dr - Rt, 0, None) / 40)[..., None] * 0.35 * (1 - hole)                  # the flaps' shadow on the latex
+    return out * (1 - sh) + 0.12 * math.exp(-(t - c) * 20)
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -5289,6 +5351,7 @@ TRANSITIONS = {
     'panes':     (lambda c, o: (c - .10, c + .30), lambda t, c, A, B, o: t_panes(t, c, A, B, c - .10, c + .30)),
     'codepage':  (lambda c, o: (c - .40, c + .40), lambda t, c, A, B, o: t_codepage(t, c, A, B, c - .40, c + .40)),
     'eyedive':   (lambda c, o: (c - .62, c + .34), lambda t, c, A, B, o: t_eyedive(t, c, A, B, c - .62, c + .34)),
+    'glove':     (lambda c, o: (c - .60, c + .34), lambda t, c, A, B, o: t_glove(t, c, A, B, c - .60, c + .34)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
