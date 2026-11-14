@@ -4925,6 +4925,117 @@ def t_codepage(t, c, A, B, a, b):
     return under * (1 - fm[..., None]) + back * fm[..., None]
 
 
+# ---- EYE DIVE: push into Dexter's eye, a drawn iris takes over, the pupil opens onto the next shot
+def _iris_polar():
+    if 'irisp' in _K4: return _K4['irisp']
+    rng = np.random.default_rng(5)
+    hr, wt = 256, 2048
+    fib = cv2.GaussianBlur(rng.random((hr, wt)).astype(np.float32), (0, 0), sigmaX=1.2, sigmaY=10)
+    fib = (fib - fib.min()) / (fib.max() - fib.min())
+    low = cv2.resize(fbm(16, 128, 4, 6, 4), (wt, hr), interpolation=cv2.INTER_CUBIC)
+    crypt = (cv2.GaussianBlur(rng.random((hr, wt)).astype(np.float32), (0, 0), 4) > 0.62).astype(np.float32)
+    crypt = cv2.GaussianBlur(crypt, (0, 0), 2)
+    _K4['irisp'] = (fib.astype(np.float32), low.astype(np.float32), crypt.astype(np.float32))
+    return _K4['irisp']
+
+
+def _draw_iris(cx, cy, R, pupil, t):
+    """A procedural iris at screen (cx, cy) radius R: radial stroma fibres, crypts, a jagged collarette, amber
+    centre to blue-grey edge, dark limbal ring, black pupil (radius pupil * R). Returns colour, iris alpha, and
+    the polar radius map (in units of R)."""
+    fib, low, crypt = _iris_polar()
+    dx, dy = XX - cx, YY - cy; r = np.sqrt(dx * dx + dy * dy) + 1e-3; th = np.arctan2(dy, dx); rn = r / R
+    mx = ((th + math.pi) / (2 * math.pi) * 2047).astype(np.float32); my = (np.clip(rn, 0, 1) * 255).astype(np.float32)
+    F = cv2.remap(fib, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+    Lw = cv2.remap(low, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+    Cr = cv2.remap(crypt, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+    k = np.clip((rn - pupil) / max(1e-3, 1 - pupil), 0, 1)[..., None]
+    inner = np.float32([0.16, 0.42, 0.62]); outer = np.float32([0.62, 0.56, 0.42])            # amber centre -> blue-grey (BGR)
+    col = inner * (1 - ss(0.0, 0.55, k)) + outer * ss(0.0, 0.55, k)
+    col = col * (0.45 + 0.85 * F[..., None]) * (0.85 + 0.3 * Lw[..., None])
+    col = col * (1 - 0.55 * Cr[..., None] * (k > 0.15))
+    coll = np.exp(-((k[..., 0] - (0.32 + 0.05 * (Lw - 0.5))) / 0.035) ** 2)                     # collarette
+    col = col + (coll * 0.22)[..., None] * np.float32([0.55, 0.75, 0.85])
+    col = col * (1 - 0.85 * ss(0.84, 1.0, rn))[..., None]                                       # limbal ring
+    ruff = np.exp(-((rn - pupil) / 0.025) ** 2)[..., None] * np.float32([0.10, 0.22, 0.35])
+    col = col * (rn > pupil)[..., None] + ruff
+    dome = (1 - 0.35 * np.clip(rn, 0, 1) ** 2)[..., None]                                       # cornea dome
+    col = col * dome
+    alpha = ss(1.06, 0.98, rn)
+    return col.astype(np.float32), alpha.astype(np.float32), rn
+
+
+def _eye_track(A, ts):
+    """Eye position (layer coords) and iris radius for shot A at times ts, fitted linearly for a steady track."""
+    s = SHOTS[A]; pts = []; ws = []
+    for t in ts:
+        k = int(round((PRE + t - s['start']) * FPS)); lm = _landmarks(A, k)
+        if lm is None: continue
+        e1, e2, fw = lm; e = e1 if abs(e1[0] - W / 2) < abs(e2[0] - W / 2) else e2
+        u = (t - s['start']) / (s['end'] - s['start']); z = max(lerp(s['push'][0], s['push'][1], u), 1.0)
+        pts.append(((e[0] - W / 2) * z + W / 2, (e[1] - 0.42 * H) * z + 0.42 * H)); ws.append(fw * z)
+    if not pts: return (lambda t: (W / 2, 0.40 * H)), 40.0
+    pts = np.array(pts); tt = np.array(ts[:len(pts)])
+    if len(pts) >= 2: px = np.polyfit(tt, pts[:, 0], 1); py = np.polyfit(tt, pts[:, 1], 1)
+    else: px = [0, pts[0, 0]]; py = [0, pts[0, 1]]
+    return (lambda t: (np.polyval(px, t), np.polyval(py, t))), 0.105 * float(np.median(ws))
+
+
+def t_eyedive(t, c, A, B, a, b):
+    """The camera pushes slowly in on Dexter's face, then accelerates into one eye (locked on with the face
+    tracker). As the footage runs out of detail a drawn iris takes over -- stroma fibres, crypts, collarette,
+    limbal ring, a wet catchlight. The pupil dilates; the next shot is inside it, a faint red glint at its edge
+    (the Dark Passenger). Then the camera falls through the pupil into the shot."""
+    key = ('eyetrk', A, round(c, 3))
+    if key not in _K4: _K4[key] = _eye_track(A, list(np.linspace(a, c - 0.02, 6)))
+    epos, ri = _K4[key]
+    t1, t2 = c - 0.24, c + 0.30
+    zi = 0.30 * W / ri                                                                            # zoom where the iris is 30% of the width
+    if t < t1: v = clamp((t - a) / (t1 - a)); z = math.exp(math.log(zi) * (0.12 * v + 0.88 * ein(v) ** 0.85)); Rs = ri * z
+    else: v = clamp((t - t1) / (t2 - t1)); Rs = 0.30 * W * math.exp(math.log(9.0) * ease(v) ** 1.6); z = Rs / ri
+    ex, ey = epos(min(t, c)) if t < c else epos(c - 1e-3)
+    tgt = (W / 2, 0.45 * H); ph = ease(clamp((t - a) / (t1 - a)))
+    cx, cy = lerp(ex, tgt[0], ph), lerp(ey, tgt[1], ph)
+    if t < c:
+        fa = layer(A, t)
+        M = np.float32([[z, 0, cx - z * ex], [0, z, cy - z * ey]])
+        f = cv2.warpAffine(fa, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    else:
+        f = np.zeros((H, W, 3), np.float32) + np.float32([0.05, 0.06, 0.08])
+    pupil = lerp(0.30, 0.82, ease(clamp((t - (c - 0.22)) / 0.30)))
+    take = ss(0.13 * W, 0.27 * W, Rs)                                                            # the drawn iris takes over
+    if take > 0.001:
+        icol, ial, rn = _draw_iris(cx, cy, Rs, pupil, t)
+        soft = cv2.GaussianBlur(f, (0, 0), 3 + 10 * take) if t < c else f
+        f = soft * (1 - 0.45 * take * ss(1.0, 2.6, rn))[..., None]                               # the eye's surroundings fall into shadow
+        a_ = (ial * take)[..., None]
+        f = f * (1 - a_) + icol * a_
+        Rp = pupil * Rs
+        fb = layer(B, t, 1 + 0.08 * (1 - ease(clamp((t - c) / (b - c)))))
+        dim = lerp(0.50, 1.0, ss(0.45 * RFULL, RFULL, Rp))
+        g, rr = _live_circle(f, fb * dim, cx, cy, Rp, feather=2.0)
+        pm = (ss(Rp + 2, Rp - 2, rr) * take)[..., None]
+        f = f * (1 - pm) + g * pm
+        glint = np.exp(-((rr - Rp) / (0.05 * Rp + 2)) ** 2) * ss(0.8 * RFULL, 0.3 * RFULL, Rp) * take
+        f = f + (glint * 0.14)[..., None] * BLOOD * 1.6
+        cl = ss(0.9 * RFULL, 0.3 * RFULL, Rp) * take                                            # wet catchlight on the cornea
+        if cl > 0.01:
+            ddx, ddy = XX - cx, YY - cy; rr2 = np.sqrt(ddx * ddx + ddy * ddy) / Rs; aa = np.arctan2(ddy, ddx)
+            win = ss(0.12, 0.0, np.abs(rr2 - 0.62)) * ss(0.42, 0.0, np.abs(aa + 2.25)) * 0.45        # a curved window, bent by the cornea
+            win = cv2.GaussianBlur(win.astype(np.float32), (0, 0), 0.012 * Rs + 1)
+            dot = np.exp(-(((XX - (cx + 0.30 * Rs)) ** 2 + (YY - (cy + 0.28 * Rs)) ** 2) / (0.025 * Rs + 1) ** 2)) * 0.35
+            f = f + ((win + dot) * cl * (rn < 1.0))[..., None]
+    sp = clamp((t - (c - 0.08)) / 0.08) * (1 - clamp((t - (c + 0.03)) / 0.08))                  # radial motion blur through the pupil
+    if sp > 0.02:
+        acc = f.copy()
+        for j in (1, 2, 3):
+            s_ = 1 + 0.035 * sp * j; Mr = np.float32([[s_, 0, cx * (1 - s_)], [0, s_, cy * (1 - s_)]])
+            acc += cv2.warpAffine(f, Mr, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        f = acc / 4
+    if t >= t2: f = layer(B, t, 1 + 0.08 * (1 - ease(clamp((t - c) / (b - c)))))
+    return f
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -5177,6 +5288,7 @@ TRANSITIONS = {
     'lighttrails': (lambda c, o: (c - .34, c + .34), lambda t, c, A, B, o: t_lighttrails(t, c, A, B, c - .34, c + .34)),
     'panes':     (lambda c, o: (c - .10, c + .30), lambda t, c, A, B, o: t_panes(t, c, A, B, c - .10, c + .30)),
     'codepage':  (lambda c, o: (c - .40, c + .40), lambda t, c, A, B, o: t_codepage(t, c, A, B, c - .40, c + .40)),
+    'eyedive':   (lambda c, o: (c - .62, c + .34), lambda t, c, A, B, o: t_eyedive(t, c, A, B, c - .62, c + .34)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
