@@ -4663,7 +4663,7 @@ def drip_fx(f, i, t, s):
     m = np.zeros((H, W), np.float32)
     for k, (x, sp, w) in enumerate(((0.09 * W, 1.0, 22), (0.93 * W, 0.7, 16))):
         head = -30 + H * 0.85 * sp * ease(u) ** 1.2
-        if head <= 0: continue
+        if head < 2: continue
         xp = x + 6 * np.sin(np.arange(int(head)) / 60 + k)
         for y in range(0, int(head), 6): cv2.circle(m, (int(xp[min(y, len(xp) - 1)]), y), int(w * (0.55 + 0.45 * (1 - y / max(head, 1)))), 1.0, -1, cv2.LINE_AA)
         cv2.circle(m, (int(xp[-1]), int(head)), int(w * 1.1), 1.0, -1, cv2.LINE_AA)
