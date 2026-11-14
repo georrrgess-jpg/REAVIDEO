@@ -101,6 +101,7 @@ def layer(i, t, ez=1.0):
         elif name.startswith('stamp:'): f = stamp_fx(f, t, s, name[6:])
         elif name == 'glint': f = glint_fx(f, t, s)
         elif name == 'ghost': f = ghost_fx(f, i, t, s)
+        elif name == 'drip': f = drip_fx(f, i, t, s)
         elif name == 'passenger': f = ghost_fx(f, i, t, s, col=(0.20, 0.16, 0.95))   # the Dark Passenger: a red double
         elif name == 'trails': f = trails_fx(f, i, t, s)
         elif name == 'crackle_build': f = crackle_fx(f, i, t, s, build=True)
@@ -4504,6 +4505,172 @@ def letterbox(f, t):
     return f * (1 - m) + np.float32([0.01, 0.01, 0.012]) * m
 
 
+# ============================================================ blood kit (Perfect Girl v5)
+_LB = np.float32([-0.45, -0.60, 0.66]); _LB /= np.linalg.norm(_LB); _HB = _LB + np.float32([0, 0, 1]); _HB /= np.linalg.norm(_HB)
+
+
+def _blood(f, m, depth=1.0, refr=36.0):
+    """Glossy liquid blood over f wherever mask m (0..1): domed surface from the blurred mask, the picture
+    refracted and stained through it, a sharp specular glint and a dark rim."""
+    if float(m.max()) < 0.003: return f
+    if 'bnz' not in _K4: _K4['bnz'] = _ring_noise(131, s=1) - 0.5
+    h = cv2.GaussianBlur(m, (0, 0), 6) * depth + _K4['bnz'] * 0.9 * cv2.GaussianBlur(m, (0, 0), 20)   # liquid surface on big pools
+    gy, gx = np.gradient(h * 40)
+    n = np.sqrt(gx * gx + gy * gy + 1.0); nx, ny, nz = -gx / n, -gy / n, 1 / n
+    diff = np.clip(nx * _LB[0] + ny * _LB[1] + nz * _LB[2], 0, 1)
+    spec = np.clip(nx * _HB[0] + ny * _HB[1] + nz * _HB[2], 0, 1) ** 70
+    mx = (XX + gx * refr / 40).astype(np.float32); my = (YY + gy * refr / 40).astype(np.float32)
+    under = cv2.remap(f, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    col = BLOOD * (0.40 + 0.85 * diff)[..., None] * 0.88 + under * np.float32([0.10, 0.08, 0.55]) * 0.16
+    rim = np.clip(m - cv2.GaussianBlur(m, (0, 0), 2.5), 0, 1) * 2.5
+    col = col * (1 - 0.5 * rim[..., None]) + (spec * 1.1)[..., None]
+    mm = np.clip(m, 0, 1)[..., None]
+    return f * (1 - mm) + col * mm
+
+
+def _splat(cx, cy, e, R0, R1, seed, spines=26, sats=60, dirn=None, spread=math.pi):
+    """Impact spatter mask: a central pool, tapering spines and satellite droplets, grown by e (0..1).
+    dirn/spread limit the spray to a cone (radians)."""
+    q = 2; m = np.zeros((H // q, W // q), np.float32); rng = np.random.default_rng(seed)
+    cxq, cyq = cx / q, cy / q
+    cv2.ellipse(m, (int(cxq), int(cyq)), (max(1, int(R0 * e / q)), max(1, int(R0 * 0.85 * e / q))), rng.uniform(0, 180), 0, 360, 1.0, -1, cv2.LINE_AA)
+    for k in range(spines):
+        ang = (rng.uniform(-spread, spread) + (dirn or 0.0)) if dirn is not None else rng.uniform(0, 2 * math.pi)
+        L = R0 + rng.uniform(0.3, 1.0) * (R1 - R0); L *= e
+        w0 = rng.uniform(0.18, 0.35) * R0
+        for j in range(8):
+            v = j / 7; px = cxq + math.cos(ang) * L * v / q; py = cyq + math.sin(ang) * L * v / q
+            cv2.circle(m, (int(px), int(py)), max(1, int(w0 * (1 - 0.85 * v) / q)), 1.0, -1, cv2.LINE_AA)
+        tipr = w0 * rng.uniform(0.25, 0.5); cv2.circle(m, (int(cxq + math.cos(ang) * L / q * 1.06), int(cyq + math.sin(ang) * L / q * 1.06)), max(1, int(tipr / q)), 1.0, -1, cv2.LINE_AA)
+    for k in range(sats):
+        ang = (rng.uniform(-spread, spread) + (dirn or 0.0)) if dirn is not None else rng.uniform(0, 2 * math.pi)
+        d = rng.uniform(0.5, 1.45) * R1 * e; rr = rng.uniform(2, 11) * (0.4 + 0.6 * e)
+        x, y = cxq + math.cos(ang) * d / q, cyq + math.sin(ang) * d / q
+        cv2.ellipse(m, (int(x), int(y)), (max(1, int(rr * 1.6 / q)), max(1, int(rr / q))), math.degrees(ang), 0, 360, 1.0, -1, cv2.LINE_AA)
+    m = cv2.GaussianBlur(m, (0, 0), 0.8)
+    return cv2.resize(m, (W, H), interpolation=cv2.INTER_LINEAR)
+
+
+# ---- a blood drop hits the lens (the drop)
+def t_lensdrop(t, c, A, B, a, b):
+    """In slow motion a glossy blood drop falls toward the camera and splats on the lens (pool, spines, satellite
+    droplets, the picture refracted through the blood); then the blood runs down the glass onto the next shot."""
+    ti = c - 0.09; cx, cy = 0.52 * W, 0.40 * H
+    if t < ti:
+        p = clamp((t - a) / (ti - a)); e = ein(p) * 0.85 + 0.15 * p
+        f = layer(A, t) * (1 - 0.25 * p)
+        y = lerp(-0.10 * H, cy, e); r = lerp(16, 110, e ** 1.6)
+        m = np.zeros((H, W), np.float32)
+        cv2.ellipse(m, (int(cx), int(y)), (int(r), int(r * 1.15)), 0, 0, 360, 1.0, -1, cv2.LINE_AA)       # teardrop: round belly
+        cv2.ellipse(m, (int(cx), int(y - r * 0.9)), (int(r * 0.45), int(r * 0.9)), 0, 180, 360, 1.0, -1, cv2.LINE_AA)  # and a pointed top
+        tr = np.zeros((H, W), np.float32); cv2.line(tr, (int(cx), int(y - r * 2.2)), (int(cx), int(y - r * 6)), 0.25, max(2, int(r * 0.2)), cv2.LINE_AA)
+        m = cv2.GaussianBlur(np.maximum(m, cv2.GaussianBlur(tr, (0, 0), 8)), (0, 0), 1.2)
+        return _blood(f, m, depth=2.0, refr=60)
+    base = layer(A, t) if t < c else layer(B, t, 1 + 0.06 * (1 - ease(clamp((t - c) / (b - c)))))
+    e = eout(clamp((t - ti) / 0.07))
+    m = _splat(cx, cy, e, 0.22 * W, 0.62 * W, 11, spines=30, sats=80)
+    if t >= c:                                                                                  # it runs down the glass
+        u = clamp((t - c) / (b - c)); s = 0.9 * H * ein(u) ** 0.9
+        m = cv2.warpAffine(m, np.float32([[1, 0, 0], [0, 1 + 0.6 * u, s]]), (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        kb = int(1 + 120 * u) | 1; m = np.maximum(m * 0.0, cv2.blur(m, (1, kb))) * (1 - ease(clamp((u - 0.4) / 0.6)))
+    if c - 0.02 <= t < c: m = np.maximum(m, ss(0.0, 0.02, t - (c - 0.02)) * np.ones_like(m))        # fully red on the cut
+    f = _blood(base, m, depth=1.4, refr=50)
+    if t >= ti: f = f + 0.35 * math.exp(-(t - ti) * 20)
+    return f
+
+
+# ---- cast-off arc
+def t_castoff(t, c, A, B, a, b):
+    """A blade swing flings a cast-off arc of elongated droplets across the frame; on the beat the arc rips open
+    into the next shot, its edges rimmed with glossy blood."""
+    acx, acy, Ra = -0.35 * W, 1.10 * H, 1.25 * W
+    r = np.sqrt((XX - acx) ** 2 + (YY - acy) ** 2); d = r - Ra
+    th0, th1 = math.radians(-82), math.radians(-8)
+    sw = clamp((t - a) / (c - 0.04 - a))
+    m = np.zeros((H, W), np.float32); rng = np.random.default_rng(23)
+    for k in range(70):                                                                         # droplets thrown off the swinging blade
+        v = rng.uniform(0, 1)
+        if v > sw: continue
+        ang = lerp(th0, th1, v); off = rng.normal(0, 26) + 40 * (1 - v)
+        x = acx + (Ra + off) * math.cos(ang); y = acy + (Ra + off) * math.sin(ang)
+        tang = ang + math.pi / 2; L = rng.uniform(14, 46) * (0.5 + v); w = rng.uniform(5, 14)
+        cv2.ellipse(m, (int(x), int(y)), (int(L), int(w)), math.degrees(tang), 0, 360, 1.0, -1, cv2.LINE_AA)
+        cv2.circle(m, (int(x + math.cos(tang) * L * 1.5), int(y + math.sin(tang) * L * 1.5)), max(1, int(w * 0.4)), 1.0, -1, cv2.LINE_AA)
+    if t < c:
+        f = layer(A, t)
+        hx, hy = acx + Ra * math.cos(lerp(th0, th1, sw)), acy + Ra * math.sin(lerp(th0, th1, sw))
+        trail = np.exp(-(d / 10) ** 2) * ss(lerp(th0, th1, sw) + 0.02, lerp(th0, th1, sw) - 0.3, np.arctan2(YY - acy, XX - acx)) * 0.35
+        f = f + (trail * (sw < 1))[..., None] * np.float32([0.6, 0.7, 0.9])
+        return _blood(f, cv2.GaussianBlur(m, (0, 0), 1.0), depth=1.6)
+    u = clamp((t - c) / (b - c)); w = 18 + 1.5 * H * ease(u) ** 1.3
+    nz = _ring_noise(91, s=1) - 0.5
+    open_ = ss(w + 2, w - 2, np.abs(d) + 40 * nz)
+    fa = layer(A, c - 1e-3); fb = layer(B, t, 1 + 0.08 * (1 - ease(u)))
+    f = fa * (1 - open_[..., None]) + fb * open_[..., None]
+    rimm = np.exp(-((np.abs(d) + 40 * nz - w) / 14) ** 2) * (1 - 0.6 * u)
+    f = _blood(f, np.clip(np.maximum(rimm, m * (1 - open_)), 0, 1), depth=1.4)
+    return f + 0.2 * math.exp(-(t - c) * 18)
+
+
+# ---- bleeding screen
+def t_bleed(t, c, A, B, a, b):
+    """Thick glossy blood runs down from the top of the frame in rivulets until it covers it, then the whole sheet
+    slides away down the screen and the next shot is underneath."""
+    rng = np.random.default_rng(31); n = 15
+    xs = np.linspace(0, W, n) + rng.uniform(-30, 30, n); ws = rng.uniform(26, 70, n); sp = rng.uniform(0.8, 1.5, n)
+    if t < c:
+        p = clamp((t - a) / (c - 0.02 - a))
+        m = np.zeros((H, W), np.float32)
+        sheet = H * 1.08 * ease(p) ** 2.2
+        for i in range(n):
+            head = min(H * 1.2, sheet + H * 0.75 * sp[i] * p ** 1.1 * (1 - 0.3 * p))
+            w = ws[i] * (0.8 + 1.6 * p ** 2.5)
+            xp = xs[i] + 14 * np.sin(YY[:, :1] / 90 + i)
+            col = (np.abs(XX - xp) < w * (0.55 + 0.45 * ss(head, head - 200, YY))) & (YY < head)
+            m = np.maximum(m, col.astype(np.float32))
+            cv2.circle(m, (int(xs[i] + 14 * math.sin(head / 90 + i)), int(head)), int(w * 0.8), 1.0, -1, cv2.LINE_AA)
+        edge = sheet + 30 * np.sin(XX / 70) + 18 * np.sin(XX / 23 + 2)
+        m = np.maximum(m, (YY < edge).astype(np.float32))
+        m = cv2.GaussianBlur(m, (0, 0), 2.0)
+        return _blood(layer(A, t), m, depth=1.8)
+    u = clamp((t - c) / (b - c)); s = H * 1.15 * ease(u) ** 0.9
+    trail = np.zeros(W, np.float32)
+    for i in range(n): trail += 160 * sp[i] * np.exp(-((np.arange(W) - xs[i]) / ws[i]) ** 2)
+    m = (YY > s - trail[None, :] * (0.4 + u)).astype(np.float32)
+    m = cv2.GaussianBlur(m, (0, 0), 2.0)
+    return _blood(layer(B, t, 1 + 0.05 * (1 - ease(u))), m, depth=1.8)
+
+
+# ---- impact spatter on a kick
+def t_splatburst(t, c, A, B, a, b):
+    """On the kick a spatter burst slams onto the frame (pool, spines, satellites) with a flash; the next shot is
+    under it, and the blood drips and fades off."""
+    e = eout(clamp((t - a) / 0.06)); cx, cy = 0.64 * W, 0.36 * H
+    m = _splat(cx, cy, e, 0.10 * W, 0.55 * W, 47, spines=22, sats=70, dirn=math.radians(200), spread=1.4)
+    m = np.maximum(m, _splat(0.30 * W, 0.70 * H, e, 0.05 * W, 0.25 * W, 48, spines=10, sats=24))
+    base = layer(A, t) if t < c else layer(B, t, 1 + 0.10 * (1 - eout(clamp((t - c) / 0.2))))
+    if t >= c:
+        u = clamp((t - c) / (b - c))
+        m = cv2.warpAffine(m, np.float32([[1, 0, 0], [0, 1, 180 * u * u]]), (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        m = np.maximum(m, cv2.blur(m, (1, int(1 + 90 * u) | 1)) * 0.8) * (1 - ease(clamp((u - 0.35) / 0.65)))
+    f = _blood(base, m, depth=1.3)
+    return f + 0.22 * math.exp(-max(0.0, t - c) * 26) * (t >= c - 0.01)
+
+
+# ---- a slow blood drip down the frame edge (fx 'drip')
+def drip_fx(f, i, t, s):
+    u = clamp((t - s['start']) / (s['end'] - s['start']))
+    m = np.zeros((H, W), np.float32)
+    for k, (x, sp, w) in enumerate(((0.09 * W, 1.0, 22), (0.93 * W, 0.7, 16))):
+        head = -30 + H * 0.85 * sp * ease(u) ** 1.2
+        if head <= 0: continue
+        xp = x + 6 * np.sin(np.arange(int(head)) / 60 + k)
+        for y in range(0, int(head), 6): cv2.circle(m, (int(xp[min(y, len(xp) - 1)]), y), int(w * (0.55 + 0.45 * (1 - y / max(head, 1)))), 1.0, -1, cv2.LINE_AA)
+        cv2.circle(m, (int(xp[-1]), int(head)), int(w * 1.1), 1.0, -1, cv2.LINE_AA)
+    m = np.maximum(m, (YY < 26 + 8 * np.sin(XX / 50)).astype(np.float32) * ss(0.0, 0.15, u))
+    return _blood(f, cv2.GaussianBlur(m, (0, 0), 1.5), depth=1.6)
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -4747,6 +4914,10 @@ TRANSITIONS = {
     'tear':      (lambda c, o: (c - .14, c + .32), lambda t, c, A, B, o: t_tear(t, c, A, B, c - .14, c + .32)),
     'tee':       (lambda c, o: (c - .40, c + .34), lambda t, c, A, B, o: t_tee(t, c, A, B, c - .40, c + .34)),
     'drain':     (lambda c, o: (c - .46, c + .40), lambda t, c, A, B, o: t_drain(t, c, A, B, c - .46, c + .40)),
+    'lensdrop':  (lambda c, o: (c - .50, c + .40), lambda t, c, A, B, o: t_lensdrop(t, c, A, B, c - .50, c + .40)),
+    'castoff':   (lambda c, o: (c - .30, c + .36), lambda t, c, A, B, o: t_castoff(t, c, A, B, c - .30, c + .36)),
+    'bleed':     (lambda c, o: (c - .42, c + .38), lambda t, c, A, B, o: t_bleed(t, c, A, B, c - .42, c + .38)),
+    'splatburst': (lambda c, o: (c - .06, c + .30), lambda t, c, A, B, o: t_splatburst(t, c, A, B, c - .06, c + .30)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),

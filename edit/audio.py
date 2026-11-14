@@ -469,6 +469,18 @@ def sfx_for(name, c, o, up):
     elif name == 'drain':
         put(bubbles(0.8, 24), c - 0.46, gain=0.05); put(whoosh(0.5, 900, 150, q=0.7, peak=0.85), c - 0.46, gain=0.05)
         put(boom(0.4, 70, 35), c, gain=0.08); put(whoosh(0.4, 150, 1100, q=0.7, peak=0.2), c, gain=0.05)
+    elif name == 'lensdrop':
+        put(whoosh(0.40, 400, 120, q=0.6, peak=0.9), c - 0.50, gain=0.04); put(splat(0.22), c - 0.09, gain=0.14)
+        put(boom(0.8, 60, 30), c, gain=0.12)
+    elif name == 'castoff':
+        put(whoosh(0.26, 600, 4500, peak=0.7), c - 0.30, pan=-0.5, gain=0.07)
+        for k_ in range(5): put(splat(0.05), c - 0.20 + 0.035 * k_, pan=-0.4 + 0.2 * k_, gain=0.04)
+        put(boom(0.4, 100, 45), c, gain=0.09)
+    elif name == 'bleed':
+        put(bubbles(0.5, 14), c - 0.42, gain=0.04); put(whoosh(0.45, 300, 120, q=0.6, peak=0.8), c - 0.40, gain=0.05)
+        put(boom(0.4, 80, 40), c, gain=0.08); put(whoosh(0.35, 900, 200, q=0.7, peak=0.3), c, gain=0.05)
+    elif name == 'splatburst':
+        put(splat(0.25), c - 0.06, gain=0.15); put(boom(0.5, 90, 40), c - 0.06, gain=0.10)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)
