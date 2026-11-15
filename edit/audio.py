@@ -625,6 +625,21 @@ def sfx_for(name, c, o, up):
         put(zap(0.5), c - 0.78, gain=0.05); put(thunder(0.8), c - 0.78, gain=0.04)
         for k_ in range(6): put(tick(0.05, 1500 + 250 * k_), c - 0.76 + 0.05 * k_, pan=(-0.6, 0.6)[k_ % 2], gain=0.03)
         put(whoosh(0.50, 300, 5000, peak=0.9), c - 0.45, gain=0.07)
+    elif name == 'echowhip':
+        put(whoosh(0.44, 400, 5000, q=0.9, peak=0.5), c - 0.22, pan=-0.6, gain=0.08); put(zap(0.2), c, gain=0.025)
+    elif name == 'burn':
+        put(crackle(0.4), c - 0.30, gain=0.04); put(whoosh(0.40, 200, 1800, q=0.7, peak=0.7), c - 0.28, gain=0.06)
+        put(boom(0.4, 80, 36), c, gain=0.07)
+    elif name == 'flip':
+        put(whoosh(0.40, 1200, 3000, q=1.0, peak=0.5), c - 0.20, gain=0.06); put(tick(0.04, 2500), c, gain=0.05)
+    elif name == 'greyshock':
+        put(downer(0.45), c - 0.46, gain=0.03); put(boom(0.6, 70, 30), c, gain=0.11); put(whoosh(0.3, 3000, 400, peak=0.1), c, gain=0.04)
+    elif name == 'strips':
+        for k_ in range(8): put(whoosh(0.10, 1500, 500, peak=0.3), c - 0.14 + 0.03 * k_, pan=(-0.7 + 0.2 * k_), gain=0.02)
+        put(boom(0.4, 90, 40), c, gain=0.07)
+    elif name == 'emblemlock':
+        put(shimmer(0.3), c - 0.30, gain=0.03); put(whoosh(0.30, 300, 3000, peak=0.9), c - 0.30, gain=0.05)
+        put(boom(0.5, 70, 32), c, gain=0.09); put(zap(0.3), c, gain=0.03)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)

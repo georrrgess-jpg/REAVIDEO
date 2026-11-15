@@ -15,6 +15,9 @@ v2 (user: "drastically improve", more animation on the beat, a stronger loop): k
 kick and snare, the real chest emblem pulsing on the hits, the frame splitting into slabs on the 808's silent steps,
 and the loop rebuilt as the cortex surge (a curved wall, lightning jumping screen to screen, every screen flipping to
 the first shot, a rush back in).
+v3 (user: "diversify the transitions... different instead of the same"): every transition is now one of a kind --
+the repeats replaced by kit XV: an echo whip, a light burn out of the fiery lunge, a card flip, the colour draining
+into the black-and-white shot with a shockwave, strips falling as the colour returns, and an emblem-to-emblem lock.
 Build: bash ../../edit/build.sh .
 """
 W, H, FPS = 1080, 1920, 60
@@ -43,15 +46,15 @@ SHOTS = [
  dict(name='run_gold', beats=2, out='chromasnap', fx=['bump', 'slabhit'], pack=ALL, src=4.80, x=0.50, push=(1.00, 1.05), **g(0.60, 1.00)),   # FA1 crouch, gold lightning
  dict(name='grin', beats=2, out='slab', out_opts={'col': 'gold'}, fx=['bump', 'slabhit'], pack=ALL, src=56.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.20)),   # FA19 masked grin
  dict(name='vibrate', beats=2, out='shear', fx=['bump', 'emblempulse', 'slabhit', 'gapsplit'], pack=S5, src=280.78, x=0.50, push=(1.00, 1.05), **g(0.60, 1.05)),   # F5151 vibrating, lightning
- dict(name='landing', beats=2, out='whip', out_opts={'d': 1}, fx=['bump', 'slabhit'], pack=S2B, src=198.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.05)),   # F93 crouch up into his eyes
+ dict(name='landing', beats=2, out='echowhip', fx=['bump', 'slabhit'], pack=S2B, src=198.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.05)),   # F93 crouch up into his eyes
  dict(name='dark_bolts', beats=2, out='flare', fx=['bump', 'emblempulse', 'slabhit', 'gapsplit'], pack=BLZ, src=20.20, x=0.50, push=(1.00, 1.05), **g(0.60, 1.25)),   # FB64 lightning in a dark alley
  dict(name='golden', beats=4, out='title', fx=['bump'], pack=S1, src=122.80, x=0.50, push=(1.00, 1.06), **g(0.55, 1.00)),   # F135 golden hour turn
- dict(name='lunge', beats=2, out='slab', out_opts={'col': 'cyan'}, fx=['bump', 'slabhit'], pack=BLZ, src=35.60, x=0.50, push=(1.00, 1.05), **g(0.60, 1.20)),   # FB5 lightning lunge
+ dict(name='lunge', beats=2, out='burn', fx=['bump', 'slabhit'], pack=BLZ, src=35.60, x=0.50, push=(1.00, 1.05), **g(0.60, 1.20)),   # FB5 lightning lunge
  dict(name='mask_xcu', beats=2, out='collage', fx=['bump', 'slabhit', 'gapsplit'], pack=ALL, src=54.90, x=0.50, push=(1.00, 1.05), **g(0.55, 1.05)),   # FA18 cowl extreme close-up
- dict(name='debris', beats=2, out='prism', fx=['bump', 'slabhit'], pack=S1, src=279.00, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # F100 debris storm
- dict(name='suit_smile', beats=2, out='chromasnap', fx=['bump', 'emblempulse', 'slabhit'], pack=ALL, src=93.00, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # FA49 suit, smile
- dict(name='mask_bright', beats=2, out='whip', out_opts={'d': -1, 'vertical': True}, fx=['bump', 'slabhit'], pack=ALL, src=85.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # FA46 cowl, daylight
- dict(name='night_suit', beats=2, out='stutter', fx=['bump', 'emblempulse', 'slabhit', 'gapsplit'], pack=S5, src=73.50, x=0.50, push=(1.00, 1.05), **g(0.60, 1.10)),   # F533 night street
+ dict(name='debris', beats=2, out='flip', fx=['bump', 'slabhit'], pack=S1, src=279.00, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # F100 debris storm
+ dict(name='suit_smile', beats=2, out='greyshock', fx=['bump', 'emblempulse', 'slabhit'], pack=ALL, src=93.00, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # FA49 suit, smile
+ dict(name='mask_bright', beats=2, out='strips', fx=['bump', 'slabhit'], pack=ALL, src=85.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # FA46 cowl, daylight
+ dict(name='night_suit', beats=2, out='emblemlock', fx=['bump', 'emblempulse', 'slabhit', 'gapsplit'], pack=S5, src=73.50, x=0.50, push=(1.00, 1.05), **g(0.60, 1.10)),   # F533 night street
  dict(name='lab_suit', beats=3, out='cortex2', fx=['bump', 'emblempulse'], pack=BLZ, src=167.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.15)),   # FB88 suited up in STAR Labs
 ]
 for s in SHOTS: s.setdefault('z', 1.0); s.setdefault('frame', 'auto')

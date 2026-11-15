@@ -6986,7 +6986,7 @@ def emblempulse_fx(f, i, t, s):
     hits = [th for th in _hits('BUMP_KICKS') + _hits('SNARES') if s['start'] - 0.02 <= th <= t and t - th < 0.40]
     if not hits: return f
     k = int(round((PRE + t - s['start']) * FPS)) // 4; key = ('embp', i, k)
-    if key not in _K4: _K4[key] = _bright_blob(shot(i, s['start'] + (k * 4) / FPS - PRE))
+    if key not in _K4: _K4[key] = _emblem_low(shot(i, s['start'] + (k * 4) / FPS - PRE))
     ex, ey, Re = _K4[key]; Re = min(max(Re, 0.05 * W), 0.16 * W)
     add_ = np.zeros((H, W), np.float32); ring = np.zeros((H, W), np.float32)
     for th in hits:
@@ -7208,6 +7208,167 @@ def t_cortex2(t, A, a, end):
     return f + 0.18 * math.exp(-((u - 0.40) / 0.03) ** 2)
 
 
+# ==== Flash kit XV (Remedy v3): one of a kind -- echo whip, light burn, card flip, grey shock, strip fall, emblem lock ====
+def t_echowhip(t, c, A, B, a, b):
+    """A whip with speed-force afterimages: the camera whips left and the shot leaves a trail of red-to-gold echoes
+    of itself; the next shot whips in from the right trailing its own echoes, which catch up and settle."""
+    RED, GOLD = np.float32([0.15, 0.20, 1.0]), np.float32([0.15, 0.75, 1.0])
+    if t < c:
+        u = clamp((t - a) / (c - a)); dx = -0.55 * W * ein(u); src = layer(A, t); sgn = 1
+    else:
+        u = 1 - clamp((t - c) / (b - c)); dx = 0.55 * W * (1 - eout(1 - u)); src = layer(B, t); sgn = -1
+    f = _hblur(_shift(src, dx), 1 + 140 * u ** 2)
+    for k in range(1, 5):
+        w = 0.75 * (1 - k / 5) * u ** 0.6
+        if w < 0.01: continue
+        e = _hblur(_shift(src, dx + sgn * k * 0.15 * W * u), 1 + 60 * u)
+        f = f + e * lerp(RED, GOLD, k / 4) * w
+    return f / (1 + 0.25 * u) + 0.15 * math.exp(-abs(t - c) * 30)
+
+
+def t_burn(t, c, A, B, a, b):
+    """Light burn: the brightest parts of the fiery shot (the lightning, the fire) flare up and burn through first,
+    a white-hot gold edge eating outward through the darker areas, and the next shot is underneath."""
+    key_ = ('burn', A, round(c, 3))
+    if key_ not in _K4:
+        rng = np.random.default_rng(7); n = cv2.resize(fbm(H // 16, W // 16, 4, 23, 4), (W, H), interpolation=cv2.INTER_CUBIC)
+        _K4[key_] = ((n - n.min()) / (n.max() - n.min() + 1e-6)).astype(np.float32)
+    nz = _K4[key_]
+    p = clamp((t - a) / (b - a))
+    Af = layer(A, t, 1 + 0.05 * p); Bf = layer(B, t, 1.06 - 0.06 * eout(clamp((t - c) / (b - c))))
+    lum = cv2.GaussianBlur(cv2.resize(luma(Af), (W // 4, H // 4), interpolation=cv2.INTER_AREA), (0, 0), 3)
+    lum = cv2.resize(lum, (W, H)); lum = lum / (lum.max() + 1e-6)
+    key = 0.72 * lum + 0.28 * nz
+    th = lerp(1.05, -0.08, ease(p) ** 0.9)
+    m = ss(th - 0.035, th + 0.035, key)
+    edge = np.exp(-((key - th) / 0.03) ** 2)
+    hot = Af * (1 + 1.2 * np.exp(-((key - th) / 0.10) ** 2)[..., None])
+    f = hot * (1 - m[..., None]) + Bf * m[..., None]
+    gl = cv2.resize(cv2.GaussianBlur(cv2.resize(edge, (W // 4, H // 4), interpolation=cv2.INTER_AREA), (0, 0), 5), (W, H))
+    return f + edge[..., None] * np.float32([0.75, 0.92, 1.0]) * 1.2 + gl[..., None] * GOLD_GLOW * 1.6
+
+
+def t_flip(t, c, A, B, a, b):
+    """The frame is a card: it turns on its vertical axis in perspective, a glint running down its edge as it goes
+    side-on on the beat, and the next shot is on the back; the camera eases back a little during the turn."""
+    if t < c: th = 90.0 * clamp((t - a) / (c - a)) ** 2; img = layer(A, t)
+    else: v = clamp((t - c) / (b - c)); th = 90.0 + 90.0 * (1 - (1 - v) ** 2); img = layer(B, t)
+    p = clamp((t - a) / (b - a)); s = 1 - 0.20 * math.sin(math.pi * p)
+    D = 1.8 * W; ang = math.radians(th if th <= 90 else th - 180)
+    cs, sn = math.cos(ang), math.sin(ang)
+    pts = []
+    for x, y in ((-W / 2, -H / 2), (W / 2, -H / 2), (W / 2, H / 2), (-W / 2, H / 2)):
+        X, Z = x * cs, x * sn
+        pts.append([W / 2 + s * D * X / (D + Z), H / 2 + s * D * y / (D + Z)])
+    q = np.float32(pts)
+    bg = cv2.resize(cv2.GaussianBlur(cv2.resize(img, (W // 8, H // 8), interpolation=cv2.INTER_AREA), (0, 0), 4), (W, H)) * 0.35
+    Pm = cv2.getPerspectiveTransform(np.float32([[0, 0], [W, 0], [W, H], [0, H]]), q)
+    pim = cv2.warpPerspective(img, Pm, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+    m = np.zeros((H, W), np.float32); cv2.fillConvexPoly(m, np.int32(q * 4), 1.0, cv2.LINE_AA, shift=2)
+    shade = 1 - 0.45 * abs(sn)
+    f = bg * (1 - m[..., None]) + pim * m[..., None] * shade
+    gl = math.exp(-((abs(th - 90)) / 22.0) ** 2)
+    if gl > 0.02:
+        ed = np.zeros((H, W), np.float32)
+        xe = q[1] if (th <= 90) else q[0]; xe2 = q[2] if (th <= 90) else q[3]
+        cv2.line(ed, (int(xe[0]), int(xe[1])), (int(xe2[0]), int(xe2[1])), 1.0, 4, cv2.LINE_AA)
+        f = f + (ed[..., None] + cv2.GaussianBlur(ed, (0, 0), 18)[..., None] * GOLD_GLOW * 3) * gl
+    return f
+
+
+def t_greyshock(t, c, A, B, a, b):
+    """Into the black-and-white shot: through the 808's silent step the colour drains out of the frame from the
+    edges in, the camera creeping forward; on the beat the grey shot slams in on a shockwave -- a ring of
+    displacement expanding from his face."""
+    cx, cy = W / 2, 0.40 * H
+    r = np.sqrt((XX - cx) ** 2 + ((YY - cy) * 0.8) ** 2) / (0.75 * H)
+    if t < c:
+        u = ease(clamp((t - a) / (c - a)))
+        f = layer(A, t, 1 + 0.05 * u)
+        g = luma(f)[..., None]
+        d = np.clip(u * 1.7 - (1 - r) * 0.9, 0, 1)[..., None]
+        return f * (1 - d) + g * d
+    v = clamp((t - c) / (b - c)); R = 1.5 * eout(v)
+    rr = np.sqrt((XX - cx) ** 2 + (YY - cy) ** 2) / H
+    disp = 0.045 * H * np.exp(-((rr - R) / 0.05) ** 2) * (1 - v)
+    ux, uy = (XX - cx) / (rr * H + 1e-3), (YY - cy) / (rr * H + 1e-3)
+    mx = (XX - ux * disp).astype(np.float32); my = (YY - uy * disp).astype(np.float32)
+    f = cv2.remap(layer(B, t, 1.08 - 0.08 * eout(v)), mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    ring = np.exp(-((rr - R) / 0.012) ** 2) * (1 - v)
+    return f + ring[..., None] * 0.6 + 0.25 * math.exp(-(t - c) * 25)
+
+
+def t_strips(t, c, A, B, a, b):
+    """Colour comes back: the grey frame breaks into vertical strips that drop away one after another from the centre
+    out, with speed blur and lit edges, the colour shot behind them."""
+    N = 8; sw = W / N
+    Af = layer(A, t) if t < c + 0.22 else None
+    Bf = layer(B, t, 1.06 - 0.06 * eout(clamp((t - (c - 0.12)) / (b - c + 0.12))))
+    f = Bf.copy()
+    order = sorted(range(N), key=lambda k: abs(k - (N - 1) / 2))
+    for rank, k in enumerate(order):
+        s0 = c - 0.14 + 0.03 * rank
+        p = clamp((t - s0) / 0.14)
+        if p >= 1 or Af is None: continue
+        dy = 1.15 * H * ein(p) * (1 if k % 2 else -1) * (1 if rank % 3 else 1)
+        x0, x1 = int(k * sw), int((k + 1) * sw)
+        col = Af[:, x0:x1]
+        if abs(dy) > 0.5:
+            col = cv2.warpAffine(col, np.float32([[1, 0, 0], [0, 1, dy]]), (x1 - x0, H), borderMode=cv2.BORDER_CONSTANT, borderValue=(-1, -1, -1))
+            kb = int(1 + 160 * p) | 1
+            valid = (col[..., 0] >= 0).astype(np.float32)
+            col = np.clip(col, 0, None)
+            if kb > 2: col = cv2.blur(col, (1, kb)); valid = cv2.blur(valid, (1, kb))
+            f[:, x0:x1] = f[:, x0:x1] * (1 - valid[..., None]) + col
+        else:
+            f[:, x0:x1] = col
+        if 0 < p < 1:
+            f[:, max(0, x0 - 1):x0 + 2] += 0.6 * (1 - p)
+    return f + 0.12 * math.exp(-abs(t - c) * 30)
+
+
+def _emblem_low(img):
+    """The chest emblem where it may sit low in a close framing: the brightest compact, round, near-white blob in the
+    lower half (skin highlights are warmer and less round)."""
+    l = cv2.GaussianBlur(luma(img), (0, 0), 4); sat = img.max(2) - img.min(2)
+    sc = l * (1 - np.clip(sat * 2.2, 0, 1)); sc[:int(0.50 * H)] = 0; sc[:, :int(0.15 * W)] = 0; sc[:, int(0.85 * W):] = 0
+    thr = np.percentile(sc[int(0.5 * H):], 99.0); m = (sc >= thr).astype(np.uint8)
+    n, lab, st, cen = cv2.connectedComponentsWithStats(m)
+    if n <= 1: return _bright_blob(img)
+    k = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
+    return float(cen[k][0]), float(cen[k][1]), float(max(st[k, cv2.CC_STAT_WIDTH], st[k, cv2.CC_STAT_HEIGHT])) * 0.55
+
+
+def t_emblemlock(t, c, A, B, a, b):
+    """Emblem to emblem: the camera pushes into the real emblem on his chest as it glows; on the beat the next shot
+    opens out of that same emblem -- a ring of light expanding from it -- and its own emblem is locked onto the spot,
+    then the framing eases back to normal."""
+    key_ = ('elock', A, B, round(c, 3))
+    if key_ not in _K4: _K4[key_] = (_emblem_low(layer(A, c - 0.05)), _emblem_low(layer(B, c + 0.05)))
+    (ax, ay, ra), (bx, by, rb) = _K4[key_]
+    ra = min(max(ra, 0.05 * W), 0.15 * W); rb = min(max(rb, 0.05 * W), 0.15 * W)
+    u = clamp((t - a) / (c - a)); zA = 1 + 0.7 * ein(u)
+    if t < c - 0.05:
+        f = _shift(layer(A, t), 0, 0, zA, ax, ay)
+        gl = np.exp(-((XX - ax) ** 2 + (YY - ay) ** 2) / (2 * (ra * zA * 0.9) ** 2)) * ein(u) * 1.2
+        return f + gl[..., None] * np.float32([0.7, 0.9, 1.0])
+    v = clamp((t - c) / (b - c)); e = eout(v)
+    zAe = 1 + 0.7
+    sB = lerp(ra * zAe / rb, 1.0, e)
+    px, py = lerp(ax, bx, e), lerp(ay, by, e)
+    M = np.float32([[sB, 0, px - sB * bx], [0, sB, py - sB * by]])
+    Bf = cv2.warpAffine(layer(B, t), M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    Af = _shift(layer(A, t), 0, 0, zA if t < c else zAe * (1 + 0.3 * e), ax, ay)
+    Rc = max(math.hypot(ax - x_, ay - y_) for x_ in (0, W) for y_ in (0, H)) + 30
+    R = lerp(ra * zAe * 0.4, Rc, eout(clamp((t - (c - 0.05)) / 0.24)))
+    d = np.sqrt((XX - ax) ** 2 + (YY - ay) ** 2)
+    m = 1 - ss(R - 3, R + 3, d)
+    f = Af * (1 - m[..., None]) + Bf * m[..., None]
+    ring = np.exp(-((d - R) / 5.0) ** 2); gl = np.exp(-((d - R) / 40.0) ** 2)
+    k = 1 - ss(0.5, 1.0, clamp((t - (c - 0.05)) / 0.24))
+    return f + (ring[..., None] * 0.9 + gl[..., None] * GOLD_GLOW * 0.9) * k + 0.18 * math.exp(-abs(t - c) * 25)
+
+
 TRANSITIONS = {
     'cut':       (lambda c, o: (c, c), None),
     'leaf':      (lambda c, o: (c - .15, c + .15), lambda t, c, A, B, o: t_leaf(t, c, A, B, o.get('ang', -38), o.get('seed', 3))),
@@ -7326,6 +7487,13 @@ TRANSITIONS = {
     'shear':     (lambda c, o: (c - .20, c + .22), lambda t, c, A, B, o: t_shear(t, c, A, B, c - .20, c + .22)),
     'flare':     (lambda c, o: (c - .22, c + .26), lambda t, c, A, B, o: t_flare(t, c, A, B, c - .22, c + .26)),
     'collage':   (lambda c, o: (c - .32, c + .34), lambda t, c, A, B, o: t_collage(t, c, A, B, c - .32, c + .34)),
+    # Flash kit XV (Remedy v3)
+    'echowhip':  (lambda c, o: (c - .22, c + .22), lambda t, c, A, B, o: t_echowhip(t, c, A, B, c - .22, c + .22)),
+    'burn':      (lambda c, o: (c - .30, c + .20), lambda t, c, A, B, o: t_burn(t, c, A, B, c - .30, c + .20)),
+    'flip':      (lambda c, o: (c - .20, c + .24), lambda t, c, A, B, o: t_flip(t, c, A, B, c - .20, c + .24)),
+    'greyshock': (lambda c, o: (c - .46, c + .30), lambda t, c, A, B, o: t_greyshock(t, c, A, B, c - .46, c + .30)),
+    'strips':    (lambda c, o: (c - .18, c + .22), lambda t, c, A, B, o: t_strips(t, c, A, B, c - .18, c + .22)),
+    'emblemlock': (lambda c, o: (c - .30, c + .20), lambda t, c, A, B, o: t_emblemlock(t, c, A, B, c - .30, c + .20)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
