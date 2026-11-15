@@ -16,6 +16,9 @@ v3 (user): every primary transition replaced (kit VIII): speed mirage on the dro
 speed disintegration, time remnants, and the loop struck by lightning.
 v4 (user): blue arcs on the opening removed; the glowing-eyes shot and the remnants transition replaced (a masked
 close-up, a molecular phase-slice); the loop rebuilt as a seamless speed-out whip pan into the first shot.
+v5 (user): drawn emblem match cut on the drop (it locks onto his glowing suit emblem), the fireball run with a
+light-speed warp, the future newspaper (FLASH MISSING, VANISHES IN CRISIS) into the masked close-up, and the loop
+is the Speed Force memories (every shot a panel; race back to the first and dive in).
 Build: bash ../../edit/build.sh .
 """
 W, H, FPS = 1080, 1920, 60
@@ -38,19 +41,19 @@ WARM = dict(rk=1.0, yk=1.0, con=1.12, tint=(.97, 1.0, 1.05))   # warm cinematic;
 def g(sat, gain, **kw): return dict(WARM, sat=sat, gain=gain, **kw)
 
 SHOTS = [
- dict(name='bloodied', out='mirage', fx=['bump'], pack=S1, src=271.95, x=0.40, push=(1.00, 1.05), **g(0.55, 1.15)),   # F197 4.6s m1.9
+ dict(name='bloodied', out='emblemmatch', fx=['bump'], pack=S1, src=271.95, x=0.40, push=(1.00, 1.05), **g(0.55, 1.15)),   # F197 4.6s m1.9
  dict(name='blue_core', beats=4, out='cut', fx=['bump'], pack=ALL, src=44.92, x=0.60, push=(1.00, 1.05), **g(0.60, 1.05)),   # FA13 5.0s m1.3
  dict(name='yell', beats=2, out='whip', out_opts={'d': 1}, fx=['bump'], pack=ALL, src=127.85, x=0.72, push=(1.00, 1.05), **g(0.60, 1.00)),   # FA64 1.7s m3.3
  dict(name='mask_close', beats=4, out='trailbolt', fx=['bump'], pack=ALL, src=110.20, x=0.50, push=(1.00, 1.05), **g(0.60, 1.00)),   # FA7 5.2s m3.4
  dict(name='mask_day', beats=2, out='cut', fx=['bump'], pack=S2B, src=3.64, x=0.53, push=(1.00, 1.05), **g(0.55, 1.00)),   # F21 1.9s m1.4
- dict(name='run', beats=4, out='disperse', fx=['bump'], pack=S5, src=16.49, x=0.43, push=(1.00, 1.05), **g(0.55, 1.00)),   # F510 2.9s m4.4
+ dict(name='fire_run', beats=4, out='warp', fx=['bump'], pack=BLZ, src=80.40, x=0.61, push=(1.00, 1.05), **g(0.55, 1.00)),   # F510 2.9s m4.4
  dict(name='suit_bolts', beats=2, out='cut', fx=['bump'], pack=ALL, src=90.37, x=0.57, push=(1.00, 1.05), **g(0.60, 1.00)),   # FA48 2.3s m1.2
- dict(name='mask_dark', beats=4, out='phaseslice', fx=['bump', 'dust'], pack=S5, src=269.07, x=0.44, push=(1.00, 1.05), **g(0.55, 1.60)),   # F5147 6.8s m2.1
+ dict(name='mask_dark', beats=4, out='flashpaper', fx=['bump', 'dust'], pack=S5, src=269.07, x=0.44, push=(1.00, 1.05), **g(0.55, 1.60)),   # F5147 6.8s m2.1
  dict(name='mask_grin', beats=2, out='cut', fx=['bump'], pack=S5, src=13.05, x=0.43, push=(1.00, 1.05), **g(0.55, 1.05)),   # FA59 2.9s m2.0
  dict(name='fire_mask', beats=2, out='cut', punch={'z': 1.18, 'flash': 0.12}, fx=['bump'], pack=S5, src=181.88, x=0.45, push=(1.00, 1.05), **g(0.60, 1.05)),   # F5116 5.1s m2.3
  dict(name='blue_mask', beats=2, out='whip', out_opts={'d': -1}, fx=['bump'], pack=BLZ, src=22.45, x=0.50, push=(1.00, 1.05), **g(0.55, 1.60)),   # FB2 2.0s m4.0
  dict(name='fence_look', beats=3, out='cut', fx=['bump', 'ripple'], pack=S1, src=85.45, x=0.50, push=(1.00, 1.05), **g(0.55, 1.05)),   # F124 2.6s m1.8
- dict(name='blz_unmasked', beats=2, out='whiploop', fx=['bump'], pack=BLZ, src=131.55, x=0.31, push=(1.00, 1.05), **g(0.55, 1.15)),   # FB64 1.9s m1.7
+ dict(name='blz_unmasked', beats=2, out='memories', fx=['bump'], pack=BLZ, src=131.55, x=0.31, push=(1.00, 1.05), **g(0.55, 1.15)),   # FB64 1.9s m1.7
 ]
 for s in SHOTS: s.setdefault('z', 1.0); s.setdefault('frame', 'auto')
 TEXT = []

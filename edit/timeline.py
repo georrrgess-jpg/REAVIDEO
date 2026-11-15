@@ -2558,10 +2558,10 @@ def _halftone(f, cell=13):
     return (1 - dot)[..., None] * np.float32([0.82, 0.88, 0.91]) + dot[..., None] * np.float32([0.10, 0.10, 0.11])
 
 
-def t_newspaper(t, c, A, B, a, b):
+def t_newspaper(t, c, A, B, a, b, sprite=None):
     """A front page spins in (BAY HARBOR BUTCHER STRIKES AGAIN), slaps down, then the camera pushes into its
     halftone photo of the next shot, whose dots dissolve into full colour as it fills the screen."""
-    spr, (px0, py0, pww, phh), S = _paper_sprite(); ph, pw = spr.shape[:2]
+    spr, (px0, py0, pww, phh), S = (sprite or _paper_sprite)(); ph, pw = spr.shape[:2]
     tl = c - 0.12; base = 0.5
     if t < tl:
         p = clamp((t - a) / (tl - a)); e = eout(p)
@@ -5629,6 +5629,180 @@ def t_whiploop(t, A, a, end):
     return canvas
 
 
+# ============================================================ Flash kit IX (Still Friends v5)
+# ---- emblem match cut (the drop)
+def _bright_blob(img):
+    """Centre and radius of the brightest compact blob in a frame (the glowing chest emblem)."""
+    l = cv2.GaussianBlur(luma(img), (0, 0), 6)
+    roi = np.zeros_like(l); roi[int(0.45 * H):int(0.85 * H), int(0.2 * W):int(0.8 * W)] = 1   # the chest, not the sky
+    l = l * roi; thr = np.percentile(l[roi > 0], 98.5)
+    m = (l >= thr).astype(np.uint8); n, lab, st, cen = cv2.connectedComponentsWithStats(m)
+    if n <= 1: return W / 2, 0.62 * H, 0.12 * W
+    k = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
+    return float(cen[k][0]), float(cen[k][1]), float(max(st[k, cv2.CC_STAT_WIDTH], st[k, cv2.CC_STAT_HEIGHT])) * 0.55
+
+
+def t_emblemmatch(t, c, A, B, a, b):
+    """The drop: through the hush gold lightning traces the Flash's ring over Barry, the pearl disc materialises and
+    the bevelled bolt strikes into it with a flash; then the emblem flies down and locks onto the real glowing emblem
+    on his suit in the next shot (a match cut), with a ring of light as it seats."""
+    cx0, cy0, R0 = W / 2, 0.40 * H, 0.30 * W
+    key = ('ematch', B, round(c, 3))
+    if key not in _K4: _K4[key] = _bright_blob(layer(B, c + 0.30))
+    ex, ey, Re = _K4[key]
+    if t < c:
+        p = clamp((t - a) / (c - a))
+        fa = layer(A, t) * (1 - 0.45 * ease(p))
+        ring_u = eout(clamp(p / 0.55)); disc_u = clamp((p - 0.48) / 0.22); bolt_u = ein(clamp((p - 0.74) / 0.16))
+        glint = lerp(-1.8, 1.8, ease(clamp((p - 0.88) / 0.12))) if p > 0.88 else None
+        f = draw_emblem(fa, cx0, cy0, R0, math.radians(lerp(-10, 0, eout(p))), ring_u, disc_u, bolt_u, glint)
+        if ring_u < 1:                                                                          # lightning crawling along the drawn ring
+            ang = -math.pi / 2 + ring_u * 2 * math.pi; rng = np.random.default_rng(int(t * FPS)); segs = []
+            hx, hy = cx0 + R0 * math.cos(ang), cy0 + R0 * math.sin(ang)
+            for _ in range(3):
+                a2 = ang + rng.uniform(-1.2, 1.2); L = rng.uniform(40, 110)
+                segs.append((bolt_path((hx, hy), (hx + L * math.cos(a2), hy + L * math.sin(a2)), rng, 5, 0.18), 0.7))
+            f = add(f, draw_bolts(segs, 2.6, amp=1.2))
+        land = clamp((p - 0.88) / 0.12)
+        if 0 < land: f = f + 0.35 * land
+        return f
+    v = clamp((t - c) / (b - c)); m = eout(clamp(v / 0.72))
+    fb = layer(B, t, 1.0 + 0.06 * (1 - m))
+    cx, cy, R = lerp(cx0, ex, m), lerp(cy0, ey, m), lerp(R0, Re, m)
+    al = 1 - ease(clamp((v - 0.62) / 0.30))
+    f = draw_emblem(fb * (0.75 + 0.25 * m), cx, cy, R, 0.0, 1.0, 1.0, 1.0, None, alpha=al)
+    r = np.sqrt((XX - cx) ** 2 + (YY - cy) ** 2)
+    if v > 0.55:                                                                                 # seats with a ring of light
+        k = clamp((v - 0.55) / 0.45); Rr = R * (1 + 2.2 * eout(k))
+        f = f + (np.exp(-((r - Rr) / (6 + 10 * k)) ** 2) * 1.2 * (1 - k))[..., None] * GOLD_GLOW
+    return f + 0.45 * math.exp(-(t - c) * 18)
+
+
+# ---- light-speed warp
+def t_warp(t, c, A, B, a, b):
+    """Faster than light: the shot stretches toward the vanishing point in a radial streak of gold and white star
+    lines, flares white on the beat, and the next shot decelerates out of the streaks."""
+    cx, cy = W / 2, 0.44 * H
+    if t < c: u = ease(clamp((t - a) / (c - a))); src = layer(A, t)
+    else: u = 1 - ease(clamp((t - c) / (b - c))); src = layer(B, t)
+    acc = None
+    for j in range(7):                                                                           # radial (zoom) motion blur
+        s = 1 + 0.55 * u * u * j / 6
+        M = np.float32([[s, 0, cx * (1 - s)], [0, s, cy * (1 - s)]])
+        im = cv2.warpAffine(src, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        acc = im if acc is None else acc + im
+    f = acc / 7
+    q = 2; st = np.zeros((H // q, W // q), np.float32); rng = np.random.default_rng(31)
+    phase = t * 3.0
+    for i in range(160):                                                                         # star streaks racing outward
+        ang = rng.uniform(0, 2 * math.pi); sp = rng.uniform(0.6, 1.4); d0 = (rng.uniform(0, 1) + phase * sp) % 1.0
+        r0 = 30 + d0 ** 2 * 1100; L = (40 + 600 * d0 ** 2) * u
+        x0, y0 = cx + r0 * math.cos(ang), cy + r0 * math.sin(ang); x1, y1 = cx + (r0 + L) * math.cos(ang), cy + (r0 + L) * math.sin(ang)
+        cv2.line(st, (int(x0 / q), int(y0 / q)), (int(x1 / q), int(y1 / q)), float(0.4 + 0.6 * d0), 1, cv2.LINE_AA)
+    st = cv2.resize(st, (W, H)); glow = cv2.GaussianBlur(st, (0, 0), 4)
+    f = f + (st * 0.9 + glow * 1.2)[..., None] * (GOLD_T * 0.6 + 0.4) * u
+    r = np.sqrt((XX - cx) ** 2 + (YY - cy) ** 2)
+    f = f + (np.exp(-(r / (60 + 400 * u)) ** 2) * 0.35 * u)[..., None] * np.float32([0.8, 0.92, 1.0])
+    return f + 0.30 * math.exp(-((t - c) / 0.03) ** 2)
+
+
+# ---- the future newspaper
+def _flash_paper_sprite():
+    if 'fpaper' in _DK: return _DK['fpaper']
+    from PIL import Image, ImageDraw
+    S = 2; pw, ph = 930 * S, 1330 * S
+    img = Image.new('RGB', (pw, ph), (234, 228, 212)); d = ImageDraw.Draw(img); ink = (24, 22, 22)
+    mast = _font_px(SERIF_B, 70 * S); t1 = 'CENTRAL CITY'; t2 = 'PICTURE NEWS'
+    d.text(((pw - d.textlength(t1, font=mast)) / 2, 18 * S), t1, font=mast, fill=ink)
+    d.text(((pw - d.textlength(t2, font=mast)) / 2, 92 * S), t2, font=mast, fill=ink)
+    d.line([(40 * S, 182 * S), (pw - 40 * S, 182 * S)], fill=ink, width=5 * S); d.line([(40 * S, 222 * S), (pw - 40 * S, 222 * S)], fill=ink, width=2 * S)
+    sm = _font_px(SERIF_B, 26 * S)
+    d.text((44 * S, 189 * S), 'WEDNESDAY, APRIL 25, 2024', font=sm, fill=ink); t3 = 'FINAL EDITION'; d.text((pw - 44 * S - d.textlength(t3, font=sm), 189 * S), t3, font=sm, fill=ink)
+    hs = 120
+    while d.textlength('FLASH MISSING', font=_font_px(SERIF_B, hs * S)) > pw - 90 * S: hs -= 2
+    hl = _font_px(SERIF_B, hs * S); d.text(((pw - d.textlength('FLASH MISSING', font=hl)) / 2, 236 * S), 'FLASH MISSING', font=hl, fill=ink)
+    h2 = _font_px(SERIF_B, int(hs * 0.62) * S); d.text(((pw - d.textlength('VANISHES IN CRISIS', font=h2)) / 2, (250 + hs) * S), 'VANISHES IN CRISIS', font=h2, fill=ink)
+    by = _font_px(SERIF_B, 28 * S); t4 = 'By Iris West-Allen'; d.text(((pw - d.textlength(t4, font=by)) / 2, (262 + hs + int(hs * 0.62)) * S), t4, font=by, fill=(70, 66, 60))
+    px0, py0, pww, phh = 44 * S, 510 * S, 448 * S, 796 * S
+    d.rectangle([px0 - 3 * S, py0 - 3 * S, px0 + pww + 3 * S, py0 + phh + 3 * S], outline=ink, width=3 * S)
+    r = np.random.default_rng(12); x0 = px0 + pww + 30 * S
+    for col in range(2):
+        cx = x0 + col * 196 * S; y = py0
+        while y < ph - 50 * S:
+            if r.random() < 0.08: y += 22 * S; continue
+            w_ = int((176 if r.random() > 0.15 else r.uniform(60, 160)) * S); d.rectangle([cx, y, cx + w_, y + 9 * S], fill=(95, 90, 84)); y += 22 * S
+    a = np.asarray(img).astype(np.float32)[..., ::-1] / 255
+    n = cv2.resize(fbm(ph // 16, pw // 16, 4, 77, 6), (pw, ph)); a *= (0.90 + 0.14 * n)[..., None]
+    yy, xx = np.mgrid[0:ph, 0:pw].astype(np.float32)
+    a *= (1 - 0.18 * ss(0.25, 0.0, np.minimum(np.minimum(xx, pw - xx), np.minimum(yy, ph - yy)) / pw))[..., None]
+    a *= (1 - 0.10 * np.exp(-((xx - pw / 2) / (6 * S)) ** 2))[..., None]
+    _DK['fpaper'] = (np.dstack([a, np.ones((ph, pw), np.float32)]), (px0, py0, pww, phh), S)
+    return _DK['fpaper']
+
+
+# ---- Speed Force memories (loop)
+_MEM = {}
+
+
+def _mem_assets():
+    if 'thumbs' in _MEM: return _MEM
+    n = len(SHOTS); _MEM['thumbs'] = []
+    for k in range(n):
+        s = SHOTS[k]; fr = layer(k, (s['start'] + s['end']) / 2)
+        _MEM['thumbs'].append(cv2.resize(fr, (W // 2, H // 2), interpolation=cv2.INTER_AREA))
+    hh = H * 2; ww = int(W * (n + 3) * 0.55)
+    fl = cv2.resize(fbm(hh // 16, ww // 16, 5, 51, 4), (ww, hh), interpolation=cv2.INTER_CUBIC)
+    rib = (0.5 + 0.5 * np.sin(np.arange(hh, dtype=np.float32)[:, None] / 37 + fl * 9)) ** 30
+    base = np.zeros((hh, ww, 3), np.float32) + np.float32([0.10, 0.04, 0.02])
+    base += (fl ** 3)[..., None] * np.float32([0.45, 0.20, 0.06])
+    base += (rib * fl)[..., None] * np.float32([0.25, 0.65, 1.0]) * 0.8
+    _MEM['void'] = base.astype(np.float32)
+    return _MEM
+
+
+def t_memories(t, A, a, end):
+    """Loop: the last shot shrinks into a glowing panel and the camera pulls back into the Speed Force, where every
+    shot of the edit hangs as a memory panel in a line through the void; it races back along them to the first and
+    dives into it, which is the start of the edit."""
+    if t >= end: return layer(0, t - DUR)
+    M = _mem_assets(); n = len(SHOTS); ps = 0.36; gap = 0.50 * W
+    u = clamp((t - a) / (end - a)); zmax = 1 / ps
+    xk = lambda k: k * gap; yk = lambda k: 0.05 * H * math.sin(k * 1.3)
+    if u < 0.25: e = ease(u / 0.25); z = math.exp(math.log(zmax) * (1 - e)); cam = (xk(n - 1), yk(n - 1) * (1 - e) + 0)
+    elif u < 0.75: e = ease((u - 0.25) / 0.50); z = 1.0 - 0.12 * math.sin(math.pi * e); cam = (lerp(xk(n - 1), xk(0), e), 0.0)
+    else: e = ein((u - 0.75) / 0.25); z = math.exp(math.log(zmax) * e); cam = (xk(0), yk(0) * e)
+    speed = abs(xk(n - 1) - xk(0)) / (0.50 * (end - a)) * (0.25 <= u < 0.75) * math.sin(math.pi * clamp((u - 0.25) / 0.50))
+    void = M['void']; vh, vw = void.shape[:2]
+    Mv = np.float32([[z * 0.7, 0, W / 2 - (cam[0] * 0.35 + vw * 0.3) * z * 0.7], [0, z * 0.7, H / 2 - vh / 2 * z * 0.7]])
+    f = cv2.warpAffine(void, Mv, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    for k in range(n):
+        sx = (xk(k) - cam[0]) * z + W / 2; sy = (yk(k) - cam[1]) * z + H / 2; s = ps * z
+        if abs(sx - W / 2) > W / 2 + s * W: continue
+        live = (k == n - 1 and u < 0.3) or (k == 0 and u > 0.7)
+        img = (layer(k, t) if k == n - 1 else layer(0, t - DUR)) if live else M['thumbs'][k]
+        sc = s if live else s * 2
+        A_ = np.float32([[sc, 0, sx - sc * img.shape[1] / 2], [0, sc, sy - sc * img.shape[0] / 2]])
+        pim = cv2.warpAffine(img, A_, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        pm = cv2.warpAffine(np.ones(img.shape[:2], np.float32), A_, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        rim = cv2.GaussianBlur(pm, (0, 0), 3 + 10 * min(z, 2.0)) - pm * 0.0
+        glow = np.clip(cv2.GaussianBlur(pm, (0, 0), 18) - pm, 0, 1)
+        f = f * (1 - pm[..., None]) + pim * pm[..., None] + (glow * 1.6)[..., None] * GOLD_GLOW * (1 if z < 2.4 else max(0.0, (2.8 - z) / 0.4))
+    race = (0.18 <= u < 0.82) * math.sin(math.pi * clamp((u - 0.18) / 0.64))
+    if race > 0.02:                                                                             # Speed Force lightning streams racing past
+        rng = np.random.default_rng(int(t * FPS)); segs = []
+        for j in range(5):
+            y = H * (0.12 + 0.19 * j) + rng.normal(0, 20); xs = np.linspace(-40, W + 40, 30)
+            segs.append((np.stack([xs, y + 50 * np.sin(xs / 170 + j + t * 9) + rng.normal(0, 7, 30)], 1), 0.8 if j % 2 else 1.0))
+        f = add(f, draw_bolts(segs, 3.0, glow=(GOLD_GLOW, BLUE_GLOW)[int(t * 20) % 2], amp=0.9 * race))
+        sp_ = np.zeros((H // 2, W // 2), np.float32)
+        for _ in range(90): cv2.circle(sp_, (int(rng.uniform(0, W / 2)), int(rng.uniform(0, H / 2))), 1, float(rng.uniform(0.4, 1.0)), -1)
+        f = f + cv2.resize(cv2.GaussianBlur(sp_, (0, 0), 1.2), (W, H))[..., None] * GOLD_T * 1.2 * race
+    f = f + (np.exp(-(((XX - W / 2) / (0.7 * W)) ** 2 + ((YY - H / 2) / (0.5 * H)) ** 2)) * 0.18 * (z < 1.5))[..., None] * np.float32([0.9, 0.7, 0.4])
+    if speed > 50:
+        kb = int(min(91, speed / 120)) | 1; f = cv2.blur(f, (kb, 1))
+    return f
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -5895,6 +6069,10 @@ TRANSITIONS = {
     'disperse':  (lambda c, o: (c - .48, c + .40), lambda t, c, A, B, o: t_disperse(t, c, A, B, c - .48, c + .40)),
     'remnants':  (lambda c, o: (c - .34, c + .36), lambda t, c, A, B, o: t_remnants(t, c, A, B, c - .34, c + .36)),
     'phaseslice': (lambda c, o: (c - .34, c + .34), lambda t, c, A, B, o: t_phaseslice(t, c, A, B, c - .34, c + .34)),
+    # Flash kit IX
+    'emblemmatch': (lambda c, o: (c - .80, c + .46), lambda t, c, A, B, o: t_emblemmatch(t, c, A, B, c - .80, c + .46)),
+    'warp':      (lambda c, o: (c - .40, c + .36), lambda t, c, A, B, o: t_warp(t, c, A, B, c - .40, c + .36)),
+    'flashpaper': (lambda c, o: (c - .62, c + .36), lambda t, c, A, B, o: t_newspaper(t, c, A, B, c - .62, c + .36, sprite=_flash_paper_sprite)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
@@ -5910,7 +6088,7 @@ TRANSITIONS = {
 }
 
 
-LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck', 'whiploop')
+LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck', 'whiploop', 'memories')
 
 
 def build_trans():
@@ -5935,6 +6113,9 @@ def build_trans():
     elif lp == 'slidebox':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_slidebox(t, last, a, end)))
+    elif lp == 'memories':
+        c = CUTS[-1]; a, end = c - 0.85, c + 0.20
+        out.append((a, DUR + 1, lambda t: t_memories(t, last, a, end)))
     elif lp == 'whiploop':
         c = CUTS[-1]; a, end = c - 0.70, c + 0.30
         out.append((a, DUR + 1, lambda t: t_whiploop(t, last, a, end)))
