@@ -5193,6 +5193,197 @@ def t_carve(t, c, A, B, a, b):
     return f
 
 
+# ============================================================ Flash kit VII: "Are We Still Friends?" (Tyler, the Creator)
+ORANGE_GLOW = np.float32([0.20, 0.55, 1.0])
+
+
+def _sparks(t, t0, cx, cy, n, seed, vmin=900, vmax=2600, life=0.45, col=GOLD_GLOW, g=900):
+    """Sparks flung out from (cx, cy) at t0, as short glowing streaks."""
+    dt = t - t0
+    if not 0 <= dt < life: return None
+    rng = np.random.default_rng(seed); q = 2; m = np.zeros((H // q, W // q), np.float32)
+    for _ in range(n):
+        ang = rng.uniform(0, 2 * math.pi); v = rng.uniform(vmin, vmax)
+        x, y = cx + math.cos(ang) * v * dt, cy + math.sin(ang) * v * dt + 0.5 * g * dt * dt
+        x2, y2 = x - math.cos(ang) * v * 0.025, y - math.sin(ang) * v * 0.025
+        cv2.line(m, (int(x / q), int(y / q)), (int(x2 / q), int(y2 / q)), 1.0 - dt / life, 1, cv2.LINE_AA)
+    m = cv2.resize(m, (W, H)); return (m[..., None] * 1.4 + cv2.GaussianBlur(m, (0, 0), 5)[..., None] * 1.2) * col
+
+
+# ---- the particle accelerator (the drop)
+def t_accel(t, c, A, B, a, b):
+    """On the near-silence the frame drains to cold blue while a tiny core of light grows at the centre, crackling
+    and flaring; on the drop the dark-matter shockwave blasts out -- a white-hot ring with blue and orange fringes and
+    lightning along its front -- with the next shot inside it, a camera jolt and sparks."""
+    cx, cy = W / 2, 0.44 * H; r, th = _polar(cx, cy)
+    if t < c:
+        u = clamp((t - a) / (c - a)); k = ease(u)
+        fa = layer(A, t); l = luma(fa)[..., None]
+        f = fa * (1 - 0.8 * k) + l * np.float32([1.25, 0.85, 0.55]) * 0.55 * 0.8 * k
+        f = f * (1 - 0.35 * k * np.clip(r / (0.8 * H), 0, 1) ** 1.5)[..., None]
+        rc = 3 + 34 * ein(u) * (1 + 0.15 * math.sin(t * 60))
+        f = f + (np.exp(-(r / rc) ** 2) * 1.6 * (0.3 + u))[..., None] + (np.exp(-(r / (rc * 5)) ** 2) * 0.9 * u)[..., None] * BLUE_GLOW
+        f = f + (np.exp(-((YY - cy) / 3.5) ** 2) * np.exp(-np.abs(XX - cx) / (120 + 700 * u)) * 0.8 * u)[..., None] * BLUE_GLOW
+        rng = np.random.default_rng(int(t * FPS)); segs = []
+        for _ in range(int(2 + 7 * u)):
+            ang = rng.uniform(0, 2 * math.pi); L = rc * rng.uniform(2.5, 7)
+            segs.append((bolt_path((cx, cy), (cx + L * math.cos(ang), cy + L * math.sin(ang)), rng, 5, 0.18), 0.6))
+        return add(f, draw_bolts(segs, 2.4, glow=BLUE_GLOW, core=np.float32([1.0, 0.95, 0.9]), amp=0.6 + 0.6 * u))
+    u = clamp((t - c) / (b - c)); Rw = 20 + RFULL * 1.2 * eout(clamp(u / 0.75))
+    fa = layer(A, c - 1e-3); l = luma(fa)[..., None]; fa = l * np.float32([1.25, 0.85, 0.55]) * 0.45
+    disp = 60 * np.exp(-((r - Rw) / 70) ** 2) * (1 - u)
+    mx = (XX - (XX - cx) / (r + 1e-3) * disp).astype(np.float32); my = (YY - (YY - cy) / (r + 1e-3) * disp).astype(np.float32)
+    fb = cv2.remap(layer(B, t, 1 + 0.12 * (1 - eout(u))), mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    inside = ss(Rw + 3, Rw - 3, r)[..., None]
+    f = fa * (1 - inside) + fb * inside
+    fade = 1 - ease(clamp((u - 0.35) / 0.65))
+    ring = (np.exp(-((r - Rw) / 6) ** 2) * 1.5)[..., None] + (np.exp(-((r - Rw) / 34) ** 2) * 0.9)[..., None] * BLUE_GLOW \
+        + (np.exp(-((r - Rw - 16) / 12) ** 2) * 0.6)[..., None] * ORANGE_GLOW
+    f = f + ring * fade
+    rng = np.random.default_rng(int(t * FPS) + 7); segs = []
+    for _ in range(12):
+        ang = rng.uniform(0, 2 * math.pi); p0 = (cx + Rw * math.cos(ang), cy + Rw * math.sin(ang))
+        L = rng.uniform(40, 140); a2 = ang + rng.uniform(-0.6, 0.6)
+        segs.append((bolt_path(p0, (p0[0] + L * math.cos(a2), p0[1] + L * math.sin(a2)), rng, 5, 0.2), 0.7))
+    f = add(f, draw_bolts(segs, 2.6, glow=BLUE_GLOW, amp=1.2 * fade))
+    f = add(f, _sparks(t, c, cx, cy, 70, 3))
+    jolt = int(18 * math.exp(-(t - c) * 12) * math.sin((t - c) * 75))
+    return np.roll(f, jolt, 0) + 0.55 * math.exp(-(t - c) * 18)
+
+
+# ---- Barry's speed tornado
+def t_tornado(t, c, A, B, a, b):
+    """The frame twists into Barry's speed tornado -- the picture swirling inward, wind streaks, gold lightning ribbons
+    orbiting the eye -- then unwinds into the next shot."""
+    cx, cy = W / 2, 0.45 * H; r, th = _polar(cx, cy)
+    if t < c: k = ease(clamp((t - a) / (c - a))); src = layer(A, t)
+    else: k = 1 - ease(clamp((t - c) / (b - c))); src = layer(B, t)
+    acc = None
+    for j, sp in enumerate((0.92, 1.0, 1.08)):                                                   # rotational motion blur
+        tw = 8.5 * k * sp * np.exp(-r / (0.55 * W))
+        rs = r * (1 + 0.20 * k); ths = th - tw
+        mx = (cx + rs * np.cos(ths)).astype(np.float32); my = (cy + rs * np.sin(ths)).astype(np.float32)
+        im = cv2.remap(src, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        acc = im if acc is None else acc + im
+    f = acc / 3 * (1 - 0.25 * k)
+    streak = (0.5 + 0.5 * np.cos(th * 7 - 4.0 * np.log(r / 90 + 1) + t * 38)) ** 28 * k * ss(60, 320, r)
+    f = f + (streak * 0.35)[..., None] * np.float32([0.95, 0.95, 1.0])
+    segs = []; rng = np.random.default_rng(int(t * FPS))
+    for j in range(3):
+        a0 = j * 2.1 + t * 13; ss_ = np.linspace(0, 1, 40)
+        ang = a0 + ss_ * 2.6; rad = 110 + 620 * ss_
+        pts = np.stack([cx + rad * np.cos(ang), cy + rad * np.sin(ang) * 1.15], 1) + rng.normal(0, 6, (40, 2))
+        segs.append((pts, 0.9))
+    f = add(f, draw_bolts(segs, 3.0, amp=1.1 * k))
+    return f + 0.30 * math.exp(-abs(t - c) * 25)
+
+
+# ---- Flash Time
+def t_flashtime(t, c, A, B, a, b):
+    """Flash Time: the outgoing shot slows to a stop, the world goes cold blue and dust hangs frozen in the air; Barry's
+    gold lightning trail streaks across the frame, the next shot behind it; then time starts again and the motes fall."""
+    u = clamp((t - a) / (c - a)); tt = a + (c - a) * 0.5 * (1 - (1 - u) ** 2) if t < c else c
+    k = ease(u) if t < c else 1 - ease(clamp((t - c) / (b - c)))
+    fa = layer(A, min(tt, c - 1e-3)); fb = layer(B, t)
+    ts, te = c - 0.30, c + 0.06; hx = lerp(-0.25 * W, 1.25 * W, ease(clamp((t - ts) / (te - ts))))
+    path_y = lambda x: 0.56 * H + 0.10 * H * np.sin(x / W * math.pi * 1.3 + 0.4)
+    behind = ss(hx - 10, hx - 60, XX)[..., None] if t < te else np.ones((H, W, 1), np.float32)
+    f = fa * (1 - behind) + fb * behind
+    l = luma(f)[..., None]; cool = l * np.float32([1.30, 1.0, 0.70])
+    f = f * (1 - 0.65 * k) + (cool * 0.75 + f * 0.25) * 0.65 * k
+    rng = np.random.default_rng(12); mm = np.zeros((H // 2, W // 2), np.float32)
+    fall = max(0.0, t - c) ** 2 * 1800
+    for _ in range(140):
+        x, y, s_ = rng.uniform(0, W), rng.uniform(0, H), rng.uniform(1, 4)
+        cv2.ellipse(mm, (int(x / 2), int((y + fall * s_ / 2) / 2)), (max(1, int(s_ / 2)), max(1, int(s_ * 1.6 / 2))), 0, 0, 360, 1.0, -1, cv2.LINE_AA)
+    mm = cv2.resize(mm, (W, H)); motes = (mm * 0.7 + cv2.GaussianBlur(mm, (0, 0), 4) * 1.2)[..., None] * np.float32([1.0, 0.92, 0.85])
+    f = f + motes * k
+    if ts <= t < c + 0.25:                                                                       # the gold streak
+        xs = np.linspace(-0.25 * W, min(hx, 1.25 * W), 60); ys = path_y(xs)
+        jit = np.random.default_rng(int(t * FPS)).normal(0, 7, (60, 2))
+        pts = np.stack([xs, ys], 1) + jit
+        tail = 1 - ease(clamp((t - te) / 0.20))
+        f = add(f, draw_bolts([(pts, 1.0)], 5.0, amp=1.3 * tail))
+        hy = float(path_y(np.array([hx]))[0])
+        f = f + (np.exp(-(((XX - hx) / 70) ** 2 + ((YY - hy) / 40) ** 2)) * 1.4 * tail * (t < te))[..., None] * np.float32([0.55, 0.85, 1.0])
+    return f
+
+
+# ---- the Flash ring
+def _emblem_layer(cx, cy, R, rot):
+    z0 = draw_emblem(np.zeros((H, W, 3), np.float32), cx, cy, R, rot, 1.0, 1.0, 1.0)
+    z1 = draw_emblem(np.ones((H, W, 3), np.float32), cx, cy, R, rot, 1.0, 1.0, 1.0)
+    al = np.clip(1 - (z1 - z0).mean(2), 0, 1)
+    return z0, al
+
+
+def t_ringpop(t, c, A, B, a, b):
+    """Barry's ring: a gold ring with the emblem on its face pops in over the shot (glint across the metal), the
+    emblem lid hinges open with a burst of light, and the camera dives into the ring onto the next shot."""
+    cx, cy = W / 2, 0.46 * H; R0 = 0.24 * W
+    pop = clamp((t - a) / 0.16); s = (1 + 2.2 * (pop - 1) ** 3 + 1.2 * (pop - 1) ** 2) if pop < 1 else 1.0
+    to = c - 0.16; hinge = ease(clamp((t - to) / 0.18))
+    dive = ein(clamp((t - c) / (b - c - 0.04))) if t >= c else 0.0
+    R = R0 * max(0.01, s) * math.exp(math.log(RFULL / (R0 * 0.82)) * dive)
+    fa = layer(A, min(t, c - 1e-3)) * (1 - 0.35 * pop) if t < c + 0.30 else None
+    f = fa if fa is not None else layer(B, t)
+    r, th = _polar(cx, cy)
+    band = ss(R * 1.24, R * 1.20, r) * ss(R * 0.80, R * 0.84, r)                                 # the gold band
+    tilt = np.clip((r - R * 1.02) / (R * 0.22), -1, 1) * 0.85
+    gold = _shade(np.cos(th) * tilt, np.sin(th) * tilt, _nz(tilt), 0.55, ks=1.2, pw=45)[..., None] * np.float32([0.25, 0.62, 0.95])
+    sh = cv2.GaussianBlur(np.roll(np.roll(band, 24, 0), 14, 1), (0, 0), 18) * 0.5 * (1 - dive)
+    f = f * (1 - sh[..., None])
+    if hinge > 0 or t >= c:                                                                      # the opened ring: light and the next shot inside
+        fb = layer(B, t, 1 + 0.1 * (1 - dive)); g, rr = _live_circle(f, fb, cx, cy, R * 0.82, feather=2)
+        inner = ss(R * 0.84, R * 0.80, r)[..., None] * max(hinge, 1.0 if t >= c else 0)
+        light = np.exp(-(r / (R * 0.5)) ** 2)[..., None] * np.float32([0.55, 0.85, 1.0]) * 1.4 * hinge * (1 - dive)
+        f = f * (1 - inner) + (g + light) * inner
+    f = f * (1 - band[..., None]) + gold * band[..., None]
+    if t < c + 0.02 and hinge < 1:                                                               # the emblem lid, hinging up from its top
+        e0, al = _emblem_layer(cx, cy, R * 0.82, 0.0)
+        sy = math.cos(hinge * math.radians(88)); y0 = cy - R * 0.82
+        M = np.float32([[1, 0, 0], [0, sy, y0 * (1 - sy)]])
+        e0 = cv2.warpAffine(e0, M, (W, H)); al = cv2.warpAffine(al, M, (W, H))
+        f = f * (1 - al[..., None]) + e0
+    gl = clamp((t - (a + 0.12)) / 0.25)
+    if 0 < gl < 1: f = f + (np.exp(-((((XX - cx) + (YY - cy) * 0.6) / R - lerp(-1.6, 1.6, gl)) / 0.12) ** 2) * band * 0.6)[..., None]
+    if t >= to:                                                                                  # rays and sparks as it opens
+        ray = (0.5 + 0.5 * np.cos(th * 18 + t * 4)) ** 12 * np.exp(-r / (R * 2.2)) * hinge * (1 - dive)
+        f = f + (ray * 0.5)[..., None] * np.float32([0.45, 0.8, 1.0])
+        f = add(f, _sparks(t, to + 0.08, cx, cy - R * 0.4, 40, 9, vmin=500, vmax=1600))
+    return f + 0.35 * math.exp(-max(0.0, t - c) * 20) * (t >= c)
+
+
+# ---- breach (loop)
+def t_breach(t, A, a, end):
+    """Loop: a swirling blue multiverse breach tears open over the last shot -- energy spiralling round its rim,
+    lightning crackling off it, the picture pulled toward it -- and through it is the start of the edit; the camera
+    goes through."""
+    if t >= end: return layer(0, t - DUR)
+    cx, cy = W / 2, 0.45 * H; r, th = _polar(cx, cy)
+    op = eout(clamp((t - a) / 0.36)); dv = ein(clamp((t - (a + 0.42)) / (end - a - 0.42)))
+    Rp = 6 + 0.30 * W * op; Rp = Rp * math.exp(math.log(RFULL * 1.05 / (0.30 * W + 6)) * dv)
+    fa = layer(A, t)
+    pull = 90 * np.exp(-np.clip(r - Rp, 0, None) / 260) * op * (1 - dv)
+    tw = 0.5 * np.exp(-np.clip(r - Rp, 0, None) / 300) * op
+    rs = r + pull; ths = th + tw
+    fa = cv2.remap(fa, (cx + rs * np.cos(ths)).astype(np.float32), (cy + rs * np.sin(ths)).astype(np.float32), cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    f, rr = _live_circle(fa, layer(0, t - DUR), cx, cy, Rp * 0.9, feather=3)
+    if 'brn' not in _K4: _K4['brn'] = cv2.resize(fbm(64, 512, 4, 33, 4), (2048, 256), interpolation=cv2.INTER_CUBIC)
+    rn = (r - Rp * 0.8) / (Rp * 0.5 + 1)
+    mx = ((np.mod(th + 2.5 * np.log(r / (Rp + 1) + 1) - t * 9, 2 * math.pi)) / (2 * math.pi) * 2047).astype(np.float32)
+    my = (np.clip(rn, 0, 1) * 255).astype(np.float32)
+    sw = cv2.remap(_K4['brn'], mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    rim = np.exp(-((r - Rp) / (0.12 * Rp + 4)) ** 2) * (0.5 + 0.9 * sw) * (1 - dv * 0.8)
+    f = f + (rim * 1.1)[..., None] * BLUE_GLOW + (np.exp(-((r - Rp) / (0.03 * Rp + 2)) ** 2) * 0.8 * (1 - dv))[..., None]
+    rng = np.random.default_rng(int(t * FPS)); segs = []
+    for _ in range(9):
+        ang = rng.uniform(0, 2 * math.pi); p0 = (cx + Rp * math.cos(ang), cy + Rp * math.sin(ang)); L = rng.uniform(40, 160)
+        segs.append((bolt_path(p0, (p0[0] + L * math.cos(ang + 0.5), p0[1] + L * math.sin(ang + 0.5)), rng, 5, 0.2), 0.6))
+    f = add(f, draw_bolts(segs, 2.2, glow=BLUE_GLOW, amp=0.9 * op * (1 - dv)))
+    return f
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -5448,6 +5639,11 @@ TRANSITIONS = {
     'eyedive':   (lambda c, o: (c - .62, c + .34), lambda t, c, A, B, o: t_eyedive(t, c, A, B, c - .62, c + .34)),
     'glove':     (lambda c, o: (c - .60, c + .34), lambda t, c, A, B, o: t_glove(t, c, A, B, c - .60, c + .34)),
     'carve':     (lambda c, o: (c - .62, c + .40), lambda t, c, A, B, o: t_carve(t, c, A, B, c - .62, c + .40)),
+    # Flash kit VII (Are We Still Friends?)
+    'accel':     (lambda c, o: (c - .74, c + .46), lambda t, c, A, B, o: t_accel(t, c, A, B, c - .74, c + .46)),
+    'tornado':   (lambda c, o: (c - .40, c + .40), lambda t, c, A, B, o: t_tornado(t, c, A, B, c - .40, c + .40)),
+    'flashtime': (lambda c, o: (c - .48, c + .32), lambda t, c, A, B, o: t_flashtime(t, c, A, B, c - .48, c + .32)),
+    'ringpop':   (lambda c, o: (c - .46, c + .40), lambda t, c, A, B, o: t_ringpop(t, c, A, B, c - .46, c + .40)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
@@ -5463,7 +5659,7 @@ TRANSITIONS = {
 }
 
 
-LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades')
+LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach')
 
 
 def build_trans():
@@ -5488,6 +5684,9 @@ def build_trans():
     elif lp == 'slidebox':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_slidebox(t, last, a, end)))
+    elif lp == 'breach':
+        c = CUTS[-1]; a, end = c - 0.85, c + 0.10
+        out.append((a, DUR + 1, lambda t: t_breach(t, last, a, end)))
     elif lp == 'shades':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_shades(t, last, a, end)))

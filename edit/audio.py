@@ -507,6 +507,20 @@ def sfx_for(name, c, o, up):
         put(whoosh(0.50, 300, 1400, q=0.7, peak=0.7), c - 0.62, pan=-0.6, gain=0.05); put(shing(0.6), c - 0.40, pan=-0.2, gain=0.06)
         put(whoosh(0.16, 900, 6000, peak=0.6), c - 0.13, pan=0.3, gain=0.08); put(shing(0.4), c - 0.06, pan=0.4, gain=0.07)
         put(boom(0.8, 60, 30), c, gain=0.13); put(splat(0.05), c, gain=0.04)
+    # Flash kit VII
+    elif name == 'accel':
+        put(whoosh(0.70, 120, 2200, q=0.8, peak=0.95), c - 0.72, gain=0.05); put(zap(0.5), c - 0.50, gain=0.025)
+        put(boom(1.0, 55, 26), c, gain=0.15); put(thunder(1.0), c, gain=0.05)
+    elif name == 'tornado':
+        put(wind(0.8), c - 0.40, gain=0.08); put(zap(0.35), c - 0.20, gain=0.03); put(boom(0.4, 80, 40), c, gain=0.08)
+    elif name == 'flashtime':
+        put(whoosh(0.45, 1800, 200, q=0.7, peak=0.3), c - 0.48, gain=0.05); put(shimmer(0.5), c - 0.40, gain=0.03)
+        put(zap(0.35), c - 0.30, gain=0.04); put(whoosh(0.25, 400, 5000, peak=0.8), c - 0.20, pan=0.5, gain=0.07); put(boom(0.4, 80, 40), c, gain=0.08)
+    elif name == 'ringpop':
+        put(tick(0.05, 2200), c - 0.46, gain=0.06); put(shimmer(0.35), c - 0.34, gain=0.03); put(tick(0.06, 1400), c - 0.16, gain=0.06)
+        put(zap(0.3), c - 0.10, gain=0.04); put(whoosh(0.45, 300, 4000, peak=0.85), c - 0.10, gain=0.06); put(boom(0.6, 60, 30), c, gain=0.12)
+    elif name == 'breach':
+        put(wind(0.9), c - 0.85, gain=0.06); put(zap(0.6), c - 0.70, gain=0.035); put(whoosh(0.5, 200, 3000, peak=0.9), c - 0.45, gain=0.06)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)
