@@ -5951,7 +5951,7 @@ def t_futurepaper(t, c, A, B, a, b):
     else: cam = mix((k2[0], k2[1] * 1.06), k3, ease(clamp((t - T3) / (b - 0.05 - T3))))
     ctr, z = cam; s = base * z; ca, sa = math.cos(rot), math.sin(rot)
     M = np.float32([[s * ca, -s * sa, 0], [s * sa, s * ca, 0]]); M[:, 2] = np.array([W / 2, H / 2 + drop]) - M[:, :2] @ ctr
-    fa = layer(A, min(t, c - 1e-3)); bg = blur(fa, 10) * 0.45
+    fa = layer(A, min(t, c - 1e-3)); bg = blur(fa, 10 * clamp((t - a) / 0.15)) * lerp(1.0, 0.6, clamp((t - a) / 0.25))
     lay = cv2.warpAffine(np.dstack([pap, np.ones(pap.shape[:2], np.float32)]), M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     if t < T0:                                                                                   # its own motion blur while it drops
         sp = 2 * (1 - clamp((t - a) / (T0 - a))); kb = int(1 + 70 * sp) | 1
