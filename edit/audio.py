@@ -521,6 +521,21 @@ def sfx_for(name, c, o, up):
         put(zap(0.3), c - 0.10, gain=0.04); put(whoosh(0.45, 300, 4000, peak=0.85), c - 0.10, gain=0.06); put(boom(0.6, 60, 30), c, gain=0.12)
     elif name == 'breach':
         put(wind(0.9), c - 0.85, gain=0.06); put(zap(0.6), c - 0.70, gain=0.035); put(whoosh(0.5, 200, 3000, peak=0.9), c - 0.45, gain=0.06)
+    # Flash kit VIII
+    elif name == 'mirage':
+        put(buzz(0.7), c - 0.72, gain=0.03); put(whoosh(0.7, 150, 2400, q=0.8, peak=0.95), c - 0.72, gain=0.05)
+        put(boom(1.0, 55, 26), c, gain=0.15); put(whoosh(0.4, 500, 6000, peak=0.2), c, pan=-0.6, gain=0.06); put(whoosh(0.4, 500, 6000, peak=0.2), c, pan=0.6, gain=0.06)
+    elif name == 'trailbolt':
+        put(whoosh(0.50, 400, 4000, peak=0.6), c - 0.56, pan=-0.4, gain=0.06); put(zap(0.45), c - 0.50, gain=0.04)
+        put(boom(0.6, 70, 32), c - 0.06, gain=0.10)
+    elif name == 'disperse':
+        put(whoosh(0.50, 1200, 7000, q=0.7, peak=0.5), c - 0.48, pan=0.6, gain=0.06); put(shimmer(0.6), c - 0.40, gain=0.03)
+        put(whoosh(0.45, 7000, 1200, q=0.7, peak=0.6), c - 0.05, pan=-0.6, gain=0.05); put(boom(0.4, 80, 40), c, gain=0.08)
+    elif name == 'remnants':
+        for k_ in range(5): put(whoosh(0.22, 800, 4000, peak=0.8), c - 0.30 + 0.06 * k_, pan=(-0.8, 0.8, -0.5, 0.5, 0.0)[k_], gain=0.04)
+        put(boom(0.6, 60, 30), c, gain=0.12)
+    elif name == 'struck':
+        put(zap(0.4), c - 0.85, gain=0.03); put(thunder(1.2), c - 0.47, gain=0.10); put(boom(0.9, 50, 25), c - 0.47, gain=0.12)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)

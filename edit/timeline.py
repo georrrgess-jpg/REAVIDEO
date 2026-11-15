@@ -5388,6 +5388,181 @@ def t_breach(t, A, a, end):
     return f
 
 
+# ============================================================ Flash kit VIII (Still Friends v3): mirage, trailbolt, disperse, remnants, struck
+RED_T = np.float32([0.25, 0.30, 1.0]); GOLD_T = np.float32([0.35, 0.80, 1.0]); BLUE_T = np.float32([1.0, 0.70, 0.35])
+
+
+def _hspeed(f, k):
+    """Horizontal motion blur of strength k (0..1)."""
+    kb = int(1 + 120 * k) | 1
+    return f if kb < 3 else cv2.blur(f, (kb, 1))
+
+
+# ---- speed mirage (the drop)
+def t_mirage(t, c, A, B, a, b):
+    """The drop: through the hush Barry starts to vibrate -- faint red and gold afterimages jitter off him, wider and
+    wider; on the drop the afterimages burst out sideways in a fan of speed-blurred copies, and the next shot is left
+    standing in the middle as they streak off the frame."""
+    if t < c:
+        u = clamp((t - a) / (c - a)); fa = layer(A, t)
+        f = fa.copy()
+        for k, col in enumerate((RED_T, GOLD_T, RED_T)):
+            amp = (6 + 70 * u ** 2.2) * (k + 1) / 3
+            dx = int(amp * math.sin(t * 95 + k * 2.1)); dy = int(0.25 * amp * math.cos(t * 71 + k))
+            g = np.roll(np.roll(fa, dx, 1), dy, 0) * col
+            f = np.maximum(f, g * (0.25 + 0.55 * u))
+        f = f + (np.exp(-((XX - W / 2) / (W * 0.6)) ** 2) * 0.08 * u)[..., None] * GOLD_T
+        return f + 0.35 * ein(clamp((t - (c - 0.05)) / 0.05))
+    v = clamp((t - c) / (b - c)); e = eout(v)
+    fb = layer(B, t, 1.12 - 0.12 * e)
+    fa = layer(A, c - 1e-3)
+    wb = ease(clamp((t - c - 0.04) / 0.26))
+    f = fb * (0.30 + 0.70 * wb) + fa * 0.25 * (1 - wb) * np.float32([0.6, 0.6, 0.9])
+    for k in range(1, 7):                                                                        # the fan of afterimages, screened on
+        sg = -1 if k % 2 else 1; dist = sg * (0.10 + 0.16 * ((k + 1) // 2)) * W * (0.3 + 1.7 * e)
+        col = (RED_T, GOLD_T)[k % 2]
+        g = np.clip(_hspeed(np.roll(fa, int(dist), 1), 0.20 + 0.35 * (1 - v)) * col, 0, 1)
+        al = (0.60 - 0.07 * k) * (1 - v) ** 1.1
+        f = 1 - (1 - np.clip(f, 0, 1)) * (1 - g * al)
+    lines = np.zeros((H // 4, W // 4), np.float32); rng = np.random.default_rng(int(t * FPS))   # speed lines
+    for _ in range(40):
+        y = rng.integers(0, H // 4); x0 = rng.integers(0, W // 4); L = rng.integers(20, 120)
+        cv2.line(lines, (int(x0), int(y)), (int(x0 + L), int(y)), float(rng.uniform(0.3, 1.0)), 1, cv2.LINE_AA)
+    lines = cv2.resize(lines, (W, H)) * (1 - v) ** 1.5
+    f = f + lines[..., None] * GOLD_T * 0.5
+    return f + 0.25 * math.exp(-(t - c) * 22)
+
+
+# ---- the trail draws the bolt
+_BOLT_N = np.array([[0.66, 0.10], [0.30, 0.54], [0.49, 0.54], [0.34, 0.90], [0.72, 0.42], [0.53, 0.42], [0.70, 0.10]])
+
+
+def t_trailbolt(t, c, A, B, a, b):
+    """Barry's gold lightning trail races round the frame and draws the Flash's bolt; when the shape closes it flares
+    and fills with the next shot, then the bolt swells past the edges of the frame onto it."""
+    pts = _BOLT_N * np.array([W, H]); poly = np.vstack([pts, pts[:1]])
+    seg = np.hypot(*np.diff(poly, axis=0).T); cum = np.concatenate([[0], np.cumsum(seg)]); Ltot = cum[-1]
+    tc = c - 0.06; p = ease(clamp((t - a) / (tc - a)))
+    fa = layer(A, min(t, c - 1e-3)) * (1 - 0.30 * p)
+    if t < tc:
+        L = p * Ltot; n = int(np.searchsorted(cum, L)); path = list(poly[:n])
+        if n < len(poly):
+            k = (L - cum[n - 1]) / max(seg[n - 1], 1e-3); path.append(poly[n - 1] + (poly[n] - poly[n - 1]) * k)
+        path = np.array(path, np.float64)
+        dense = np.vstack([np.linspace(path[i], path[i + 1], 12, endpoint=False) for i in range(len(path) - 1)] + [path[-1:]]) if len(path) > 1 else path
+        jit = np.random.default_rng(int(t * FPS)).normal(0, 3.5, dense.shape)
+        f = add(fa, draw_bolts([(dense + jit, 1.0)], 7.0, amp=1.5))
+        hx, hy = dense[-1]
+        f = f + (np.exp(-(((XX - hx) ** 2 + (YY - hy) ** 2) / 60 ** 2)) * 1.6)[..., None] * np.float32([0.6, 0.9, 1.0])
+        return f
+    u = clamp((t - tc) / (b - tc)); cen = pts.mean(0); s = 1.0 + 9.0 * ein(u) ** 1.2
+    P = (cen + (pts - cen) * s).astype(np.int32)
+    m = np.zeros((H, W), np.float32); cv2.fillPoly(m, [P], 1.0, cv2.LINE_AA)
+    fb = layer(B, t, 1 + 0.12 * (1 - eout(u)))
+    f = fa * (1 - m[..., None]) + fb * m[..., None]
+    rim = np.zeros((H, W), np.float32); cv2.polylines(rim, [P], True, 1.0, 6, cv2.LINE_AA)
+    f = f + (cv2.GaussianBlur(rim, (0, 0), 6) * 1.8 + rim)[..., None] * GOLD_GLOW * (1 - u)
+    return f + 0.45 * math.exp(-(t - tc) * 18)
+
+
+# ---- speed disintegration
+def _particles(img, q, keep):
+    sm = cv2.resize(img, (W // q, H // q), interpolation=cv2.INTER_AREA)
+    gy, gx = np.mgrid[0:H // q, 0:W // q]; return gx.ravel() * q + q / 2, gy.ravel() * q + q / 2, sm.reshape(-1, 3)
+
+
+def t_disperse(t, c, A, B, a, b):
+    """At super speed Barry takes the picture with him: the shot breaks into thousands of gold-edged particles that
+    stream off to the right in waves; the next shot streams in from the left and assembles particle by particle."""
+    q = 6; rng = np.random.default_rng(3); h_, w_ = H // q, W // q
+    if 'dsp_noise' not in _K4: _K4['dsp_noise'] = cv2.resize(fbm(h_ // 4 + 2, w_ // 4 + 2, 3, 41, 4), (w_, h_)).astype(np.float32)
+    nz = _K4['dsp_noise']; gx = (np.arange(w_)[None, :] / w_).repeat(h_, 0)
+    delay = (0.55 * gx + 0.30 * nz).ravel(); jitter = (rng.random(h_ * w_) - 0.5)
+    half = np.zeros((H // 2, W // 2, 3), np.float32) + np.float32([0.05, 0.03, 0.02])
+    def splat(buf, X, Y, C):
+        xi = (X / 2).astype(np.int32); yi = (Y / 2).astype(np.int32); ok = (xi >= 0) & (xi < W // 2 - 2) & (yi >= 0) & (yi < H // 2 - 2)
+        xi, yi, C = xi[ok], yi[ok], C[ok]
+        for dy in (0, 1, 2):
+            for dx in (0, 1, 2): buf[yi + dy, xi + dx] = C
+    pb = clamp((t - (c - 0.30)) / (b - (c - 0.30)))                                                # B assembles from the left
+    fb = layer(B, t); Xb, Yb, Cb = _particles(fb, q, None)
+    lb = np.clip((pb * 1.25 - (0.85 - delay)) / 0.40, 0, 1)
+    done_b = cv2.resize(lb.reshape(h_, w_), (W, H), interpolation=cv2.INTER_NEAREST) >= 1.0
+    mv = (lb > 0) & (lb < 1)
+    off = (1 - lb[mv]) ** 2 * W * 0.9
+    splat(half, Xb[mv] - off, Yb[mv] + jitter[mv] * 80 * (1 - lb[mv]), Cb[mv] * (1 - 0.5 * (1 - lb[mv]))[:, None] + GOLD_T * 0.5 * (1 - lb[mv])[:, None])
+    pa = clamp((t - a) / (c + 0.16 - a))                                                           # A streams off to the right
+    fa = layer(A, min(t, c - 1e-3)); Xa, Ya, Ca = _particles(fa, q, None)
+    la = np.clip((pa * 1.25 - delay) / 0.40, 0, 1)
+    intact_a = cv2.resize(la.reshape(h_, w_), (W, H), interpolation=cv2.INTER_NEAREST) <= 0.0
+    mv = (la > 0) & (la < 1)
+    off = la[mv] ** 2 * W * 0.9
+    splat(half, Xa[mv] + off, Ya[mv] + jitter[mv] * 80 * la[mv], Ca[mv] * (1 - 0.5 * la[mv])[:, None] + GOLD_T * 0.6 * la[mv][:, None])
+    f = cv2.resize(half, (W, H), interpolation=cv2.INTER_LINEAR)
+    f = np.where(done_b[..., None], fb, f)
+    f = np.where(intact_a[..., None], fa, f)
+    edge = cv2.GaussianBlur((~intact_a).astype(np.float32) - cv2.erode((~intact_a).astype(np.uint8), np.ones((5, 5), np.uint8)).astype(np.float32), (0, 0), 4)
+    return f + (np.clip(edge, 0, 1) * 1.4)[..., None] * GOLD_GLOW * (0 < pa < 1)
+
+
+# ---- time remnants
+def t_remnants(t, c, A, B, a, b):
+    """Time remnants: just before the hit, ghostly coloured copies of the next shot race in from five directions,
+    shrinking and converging, and lock together into one on the beat with a gold flash."""
+    v = clamp((t - a) / (b - 0.06 - a)); e = eout(v)
+    fa = layer(A, min(t, c - 1e-3)); fb = layer(B, t)
+    base = fa * (1 - ease(clamp((t - (c - 0.10)) / 0.14))) + fb * ease(clamp((t - (c - 0.10)) / 0.14))
+    f = base.copy()
+    if 'remfeather' not in _K4:
+        fm = np.zeros((H, W), np.float32); cv2.rectangle(fm, (60, 60), (W - 60, H - 60), 1.0, -1)
+        _K4['remfeather'] = cv2.GaussianBlur(fm, (0, 0), 50)
+    fm = _K4['remfeather']
+    dirs = ((-1.0, -0.4, RED_T), (1.0, -0.2, GOLD_T), (0.0, 1.0, BLUE_T))
+    for k, (dx, dy, col) in enumerate(dirs):
+        lag = 0.05 * k; vv = clamp((t - a - lag) / (c + 0.02 - a - lag)); ee = eout(vv)
+        if vv <= 0 or vv >= 1: continue
+        s = 1.20 - 0.20 * ee; ox, oy = dx * 0.55 * W * (1 - ee), dy * 0.35 * H * (1 - ee)
+        M = np.float32([[s, 0, W / 2 * (1 - s) + ox], [0, s, H / 2 * (1 - s) + oy]])
+        g = cv2.warpAffine(fb * fm[..., None], M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        g = np.clip(_hspeed(g, 0.25 * (1 - ee)) * col * 1.25, 0, 1)
+        f = 1 - (1 - np.clip(f, 0, 1)) * (1 - g * 0.75 * (1 - vv) ** 0.5)
+    return f + 0.50 * math.exp(-((t - c) / 0.05) ** 2)
+
+
+# ---- struck by lightning (loop)
+def _struck_bolt(seed, tgt):
+    rng = np.random.default_rng(seed)
+    return bolt_tree((tgt[0] + rng.normal(0, 120), -40), tgt, rng, branches=6, disp=0.16, depth=7)
+
+
+def t_struck(t, A, a, end):
+    """Loop: the night Barry was struck. A stepped lightning leader feels its way down the sky toward him, the return
+    stroke hits in a white-out, the bolt strobes twice, and out of the glare is the first shot (Barry, blood on his
+    face) with the strike's afterglow still crackling."""
+    if t >= end: return layer(0, t - DUR)
+    tgt = (W / 2, 0.33 * H); ts = a + 0.38
+    if t < ts:                                                                                   # the leader descends
+        fa = layer(A, t) * (1 - 0.35 * ease(clamp((t - a) / 0.3)))
+        u = clamp((t - a) / (ts - a)); segs = []
+        for pts, w in _struck_bolt(5, tgt):
+            n = max(2, int(len(pts) * min(1.0, u * (1.4 if w == 1.0 else 1.0))))
+            segs.append((pts[:n], w))
+        f = add(fa, draw_bolts(segs, 2.2, glow=BLUE_GLOW, core=np.float32([1, 1, 1]), amp=0.6 + 0.4 * u))
+        return f + 0.05 * u
+    dt = t - ts; fl = math.exp(-dt * 7)
+    for t0 in (0.09, 0.19):                                                                        # two re-strikes
+        if dt >= t0: fl = max(fl, 0.75 * math.exp(-(dt - t0) * 22))
+    f0 = layer(0, t - DUR); k = ease(clamp((dt - 0.10) / (end - ts - 0.10)))
+    last = layer(A, ts) if dt < 0.12 else f0
+    base = last * (1 - k) + f0 * k
+    white = np.float32([1.0, 0.97, 0.94])
+    f = base * (1 - 0.85 * fl) + white * 0.85 * fl * (1 - 0.3 * k)
+    seed = 5 if dt < 0.09 else (6 if dt < 0.19 else 7)
+    f = add(f, draw_bolts(_struck_bolt(seed, tgt), 5.0, glow=BLUE_GLOW, core=np.float32([1, 1, 1]), amp=1.6 * max(fl, 0.25 * (1 - k))))
+    jolt = int(16 * math.exp(-dt * 14) * math.sin(dt * 80))
+    return np.roll(f, jolt, 0)
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -5648,6 +5823,11 @@ TRANSITIONS = {
     'tornado':   (lambda c, o: (c - .40, c + .40), lambda t, c, A, B, o: t_tornado(t, c, A, B, c - .40, c + .40)),
     'flashtime': (lambda c, o: (c - .48, c + .32), lambda t, c, A, B, o: t_flashtime(t, c, A, B, c - .48, c + .32)),
     'ringpop':   (lambda c, o: (c - .46, c + .40), lambda t, c, A, B, o: t_ringpop(t, c, A, B, c - .46, c + .40)),
+    # Flash kit VIII
+    'mirage':    (lambda c, o: (c - .74, c + .46), lambda t, c, A, B, o: t_mirage(t, c, A, B, c - .74, c + .46)),
+    'trailbolt': (lambda c, o: (c - .56, c + .38), lambda t, c, A, B, o: t_trailbolt(t, c, A, B, c - .56, c + .38)),
+    'disperse':  (lambda c, o: (c - .48, c + .40), lambda t, c, A, B, o: t_disperse(t, c, A, B, c - .48, c + .40)),
+    'remnants':  (lambda c, o: (c - .34, c + .36), lambda t, c, A, B, o: t_remnants(t, c, A, B, c - .34, c + .36)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
@@ -5663,7 +5843,7 @@ TRANSITIONS = {
 }
 
 
-LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach')
+LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck')
 
 
 def build_trans():
@@ -5688,6 +5868,9 @@ def build_trans():
     elif lp == 'slidebox':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_slidebox(t, last, a, end)))
+    elif lp == 'struck':
+        c = CUTS[-1]; a, end = c - 0.85, c + 0.10
+        out.append((a, DUR + 1, lambda t: t_struck(t, last, a, end)))
     elif lp == 'breach':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_breach(t, last, a, end)))
