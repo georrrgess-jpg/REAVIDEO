@@ -755,7 +755,7 @@ def crackle_fx(f, i, t, s, build=False, glow=GOLD_GLOW, region=None, amp_scale=1
     """Lightning arcs crawling over the shot (re-struck every 3 frames); with build=True they grow toward the end."""
     u = (t - s['start']) / (s['end'] - s['start'])
     amp = (0.15 + 0.85 * ein(u)) if build else 0.8
-    rng = np.random.default_rng(int(t * FPS / 3) + 17 * i); segs = []
+    rng = np.random.default_rng(abs(int(t * FPS / 3)) + 17 * i); segs = []
     n = 2 + int((5 if build else 3) * (u if build else 1))
     for _ in range(n):
         if region is not None:                                   # arcs jumping across a region (e.g. the speed cap)
