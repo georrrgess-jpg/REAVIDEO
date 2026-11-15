@@ -578,6 +578,16 @@ def sfx_for(name, c, o, up):
         put(shimmer(0.4), c - 0.80, gain=0.035); put(whoosh(0.30, 3000, 600, peak=0.2), c - 0.80, gain=0.05)
         put(whoosh(0.60, 300, 4000, peak=0.5), c - 0.68, pan=-0.5, gain=0.07); put(zap(0.5), c - 0.55, gain=0.03)
         put(whoosh(0.30, 500, 4500, peak=0.9), c - 0.20, gain=0.06)
+    elif name == 'zoomthru':
+        put(whoosh(0.50, 120, 2400, q=0.8, peak=0.97), c - 0.48, gain=0.07); put(boom(1.0, 55, 26), c, gain=0.15)
+        put(zap(0.4), c, gain=0.04); put(whoosh(0.46, 2400, 150, q=0.8, peak=0.05), c, gain=0.05)
+    elif name == 'speedramp':
+        put(whoosh(0.40, 1500, 300, q=0.7, peak=0.3), c - 0.60, gain=0.04); put(whoosh(0.30, 300, 6000, q=0.9, peak=0.95), c - 0.28, pan=0.6, gain=0.09)
+        put(zap(0.3), c, gain=0.05); put(boom(0.6, 60, 30), c, gain=0.11)
+    elif name == 'memtunnel':
+        put(whoosh(0.40, 300, 2500, peak=0.6), c - 1.20, gain=0.05); put(wind(1.0), c - 1.00, gain=0.05); put(shimmer(0.8), c - 0.90, gain=0.03)
+        for k_ in range(6): put(whoosh(0.18, 600, 4000, peak=0.5), c - 0.95 + 0.13 * k_, pan=(-0.7, 0.7)[k_ % 2], gain=0.03)
+        put(zap(0.5), c - 0.70, gain=0.03); put(whoosh(0.30, 500, 4500, peak=0.9), c - 0.20, gain=0.06)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)

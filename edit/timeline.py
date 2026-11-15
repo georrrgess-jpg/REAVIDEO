@@ -6247,6 +6247,150 @@ def t_memories5(t, A, a, end):
     return f
 
 
+# ============================================================ Flash kit XII (Still Friends v8)
+# ---- zoom-through into the emblem (the drop)
+def t_zoomthru(t, c, A, B, a, b):
+    """The drop as one camera move: the camera accelerates into Barry's eyes with a building twist and zoom blur; on
+    the drop it is already deep inside the next shot, tight on the real glowing emblem on his chest, and carries the
+    same speed and rotation as it decelerates back out to the full shot. A one-frame flash and a few arcs off the
+    emblem mark the hit."""
+    key = ('zthru', A, B, round(c, 3))
+    if key not in _K4:
+        ref = layer(B, c + 0.25); ex, ey, Re = _bright_blob(ref)
+        s = SHOTS[A]; lm = _landmarks(A, int(round((PRE + (c - 0.05) - s['start']) * FPS)))
+        pa_ = ((lm[0][0] + lm[1][0]) / 2, (lm[0][1] + lm[1][1]) / 2) if lm is not None else (W / 2, 0.40 * H)
+        _K4[key] = (ex, ey, Re, pa_, _emblem_contour(ref, ex, ey, Re))
+    ex, ey, Re, (pax, pay), conts = _K4[key]
+    L = math.log(4.0); t0 = c - 0.46; ROT = 14.0
+    def view(src, px, py, z, ang, kblur):
+        cx, cy = lerp(px, W / 2, min(1.0, (z - 1) / 1.2)), lerp(py, H / 2, min(1.0, (z - 1) / 1.2))
+        acc = None; nb = 1 if kblur < 0.02 else 5
+        for j in range(nb):
+            zz = z * (1 + 0.10 * kblur * j / max(1, nb - 1)); aa = ang + 2.0 * kblur * j / max(1, nb - 1)
+            M = cv2.getRotationMatrix2D((px, py), aa, zz); M[0, 2] += cx - px; M[1, 2] += cy - py
+            im = cv2.warpAffine(src, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+            acc = im if acc is None else acc + im
+        return acc / nb, M
+    if t < c:
+        if t < t0: return layer(A, t, 1 + 0.05 * ease(clamp((t - a) / (t0 - a))))
+        u = clamp((t - t0) / (c - t0)); k = ein(u)
+        f, _ = view(layer(A, t, 1.05), pax, pay, math.exp(L * k), ROT * k, u ** 2)
+        if u > 0.6:
+            sp = int(10 * (u - 0.6) / 0.4); f = f.copy(); f[..., 2] = np.roll(f[..., 2], sp, 1); f[..., 0] = np.roll(f[..., 0], -sp, 1)
+        return f + 0.30 * ein(clamp((t - (c - 0.03)) / 0.03))
+    v = clamp((t - c) / (b - c)); k = 1 - eout(v)
+    f, M = view(layer(B, t), ex, ey, math.exp(L * k), -ROT * k, k ** 2)
+    if k > 0.4:
+        sp = int(10 * (k - 0.4) / 0.6); f = f.copy(); f[..., 2] = np.roll(f[..., 2], sp, 1); f[..., 0] = np.roll(f[..., 0], -sp, 1)
+    amp = 1 - ease(clamp(v / 0.6)); rng = np.random.default_rng(int(t * FPS)); segs = []
+    for cc in conts:
+        P = cc @ M[:, :2].T + M[:, 2]
+        for _ in range(2):
+            i0 = rng.integers(0, len(P)); i1 = min(len(P) - 1, i0 + rng.integers(20, 50)); seg = P[i0:i1:3]
+            if len(seg) > 2: segs.append((seg + rng.normal(0, 4, seg.shape), 0.8))
+    f = add(f, draw_bolts(segs, 3.0, glow=BLUE_GLOW, core=np.float32([1, 1, 1]), amp=1.1 * amp))
+    return f + 0.28 * math.exp(-(t - c) * 30)
+
+
+# ---- speed ramp (0:10)
+def t_speedramp(t, c, A, B, a, b):
+    """A speed ramp: the fireball shot drops into slow motion, then ramps to high speed (real frame-accumulated motion
+    blur) as the camera whips after him; the next shot arrives mid-whip and settles with a slight overshoot, a gold
+    lightning streak cracking across the cut."""
+    sA = SHOTS[A]
+    if t < c:
+        u = clamp((t - a) / (c - a))
+        g = 0.30 * u + 0.70 * ss(0.45, 1.0, u) * (u - 0.45) * 2.2                                 # slow, then ramping up
+        tA = a + (c - a) * g; spd = 0.30 + 3.4 * ss(0.45, 1.0, u)
+        n = 1 + int(5 * ss(0.5, 1.0, u)); span = 0.012 * spd * n
+        acc = None
+        for j in range(n):
+            im = layer(A, min(sA['end'] + 0.45, tA + span * j / max(1, n - 1)), 1.0 + 0.08 * ease(u))
+            acc = im if acc is None else acc + im
+        f = acc / n
+        w = ein(clamp((u - 0.55) / 0.45)); zz = 1 + 0.25 * w
+        f = cv2.warpAffine(f, np.float32([[zz, 0, W / 2 * (1 - zz) + 0.10 * W * w], [0, zz, H / 2 * (1 - zz)]]), (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        kb = int(1 + 180 * w) | 1
+        if kb > 2: f = cv2.blur(f, (kb, 1))
+        return f + 0.10 * w
+    v = clamp((t - c) / (b - c)); e = eout(v)
+    over = 0.04 * math.sin(math.pi * clamp((v - 0.55) / 0.45)) * (v > 0.55)
+    zz = 1 + 0.25 * (1 - e)
+    f = cv2.warpAffine(layer(B, t), np.float32([[zz, 0, W / 2 * (1 - zz) - 0.10 * W * (1 - e) + over * W], [0, zz, H / 2 * (1 - zz)]]), (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    kb = int(1 + 180 * (1 - e) ** 2) | 1
+    if kb > 2: f = cv2.blur(f, (kb, 1))
+    amp = 1 - ease(clamp(v / 0.45))
+    if amp > 0.02:
+        rng = np.random.default_rng(int(t * FPS)); y = H * 0.52 + rng.normal(0, 6)
+        xs = np.linspace(-40, W + 40, 34); pts = np.stack([xs, y + 22 * np.sin(xs / 140 + t * 20)], 1)
+        f = add(f, draw_bolts([(bolt_path(pts[0], pts[-1], rng, 6, 0.05), 1.0)], 6.0, amp=1.4 * amp))
+    return f + 0.25 * math.exp(-(t - c) * 26)
+
+
+# ---- flight through the memories (loop)
+def t_memtunnel(t, A, a, end):
+    """Loop: the camera launches forward into the Speed Force -- the last shot swings off to the side as a memory panel
+    and rushes past; every other shot of the edit hangs on a spiral corridor of panels turned toward the path, racing
+    past the lens with streaks of light and lightning between them; the first shot waits at the end of the corridor
+    and grows until it is the frame -- the start of the edit."""
+    if t >= end: return layer(0, t - DUR)
+    Mm = _mem3d_assets(); n = len(SHOTS); fpx = 1.15 * W
+    dz = 0.85 * fpx; R3 = 1.05 * W
+    u = clamp((t - a) / (end - a)); S = lambda x: x * x * x * (x * (6 * x - 15) + 10)
+    zs = 0.0; zend_panel = zs + fpx + (n - 1) * dz + 0.6 * dz
+    zc = lerp(zs, zend_panel - fpx, S(u))
+    speed = (zend_panel - fpx - zs) * 30 * u * u * (1 - u) * (1 - u) / (end - a)
+    f = np.zeros((H, W, 3), np.float32) + np.float32([0.08, 0.03, 0.04])
+    r = np.sqrt((XX - W / 2) ** 2 + (YY - H / 2) ** 2); th = np.arctan2(YY - H / 2, XX - W / 2)
+    f = f + (np.exp(-(r / (0.45 * H)) ** 2) * 0.35)[..., None] * np.float32([0.55, 0.35, 0.25])
+    q = 2; st = np.zeros((H // q, W // q, 3), np.float32); rng = np.random.default_rng(31)          # streaks of light
+    for i in range(170):
+        ang = rng.uniform(0, 2 * math.pi); d0 = (rng.uniform(0, 1) + zc / (6 * dz) * rng.uniform(0.6, 1.4)) % 1.0
+        r0 = 20 + d0 ** 2 * 1300; Ls = (20 + 500 * d0 ** 2) * min(1.0, speed / 6000 + 0.15)
+        p0 = (W / 2 + r0 * math.cos(ang), H / 2 + r0 * math.sin(ang)); p1 = (W / 2 + (r0 + Ls) * math.cos(ang), H / 2 + (r0 + Ls) * math.sin(ang))
+        col = (np.float32([1.0, 0.70, 0.30]), np.float32([0.35, 0.75, 1.0]))[i % 2] * float(0.3 + 0.7 * d0)
+        cv2.line(st, (int(p0[0] / q), int(p0[1] / q)), (int(p1[0] / q), int(p1[1] / q)), tuple(float(x) for x in col), 1, cv2.LINE_AA)
+    st = cv2.resize(st, (W, H)); f = f + st * 0.9 + cv2.GaussianBlur(st, (0, 0), 5) * 1.3
+    panels = []
+    s1 = ease(clamp(u / 0.30))                                                                    # the last shot swings aside
+    panels.append((n - 1, (R3 * 0.9 * s1, -0.10 * H * s1, zs + fpx), -40 * s1))
+    for j, k in enumerate(range(n - 2, 0, -1)):
+        ang = j * 1.9 + 0.6; panels.append((k, (R3 * math.cos(ang), 0.75 * R3 * math.sin(ang), zs + fpx + (j + 1) * dz), -38 * math.copysign(1, math.cos(ang))))
+    panels.append((0, (0.0, 0.0, zend_panel), 0.0))
+    proj = []
+    for k, (X, Y, Z), yaw in panels:
+        d = Z - zc
+        if d < 0.08 * fpx: continue
+        proj.append((d, k, X, Y, Z, yaw))
+    proj.sort(key=lambda p_: -p_[0])
+    centers = {}
+    for d, k, X, Y, Z, yaw in proj:
+        ca, sa = math.cos(math.radians(yaw)), math.sin(math.radians(yaw)); hw, hh = W / 2, H / 2
+        cs3 = [(X - hw * ca, Y - hh, Z - hw * sa), (X + hw * ca, Y - hh, Z + hw * sa), (X + hw * ca, Y + hh, Z + hw * sa), (X - hw * ca, Y + hh, Z - hw * sa)]
+        if min(c3[2] - zc for c3 in cs3) < 0.05 * fpx: continue
+        quad = np.float32([[W / 2 + fpx * c3[0] / (c3[2] - zc), H / 2 + fpx * c3[1] / (c3[2] - zc)] for c3 in cs3])
+        if quad[:, 0].max() < -50 or quad[:, 0].min() > W + 50 or quad[:, 1].max() < -50 or quad[:, 1].min() > H + 50: continue
+        live = (k == n - 1 and u < 0.35) or (k == 0 and u > 0.6)
+        img = (layer(n - 1, t) if k == n - 1 else layer(0, t - DUR)) if live else Mm['thumbs'][k]
+        hI, wI = img.shape[:2]
+        Pm = cv2.getPerspectiveTransform(np.float32([[0, 0], [wI, 0], [wI, hI], [0, hI]]), quad)
+        pim = cv2.warpPerspective(img, Pm, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        pm = cv2.warpPerspective(np.ones((hI, wI), np.float32), Pm, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        full = clamp((fpx / d - 0.75) / 0.25) if k in (0, n - 1) else 0.0
+        fog = clamp(1.25 - d / (5 * dz))
+        glow = np.clip(cv2.GaussianBlur(pm, (0, 0), 18) - pm, 0, 1) * 1.8 * (1 - full) * fog
+        rim = np.clip(pm - cv2.erode(pm, np.ones((5, 5), np.uint8)), 0, 1) * (1 - full)
+        f = f * (1 - pm[..., None]) + pim * pm[..., None] * (0.35 + 0.65 * fog) + glow[..., None] * GOLD_GLOW + rim[..., None] * np.float32([0.65, 0.9, 1.0])
+        centers[k] = quad.mean(0)
+    race = math.sin(math.pi * u) * (0.12 < u < 0.88)
+    if race > 0.05 and len(centers) > 1:
+        rng = np.random.default_rng(int(t * FPS)); segs = []; ks = sorted(centers)
+        for k1, k2 in zip(ks, ks[1:]):
+            if rng.random() < 0.22: segs.append((bolt_path(centers[k1], centers[k2], rng, 5, 0.12), 0.7))
+        f = add(f, draw_bolts(segs, 2.0, amp=0.6 * race))
+    return f
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -6525,6 +6669,9 @@ TRANSITIONS = {
     # Flash kit XI
     'speedpass': (lambda c, o: (c - .36, c + .36), lambda t, c, A, B, o: t_speedpass(t, c, A, B, c - .36, c + .36)),
     'emblemflare': (lambda c, o: (c - .70, c + .50), lambda t, c, A, B, o: t_emblemflare(t, c, A, B, c - .70, c + .50)),
+    # Flash kit XII
+    'zoomthru':  (lambda c, o: (c - .70, c + .46), lambda t, c, A, B, o: t_zoomthru(t, c, A, B, c - .70, c + .46)),
+    'speedramp': (lambda c, o: (c - .60, c + .36), lambda t, c, A, B, o: t_speedramp(t, c, A, B, c - .60, c + .36)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
@@ -6540,7 +6687,7 @@ TRANSITIONS = {
 }
 
 
-LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck', 'whiploop', 'memories', 'memories3d', 'memories5')
+LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck', 'whiploop', 'memories', 'memories3d', 'memories5', 'memtunnel')
 
 
 NO_MBLUR = {'futurepaper'}          # transitions that draw their own motion blur (sub-frame averaging would double them)
@@ -6570,6 +6717,9 @@ def build_trans():
     elif lp == 'slidebox':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_slidebox(t, last, a, end)))
+    elif lp == 'memtunnel':
+        c = CUTS[-1]; a, end = c - 1.20, c + 0.22
+        out.append((a, DUR + 1, lambda t: t_memtunnel(t, last, a, end)))
     elif lp == 'memories5':
         c = CUTS[-1]; a, end = c - 0.80, c + 0.22
         out.append((a, DUR + 1, lambda t: t_memories5(t, last, a, end)))
