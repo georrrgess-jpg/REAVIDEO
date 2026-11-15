@@ -1,6 +1,6 @@
 ---
 name: voidfx-edit
-description: The user's preferred editing style for short vertical fan edits ("voidfx" style). The current Dexter STANDARD is "The Perfect Girl" v11 (edits/perfect_girl, approved as adequate); the speedster standard is edits/flash. New edits start from a standard with edit/tools/new_edit.py. Use for ANY request to make, remake, recut or restyle an edit, TikTok/Reels/Shorts edit, fan edit, scene-pack edit or music edit, even if the style isn't named. Covers the style rules (beat-grid timing, themed transitions, grade, framing, loop ending, SFX level), the build workflow with the tools in edit/, and the QA checklist.
+description: The user's preferred editing style for short vertical fan edits ("voidfx" style). The current Dexter STANDARD is "The Perfect Girl" v11 (edits/perfect_girl, approved as adequate); the speedster standard is edits/still_friends (Flash x Are We Still Friends v8). New edits start from a standard with edit/tools/new_edit.py. Use for ANY request to make, remake, recut or restyle an edit, TikTok/Reels/Shorts edit, fan edit, scene-pack edit or music edit, even if the style isn't named. Covers the style rules (beat-grid timing, themed transitions, grade, framing, loop ending, SFX level), the build workflow with the tools in edit/, and the QA checklist.
 ---
 
 # voidfx edit style (the user's default)
@@ -87,7 +87,21 @@ retune grade and gain per shot.
 - Every transition previewed with `render.py sheet` before the final.
 - Avoid what the user rejected (glass light-streak glow, floating slides, water, glass shatter); see the preference log.
 
-**Second standard: speedster / superpower edits (user-approved 2026-11-10, with a caveat).**
+**Speedster / superpower standard (user-approved 2026-11-15): `edits/still_friends`.**
+The Flash × "ARE WE STILL FRIENDS?" v8 (the user's words: "This edit is adequate, make it a standard"). Like every
+"adequate" standard, it is **the floor, not the target**. Start with `new_edit.py <name> ... --from still_friends`
+(13 slots; carries MBLUR, BUMP, LETTERBOX). What it established, learned over 8 versions (see the preference log):
+- **Cinematic camera techniques beat pasted graphics** for the big moments: a zoom-through (`zoomthru`) that carries
+  one camera move across the drop, a speed ramp with a whip (`speedramp`), a lightning iris (`boltiris`).
+- **Anchor Flash graphics to the real suit emblem** in the footage (found as the brightest chest blob).
+- **A graphic into a transition** works when it's a real artefact from the show: the 2024 FLASH MISSING newspaper with
+  a camera move to the Iris West-Allen byline (`futurepaper`); the gold trail drawing the bolt (`trailbolt`).
+- **Loops: a world that holds the whole edit**, given ~1.4 s: the 3-D flight down a corridor of memories (`memtunnel`).
+- Rejected along the way: blue arcs over a face, glowing-eyes shots, dust/particle disintegration, abstract remnants,
+  a red match cut, a comet pass, drawn-emblem graphics, whip-pan and lightning-strike loops.
+- Don't run solo revision rounds; deliver and wait for feedback.
+
+**Earlier speedster standard (user-approved 2026-11-10, with a caveat): `edits/flash`.**
 `edits/flash/config.py`, The Flash × "SLAUGHTER HOUSE" v3, is the standard for edits about powered
 characters (speed, lightning, energy). Start one with:
 ```bash
@@ -422,6 +436,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-15: **The user made Still Friends v8 the speedster / superpower standard** ("This edit is adequate, make it a standard"). `new_edit.py --from still_friends`. Treat it as the minimum to beat.
 - 2026-11-15: Still Friends v7 feedback: "the aforementioned problems are still present" (opening, 0:10, loop). v8 took a different approach for all three -- cinematic camera techniques instead of overlaid graphics: `zoomthru` (a zoom-through that carries one camera move across the cut), `speedramp` (slow-mo into a fast ramp and whip), `memtunnel` (a 3-D flight down a corridor of memories, given more time). Lesson: when several polish rounds don't land, change the technique, not the parameters.
 - 2026-11-15: Still Friends v6 feedback: the 0:10 transition (red match) "very subpar"; loop needs to be better animated and more visually appealing; the opening more seamless and improved. v7: `speedpass`, `memories5`, `emblemflare`. Lessons from previews: avoid jagged per-point jitter for lightning (use `bolt_path`), soften every mask edge that moves (hard wake edges read as seams), keep flares tight on already-bright footage.
 - 2026-11-15: Still Friends v5 feedback: the drop emblem must be **the emblem attached to Barry** (the real one in the footage), seamless and high quality; the 0:10 warp replaced; the newspaper should match **the show's future newspaper** and pan to the byline ("Iris West-Allen"), cinematic; replace the 17 s animation; loop more cinematic and better animated; "the best flash edit you have made." v6: `emblempull`, `redmatch`, `futurepaper`, `boltiris`, `memories3d`. Echoes the 2026-11-10 lesson: anchor Flash effects to the real emblem in the footage.

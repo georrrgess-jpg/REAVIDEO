@@ -1,6 +1,6 @@
 """Start a new edit from a STANDARD.
 
-  python edit/tools/new_edit.py NAME --song media/song.mp3 --section media/NAME_section.json [--from perfect_girl|x_gon|new_person|hold_on|flash] [--pack PACK]
+  python edit/tools/new_edit.py NAME --song media/song.mp3 --section media/NAME_section.json [--from perfect_girl|still_friends|x_gon|new_person|hold_on|flash] [--pack PACK]
 
 Standards (user-approved):
   perfect_girl  Dexter x The Perfect Girl (Mareux) v11: THE Dexter standard (latest). Default. The user called it
@@ -20,7 +20,13 @@ Standards (user-approved):
               graphic (badge, newspaper, evidence bag, tape, blinds, plastic, crown, red, knife, case file),
               thematic slide-box loop. 16 slots, 3-3-2 rhythm on off-beat kicks.
   hold_on  Dexter x Hold On v3: the earlier Dexter standard (22 slots).
-  flash    Flash x Slaughter House v3: the standard for speedster / superpower edits (lightning, emblem,
+  still_friends  The Flash x ARE WE STILL FRIENDS? v8: THE speedster / superpower standard (latest; the user
+              called it "adequate": the minimum to beat). 13 slots on a 124 BPM half-time grid, a hush into the
+              drop. Cinematic camera techniques over pasted graphics: a zoom-through into the real chest emblem on
+              the drop, the gold trail drawing the bolt, a speed ramp with a whip, the 2024 FLASH MISSING newspaper
+              with a camera move to the byline, a lightning iris, and a 3-D flight down a corridor of memories as
+              the loop. Letterbox over the hush, motion blur, soft kick bumps. Use --from still_friends.
+  flash    Flash x Slaughter House v3: the previous speedster standard (lightning, emblem,
            speed). The user called it adequate but not yet at the quality they are pursuing: beat it.
 
 Run edit/tools/sections.py first to get the section json. This writes edits/NAME/config.py with
@@ -100,6 +106,21 @@ ROLES_PERFECT_GIRL = [
     'the one long hold: a smile in daylight (hard cut)',
     'END: sunglasses on (the loop dives into the first shot reflected in the lenses)',
 ]
+ROLES_STILL_FRIENDS = [
+    'OPEN (the hush, under letterbox): bloodied/unmasked close-up, eyes visible (zoom-through into the real emblem on the drop)',
+    'the drop: suit shot with the chest emblem glowing and visible (the zoom-through lands on it)',
+    'short: yelling / action close-up (whip out)',
+    'masked close-up, dark (the gold trail draws the bolt)',
+    'short: masked face, daylight (hard cut)',
+    'action: running / fireball (speed ramp out)',
+    'short: suit with lightning crackling (hard cut)',
+    'masked, dark, lit by practicals (the future newspaper out)',
+    'short: masked close-up (hard cut)',
+    'short: fire-lit mask, PUNCH on a kick',
+    'short: blue-lit mask (whip out)',
+    'short: unmasked look up, daylight (lightning iris out)',
+    'END (3 steps): unmasked in the suit, calm (the memory-corridor loop back to OPEN)',
+]
 ROLES_X_GON = [
     'OPEN: daylight face close-up with an expression change (the opener graphic rises over it on the bass)',
     'short dark beat (hallway, night): hard cut into the first lyric hit',
@@ -142,7 +163,8 @@ TEMPLATES = {'perfect_girl': (os.path.join(ROOT, 'edits', 'perfect_girl', 'confi
              'x_gon': (os.path.join(ROOT, 'edits', 'x_gon', 'config.py'), ROLES_X_GON, 'dexter_mix_1440p'),
              'new_person': (os.path.join(ROOT, 'edits', 'new_person', 'config.py'), ROLES_NEW_PERSON, 'dexter_mix_1440p'),
              'hold_on': (os.path.join(ROOT, 'edits', 'hold_on', 'config.py'), ROLES_HOLD_ON, 'dexter_mix_1440p'),
-             'flash': (os.path.join(ROOT, 'edits', 'flash', 'config.py'), ROLES_FLASH, 'flash_all_seasons')}
+             'flash': (os.path.join(ROOT, 'edits', 'flash', 'config.py'), ROLES_FLASH, 'flash_all_seasons'),
+             'still_friends': (os.path.join(ROOT, 'edits', 'still_friends', 'config.py'), ROLES_STILL_FRIENDS, 'flash_all_seasons')}
 KEEP = ('beats', 'out', 'out_opts', 'fx', 'punch', 'z', 'cy', 'track', 'frame', 'sat', 'rk', 'yk', 'con', 'tint', 'gain', 'push')
 
 
