@@ -552,6 +552,22 @@ def sfx_for(name, c, o, up):
     elif name == 'memories':
         put(whoosh(0.30, 3000, 600, peak=0.2), c - 0.85, gain=0.06); put(shimmer(0.8), c - 0.62, gain=0.035)
         put(whoosh(0.45, 300, 4000, peak=0.5), c - 0.62, pan=-0.5, gain=0.06); put(whoosh(0.30, 500, 4500, peak=0.9), c - 0.20, gain=0.06)
+    elif name == 'emblempull':
+        put(whoosh(0.50, 150, 1500, q=0.7, peak=0.95), c - 0.50, gain=0.05); put(shimmer(0.4), c - 0.32, gain=0.03)
+        put(boom(1.0, 55, 26), c, gain=0.15); put(zap(0.5), c, gain=0.05); put(whoosh(0.5, 2500, 300, peak=0.15), c, gain=0.05)
+    elif name == 'redmatch':
+        put(whoosh(0.34, 200, 3000, q=0.8, peak=0.95), c - 0.34, gain=0.07); put(boom(0.6, 60, 30), c, gain=0.12)
+        put(whoosh(0.40, 3000, 200, q=0.8, peak=0.1), c, gain=0.05)
+    elif name == 'futurepaper':
+        put(whoosh(0.30, 2000, 400, peak=0.6), c - 1.20, gain=0.06); put(boom(0.25, 140, 60), c - 0.96, gain=0.09); put(crinkle(0.25), c - 0.96, gain=0.05)
+        put(whoosh(0.45, 300, 900, q=0.6, peak=0.5), c - 0.96, gain=0.04); put(shimmer(0.4), c - 0.50, gain=0.025)
+        put(whoosh(0.40, 400, 3500, peak=0.85), c - 0.22, gain=0.06)
+    elif name == 'boltiris':
+        put(zap(0.40), c - 0.36, gain=0.05); put(whoosh(0.36, 2000, 300, peak=0.9), c - 0.36, gain=0.05)
+        put(boom(0.5, 70, 35), c, gain=0.10); put(zap(0.3), c, gain=0.04)
+    elif name == 'memories3d':
+        put(whoosh(0.30, 3000, 600, peak=0.2), c - 0.80, gain=0.06); put(shimmer(0.8), c - 0.58, gain=0.035)
+        put(whoosh(0.50, 300, 4000, peak=0.5), c - 0.58, pan=-0.5, gain=0.06); put(whoosh(0.30, 500, 4500, peak=0.9), c - 0.20, gain=0.06)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)
