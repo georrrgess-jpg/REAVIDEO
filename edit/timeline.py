@@ -5256,11 +5256,13 @@ def t_tornado(t, c, A, B, a, b):
     """The frame twists into Barry's speed tornado -- the picture swirling inward, wind streaks, gold lightning ribbons
     orbiting the eye -- then unwinds into the next shot."""
     cx, cy = W / 2, 0.45 * H; r, th = _polar(cx, cy)
-    if t < c: k = ease(clamp((t - a) / (c - a))); src = layer(A, t)
-    else: k = 1 - ease(clamp((t - c) / (b - c))); src = layer(B, t)
+    if t < c: k = ease(clamp((t - a) / (c - a)))
+    else: k = 1 - ease(clamp((t - c) / (b - c)))
+    mixb = ease(clamp((t - (c - 0.12)) / 0.24))                                                  # both shots spin together through the eye
+    src = layer(A, min(t, c - 1e-3)) * (1 - mixb) + layer(B, t) * mixb
     acc = None
     for j, sp in enumerate((0.92, 1.0, 1.08)):                                                   # rotational motion blur
-        tw = 8.5 * k * sp * np.exp(-r / (0.55 * W))
+        tw = 4.2 * k * sp * np.exp(-r / (0.45 * W))
         rs = r * (1 + 0.20 * k); ths = th - tw
         mx = (cx + rs * np.cos(ths)).astype(np.float32); my = (cy + rs * np.sin(ths)).astype(np.float32)
         im = cv2.remap(src, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
@@ -5274,8 +5276,9 @@ def t_tornado(t, c, A, B, a, b):
         ang = a0 + ss_ * 2.6; rad = 110 + 620 * ss_
         pts = np.stack([cx + rad * np.cos(ang), cy + rad * np.sin(ang) * 1.15], 1) + rng.normal(0, 6, (40, 2))
         segs.append((pts, 0.9))
-    f = add(f, draw_bolts(segs, 3.0, amp=1.1 * k))
-    return f + 0.30 * math.exp(-abs(t - c) * 25)
+    f = add(f, draw_bolts(segs, 4.2, amp=1.5 * k))
+    f = f + (np.exp(-(r / 90) ** 2) * 0.9 * k)[..., None] * np.float32([0.55, 0.85, 1.0])            # a hot eye at the centre
+    return f + 0.25 * math.exp(-abs(t - c) * 25)
 
 
 # ---- Flash Time
@@ -5290,20 +5293,21 @@ def t_flashtime(t, c, A, B, a, b):
     behind = ss(hx - 10, hx - 60, XX)[..., None] if t < te else np.ones((H, W, 1), np.float32)
     f = fa * (1 - behind) + fb * behind
     l = luma(f)[..., None]; cool = l * np.float32([1.30, 1.0, 0.70])
-    f = f * (1 - 0.65 * k) + (cool * 0.75 + f * 0.25) * 0.65 * k
+    f = f * (1 - 0.85 * k) + (cool * 0.80 + f * 0.20) * 0.85 * k
     rng = np.random.default_rng(12); mm = np.zeros((H // 2, W // 2), np.float32)
     fall = max(0.0, t - c) ** 2 * 1800
     for _ in range(140):
-        x, y, s_ = rng.uniform(0, W), rng.uniform(0, H), rng.uniform(1, 4)
+        x, y, s_ = rng.uniform(0, W), rng.uniform(0, H), rng.uniform(1, 2.5)
         cv2.ellipse(mm, (int(x / 2), int((y + fall * s_ / 2) / 2)), (max(1, int(s_ / 2)), max(1, int(s_ * 1.6 / 2))), 0, 0, 360, 1.0, -1, cv2.LINE_AA)
-    mm = cv2.resize(mm, (W, H)); motes = (mm * 0.7 + cv2.GaussianBlur(mm, (0, 0), 4) * 1.2)[..., None] * np.float32([1.0, 0.92, 0.85])
+    mm = cv2.resize(mm, (W, H)); motes = (mm * 1.0 + cv2.GaussianBlur(mm, (0, 0), 4) * 1.6)[..., None] * np.float32([1.0, 0.92, 0.85])
     f = f + motes * k
     if ts <= t < c + 0.25:                                                                       # the gold streak
         xs = np.linspace(-0.25 * W, min(hx, 1.25 * W), 60); ys = path_y(xs)
         jit = np.random.default_rng(int(t * FPS)).normal(0, 7, (60, 2))
         pts = np.stack([xs, ys], 1) + jit
         tail = 1 - ease(clamp((t - te) / 0.20))
-        f = add(f, draw_bolts([(pts, 1.0)], 5.0, amp=1.3 * tail))
+        f = add(f, draw_bolts([(pts, 1.0)], 9.0, amp=1.9 * tail))
+        f = add(f, draw_bolts([(pts + np.array([0, 14]), 0.6)], 4.0, glow=np.float32([0.15, 0.25, 1.0]), amp=1.0 * tail))   # red under-streak
         hy = float(path_y(np.array([hx]))[0])
         f = f + (np.exp(-(((XX - hx) / 70) ** 2 + ((YY - hy) / 40) ** 2)) * 1.4 * tail * (t < te))[..., None] * np.float32([0.55, 0.85, 1.0])
     return f
