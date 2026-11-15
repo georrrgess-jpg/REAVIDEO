@@ -10,6 +10,11 @@ drop, chroma snap on the silent steps, light slabs as glue, THE FLASH title as a
 STAR Labs cortex monitor wall as the loop.
 Look: warm cinematic grade with red and gold kept, letterbox over the build that opens on the drop, bumps on the big
 kicks, motion blur in every transition. Plain 720p extract (no AI upscaling).
+v2 (user: "drastically improve", more animation on the beat, a stronger loop): kit XIV -- no plain cuts left
+(stutter flash-frames, a slanted shear, an anamorphic flare, the reference's collage frame), light slabs on every
+kick and snare, the real chest emblem pulsing on the hits, the frame splitting into slabs on the 808's silent steps,
+and the loop rebuilt as the cortex surge (a curved wall, lightning jumping screen to screen, every screen flipping to
+the first shot, a rush back in).
 Build: bash ../../edit/build.sh .
 """
 W, H, FPS = 1080, 1920, 60
@@ -34,20 +39,20 @@ def g(sat, gain, **kw): return dict(WARM, sat=sat, gain=gain, **kw)
 SHOTS = [
  dict(name='emblem_walk', out='prism', fx=['bump'], pack=ALL, src=48.95, x=0.50, push=(1.00, 1.06), **g(0.55, 1.00)),   # FA14 walks out, emblem lit blue
  dict(name='mask_blue', beats=4, out='triptych', fx=['bump'], pack=ALL, src=131.75, x=0.50, push=(1.00, 1.06), **g(0.60, 1.10)),   # FA66 cowl, blue bokeh
- dict(name='streaks', beats=2, out='cut', fx=['bump'], pack=S5, src=303.93, x=0.55, push=(1.00, 1.05), **g(0.60, 1.00)),   # F5161 lightning streaks past him
- dict(name='run_gold', beats=2, out='chromasnap', fx=['bump'], pack=ALL, src=4.80, x=0.50, push=(1.00, 1.05), **g(0.60, 1.00)),   # FA1 crouch, gold lightning
- dict(name='grin', beats=2, out='slab', out_opts={'col': 'gold'}, fx=['bump'], pack=ALL, src=56.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.20)),   # FA19 masked grin
- dict(name='vibrate', beats=2, out='cut', fx=['bump'], pack=S5, src=280.78, x=0.50, push=(1.00, 1.05), **g(0.60, 1.05)),   # F5151 vibrating, lightning
- dict(name='landing', beats=2, out='whip', out_opts={'d': 1}, punch={'z': 1.18, 'flash': 0.12}, fx=['bump'], pack=S2B, src=198.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.05)),   # F93 crouch up into his eyes
- dict(name='dark_bolts', beats=2, out='cut', fx=['bump'], pack=BLZ, src=20.20, x=0.50, push=(1.00, 1.05), **g(0.60, 1.25)),   # FB64 lightning in a dark alley
+ dict(name='streaks', beats=2, out='stutter', fx=['bump', 'emblempulse', 'slabhit'], pack=S5, src=303.93, x=0.55, push=(1.00, 1.05), **g(0.60, 1.00)),   # F5161 lightning streaks past him
+ dict(name='run_gold', beats=2, out='chromasnap', fx=['bump', 'slabhit'], pack=ALL, src=4.80, x=0.50, push=(1.00, 1.05), **g(0.60, 1.00)),   # FA1 crouch, gold lightning
+ dict(name='grin', beats=2, out='slab', out_opts={'col': 'gold'}, fx=['bump', 'slabhit'], pack=ALL, src=56.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.20)),   # FA19 masked grin
+ dict(name='vibrate', beats=2, out='shear', fx=['bump', 'emblempulse', 'slabhit', 'gapsplit'], pack=S5, src=280.78, x=0.50, push=(1.00, 1.05), **g(0.60, 1.05)),   # F5151 vibrating, lightning
+ dict(name='landing', beats=2, out='whip', out_opts={'d': 1}, fx=['bump', 'slabhit'], pack=S2B, src=198.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.05)),   # F93 crouch up into his eyes
+ dict(name='dark_bolts', beats=2, out='flare', fx=['bump', 'emblempulse', 'slabhit', 'gapsplit'], pack=BLZ, src=20.20, x=0.50, push=(1.00, 1.05), **g(0.60, 1.25)),   # FB64 lightning in a dark alley
  dict(name='golden', beats=4, out='title', fx=['bump'], pack=S1, src=122.80, x=0.50, push=(1.00, 1.06), **g(0.55, 1.00)),   # F135 golden hour turn
- dict(name='lunge', beats=2, out='slab', out_opts={'col': 'cyan'}, fx=['bump'], pack=BLZ, src=35.60, x=0.50, push=(1.00, 1.05), **g(0.60, 1.20)),   # FB5 lightning lunge
- dict(name='mask_xcu', beats=2, out='cut', fx=['bump'], pack=ALL, src=54.90, x=0.50, push=(1.00, 1.05), **g(0.55, 1.05)),   # FA18 cowl extreme close-up
- dict(name='debris', beats=2, out='prism', fx=['bump'], pack=S1, src=279.00, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # F100 debris storm
- dict(name='suit_smile', beats=2, out='chromasnap', fx=['bump'], pack=ALL, src=93.00, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # FA49 suit, smile
- dict(name='mask_bright', beats=2, out='whip', out_opts={'d': -1, 'vertical': True}, fx=['bump'], pack=ALL, src=85.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # FA46 cowl, daylight
- dict(name='night_suit', beats=2, out='cut', fx=['bump'], pack=S5, src=73.50, x=0.50, push=(1.00, 1.05), **g(0.60, 1.10)),   # F533 night street
- dict(name='lab_suit', beats=3, out='cortex', fx=['bump'], pack=BLZ, src=167.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.15)),   # FB88 suited up in STAR Labs
+ dict(name='lunge', beats=2, out='slab', out_opts={'col': 'cyan'}, fx=['bump', 'slabhit'], pack=BLZ, src=35.60, x=0.50, push=(1.00, 1.05), **g(0.60, 1.20)),   # FB5 lightning lunge
+ dict(name='mask_xcu', beats=2, out='collage', fx=['bump', 'slabhit', 'gapsplit'], pack=ALL, src=54.90, x=0.50, push=(1.00, 1.05), **g(0.55, 1.05)),   # FA18 cowl extreme close-up
+ dict(name='debris', beats=2, out='prism', fx=['bump', 'slabhit'], pack=S1, src=279.00, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # F100 debris storm
+ dict(name='suit_smile', beats=2, out='chromasnap', fx=['bump', 'emblempulse', 'slabhit'], pack=ALL, src=93.00, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # FA49 suit, smile
+ dict(name='mask_bright', beats=2, out='whip', out_opts={'d': -1, 'vertical': True}, fx=['bump', 'slabhit'], pack=ALL, src=85.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # FA46 cowl, daylight
+ dict(name='night_suit', beats=2, out='stutter', fx=['bump', 'emblempulse', 'slabhit', 'gapsplit'], pack=S5, src=73.50, x=0.50, push=(1.00, 1.05), **g(0.60, 1.10)),   # F533 night street
+ dict(name='lab_suit', beats=3, out='cortex2', fx=['bump', 'emblempulse'], pack=BLZ, src=167.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.15)),   # FB88 suited up in STAR Labs
 ]
 for s in SHOTS: s.setdefault('z', 1.0); s.setdefault('frame', 'auto')
 TEXT = []

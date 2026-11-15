@@ -397,6 +397,22 @@ anticipation moves and the block starts carry the hits.
 | `title` | **graphic into a transition:** THE FLASH (Inter Display Black Italic, burnished gold, hot rim, glow, drop shadow) builds over a quiet bar letter by letter, rising out of a baseline with speed blur, THE tracking in above, a glint across the metal; on the pickup the letters become windows onto the next shot and the camera dives into the L's stem (distance-transform deepest point) until the next shot is the frame | the quiet bar before a re-entry | 1.44 + 0.30 s |
 | `cortex` (loop) | **the STAR Labs cortex wall:** the last shot becomes one monitor as the camera pulls back; the screens around it flicker on in a ripple, each playing another shot of the edit live, light spilling into the haze; the camera glides diagonally (slight roll) to the screen playing the first shot, a gold trace runs around its bezel, and it pushes in until that screen is exactly the frame | loop ending | 1.25 + 0.20 s |
 
+
+**Flash kit XIV (Remedy v2, 2026-11-15).** The user found v1 too sparse ("drastically improve... significantly more
+animations, transitions... keep up with the beat... don't be outlandish") and the loop underwhelming. v2 leaves no
+plain cuts and animates every hit:
+
+| name | what | use for | length |
+|---|---|---|---|
+| `fx=['slabhit']` | a thin light slab streaks across the top or bottom band (never the face line) on every kick and snare, alternating direction and colour | every drop shot | 0.24 s per hit |
+| `fx=['emblempulse']` | on the big kicks and snares the real chest emblem (per-frame brightest chest blob) flares and throws an expanding ring of light | shots with the emblem visible | 0.40 s per hit |
+| `fx=['gapsplit']` | on the 808's silent step (config `GAPS`) the frame breaks into three slanted slabs that slide apart with lit seams, drift through the silence and snap back on the next hit; held into a following `shear` | shots containing a silent step | one step |
+| `stutter` | flash frames: on the 16ths before the cut the next shot strobes in for two frames (pushed in, colour split), then lands with a settle. In `NO_MBLUR` | into a hit | 0.26 + 0.20 s |
+| `shear` | the frame shears along two slanted seams; the bands slide away one after another in alternating directions, carrying the next shot in with speed blur, the seams glowing | after a `gapsplit` silence | 0.20 + 0.22 s |
+| `flare` | anamorphic flare: a blue-white source drifts across below the face, streak and lens ghosts brighten, it blooms over the cut and the next shot comes out of the glare | into a calm bar | 0.22 + 0.26 s |
+| `collage` | the reference's collage frame: the shot shrinks into a panel, four more pop in on the 16ths (other shots, live, white borders, shadows, blurred ground), the next shot's panel takes the frame on the beat | a loud kick mid-edit | 0.32 + 0.34 s |
+| `cortex2` (loop) | **the cortex surge:** the camera hauls back and the last shot becomes the centre monitor of a curved STAR Labs wall (camera swings round the curve, every screen live); a surge of lightning jumps screen to screen outward and each one flashes over to the first shot; the camera rushes back into the centre screen and lands on the start. Replaces the flat `cortex` wall ("underwhelming") | loop ending | 1.30 + 0.20 s |
+
 ## Workflow for a new edit
 
 The user's stored footage is listed in `scenepacks/README.md` (Dexter S1, S2, S4 and mixes; The Flash S1, S2, S3, S5, all seasons, Blitzkrieg; plus a second voidfx reference edit). If `media/scenepacks/` is empty, run `bash scenepacks/fetch.sh [name-filter]` first. Shot lists are already in `scenepacks/catalog/<name>.json`. Choose the pack that matches the character the user asks for, and mix packs of the same show when one pack is too short. Put other inputs (song, new footage) in `media/`, which is gitignored and never committed. Tools need ffmpeg and `pip install numpy scipy opencv-python-headless soundfile`. The face model comes from rea-video's cache, `~/.cache/rea-video/models/face_detection_yunet_2023mar.onnx`. If that file is missing, get it from `https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx`; its sha256 starts with `8f2383e4`.
@@ -450,6 +466,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-15: Remedy v1 feedback: "drastically improve... significantly more animations, transitions... keep up with the beat... be creative with the graphics but don't be outlandish"; the flat monitor-wall loop was "underwhelming". Rule: on a beat-driven drop, animate every kick/snare (slabs, emblem pulses), give silent steps their own move, leave no plain cuts, and make the loop the biggest moment.
 - 2026-11-15: **The user made Still Friends v8 the speedster / superpower standard** ("This edit is adequate, make it a standard"). `new_edit.py --from still_friends`. Treat it as the minimum to beat.
 - 2026-11-15: Still Friends v7 feedback: "the aforementioned problems are still present" (opening, 0:10, loop). v8 took a different approach for all three -- cinematic camera techniques instead of overlaid graphics: `zoomthru` (a zoom-through that carries one camera move across the cut), `speedramp` (slow-mo into a fast ramp and whip), `memtunnel` (a 3-D flight down a corridor of memories, given more time). Lesson: when several polish rounds don't land, change the technique, not the parameters.
 - 2026-11-15: Still Friends v6 feedback: the 0:10 transition (red match) "very subpar"; loop needs to be better animated and more visually appealing; the opening more seamless and improved. v7: `speedpass`, `memories5`, `emblemflare`. Lessons from previews: avoid jagged per-point jitter for lightning (use `bolt_path`), soften every mask edge that moves (hard wake edges read as seams), keep flares tight on already-bright footage.

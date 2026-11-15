@@ -106,6 +106,9 @@ def layer(i, t, ez=1.0):
         elif name == 'trails': f = trails_fx(f, i, t, s)
         elif name == 'crackle_build': f = crackle_fx(f, i, t, s, build=True)
         elif name == 'pulse': f = pulse_fx(f, t, s)
+        elif name == 'slabhit': f = slabhit_fx(f, t, s)
+        elif name == 'gapsplit': f = gapsplit_fx(f, t, s)
+        elif name == 'emblempulse': f = emblempulse_fx(f, i, t, s)
         elif name == 'ekg': f = ekg_overlay(f, t, s, flat_from=(s['end'] - 0.30) if s.get('out') == 'flatline' else None)
         else: raise ValueError('unknown fx %r on shot %d' % (name, i))
     if s.get('projected') and not _K4.get('raw'): f = proj_look(f, t, i)
@@ -6938,6 +6941,273 @@ def t_cortex(t, A, a, end):
     return f
 
 
+# ==== Flash kit XIV (Remedy v2): beat-synced overlays, stutter, shear, anamorphic flare, collage, cortex surge ====
+def slabhit_fx(f, t, s):
+    """A thin slab of light streaks across the top or bottom band (never the face line) on every kick and snare."""
+    for th in sorted(set(_hits('KICKS')) | set(_hits('SNARES'))):
+        if not (0 <= t - th < 0.24) or not (s['start'] - 0.05 <= th < s['end']): continue
+        k = int(round((th - GRID0) / HALF))
+        y0 = (0.085 if k % 2 == 0 else 0.905) * H
+        hx = (W + 60 - (t - th) * 2.7 * W / 0.20) if k % 4 < 2 else (-60 + (t - th) * 2.7 * W / 0.20)
+        if k % 4 < 2: f = _slab(f, t, y0, 0.038 * H, hx, 1.3 * W, ('cyan', 'gold', 'red', 'white')[k % 4], 300 * k)
+        else:                                                    # left to right: mirror the frame, draw, mirror back
+            f = np.ascontiguousarray(_slab(np.ascontiguousarray(f[:, ::-1]), t, y0, 0.038 * H, W - hx, 1.3 * W, ('cyan', 'gold', 'red', 'white')[k % 4], 300 * k)[:, ::-1])
+    return f
+
+
+GAPS = (11, 15, 19, 27, 31, 35)                                  # the 808's silent steps
+
+
+def gapsplit_fx(f, t, s):
+    """On the 808's silent step the picture breaks into three slanted slabs that slide apart (lit seams, the middle
+    one pushed in), hold and drift through the silence, and snap back together on the next hit."""
+    for gs in GAPS:
+        tg = GRID0 + gs * HALF
+        if not (s['start'] + 0.1 <= tg < s['end'] - 0.1) or not (tg <= t < tg + HALF): continue
+        u = (t - tg) / HALF
+        hold = s.get('out') == 'shear' and tg + HALF >= s['end'] - 0.01    # the shear carries the split on
+        amp = eout(clamp(u / 0.14)) * (1.0 if hold else 1 - ein(clamp((u - 0.84) / 0.16)))
+        if amp < 0.01: return f
+        v = YY + (XX - W / 2) * _TILT
+        b1, b2 = 0.36 * H, 0.66 * H
+        m1 = ss(b1 - 1.5, b1 + 1.5, v); m2 = ss(b2 - 1.5, b2 + 1.5, v)
+        dxs = (-0.055 * W * amp - 0.01 * W * u, 0.045 * W * amp + 0.01 * W * u, -0.05 * W * amp - 0.012 * W * u)
+        bands = [_shift(f, dxs[0], 0, 1.0 + 0.02 * amp, W / 2, 0.42 * H), _shift(f, dxs[1], 0, 1.0 + 0.07 * amp, W / 2, 0.42 * H), _shift(f, dxs[2], 0, 1.0 + 0.02 * amp, W / 2, 0.42 * H)]
+        out = bands[0] * (1 - m1[..., None]) + bands[1] * (m1 - m2)[..., None] + bands[2] * m2[..., None]
+        seam = np.exp(-((v - b1) / 2.2) ** 2) + np.exp(-((v - b2) / 2.2) ** 2)
+        gl = cv2.resize(cv2.GaussianBlur(cv2.resize(seam, (W // 4, H // 4), interpolation=cv2.INTER_AREA), (0, 0), 5), (W, H))
+        return out * (1 - 0.10 * amp) + (seam[..., None] * 0.9 + gl[..., None] * SLAB_COL['gold'] * 2.0) * amp
+    return f
+
+
+def emblempulse_fx(f, i, t, s):
+    """On every big kick inside the shot the real chest emblem (found per frame as the brightest chest blob) flares and
+    throws a ring of light that expands and fades."""
+    hits = [th for th in _hits('BUMP_KICKS') + _hits('SNARES') if s['start'] - 0.02 <= th <= t and t - th < 0.40]
+    if not hits: return f
+    k = int(round((PRE + t - s['start']) * FPS)) // 4; key = ('embp', i, k)
+    if key not in _K4: _K4[key] = _bright_blob(shot(i, s['start'] + (k * 4) / FPS - PRE))
+    ex, ey, Re = _K4[key]; Re = min(max(Re, 0.05 * W), 0.16 * W)
+    add_ = np.zeros((H, W), np.float32); ring = np.zeros((H, W), np.float32)
+    for th in hits:
+        u = (t - th) / 0.40; R = Re * (1.0 + 2.6 * eout(u)); a = (1 - u) ** 1.5
+        cv2.circle(ring, (int(ex), int(ey)), int(R), float(a), max(2, int(5 * (1 - u))), cv2.LINE_AA)
+        add_ += a * np.exp(-((XX - ex) ** 2 + (YY - ey) ** 2) / (2 * (0.8 * Re) ** 2)) * math.exp(-(t - th) / 0.10)
+    gl = cv2.resize(cv2.GaussianBlur(cv2.resize(ring, (W // 4, H // 4), interpolation=cv2.INTER_AREA), (0, 0), 4), (W, H))
+    return f + ring[..., None] * np.float32([0.85, 0.95, 1.0]) + gl[..., None] * GOLD_GLOW * 2.2 + add_[..., None] * np.float32([0.6, 0.85, 1.0]) * 0.8
+
+
+def t_stutter(t, c, A, B, a, b):
+    """Flash frames: on the 16ths before the cut the next shot strobes in for two frames at a time (pushed in, colour
+    split), the outgoing shot pushing in between; on the beat it lands with a short settle."""
+    cx, cy = W / 2, 0.42 * H
+    if t < c:
+        u = clamp((t - a) / (c - a))
+        for tf in (c - 0.24, c - 0.12, c - 0.06):
+            if tf <= t < tf + 0.034:
+                im = _rgb_zoom(layer(B, t), (1.27, 1.25, 1.23), cx, cy)
+                return im * 1.15 + 0.10
+        return _rgb_zoom(layer(A, t), (1 + 0.08 * u - 0.006 * u, 1 + 0.08 * u, 1 + 0.08 * u + 0.006 * u), cx, cy)
+    v = clamp((t - c) / (b - c)); e = eout(v); z = lerp(1.16, 1.0, e); sp = 0.012 * (1 - e)
+    return _rgb_zoom(layer(B, t), (z * (1 + sp), z, z * (1 - sp)), cx, cy) + 0.20 * math.exp(-(t - c) * 25)
+
+
+def t_shear(t, c, A, B, a, b):
+    """The frame shears along two slanted seams (the slab angle): the three bands slide away in alternating directions
+    one after another, each carrying the next shot in behind it with speed blur, the seams glowing white and gold."""
+    v = YY + (XX - W / 2) * _TILT
+    b1, b2 = 0.36 * H, 0.66 * H
+    m = [1 - ss(b1 - 1.5, b1 + 1.5, v), ss(b1 - 1.5, b1 + 1.5, v) - ss(b2 - 1.5, b2 + 1.5, v), ss(b2 - 1.5, b2 + 1.5, v)]
+    out = np.zeros((H, W, 3), np.float32); A_ = layer(A, t) if t < c + 0.16 else None; B_ = layer(B, t)
+    seams = 0.0
+    for k in range(3):
+        s0 = c - 0.12 + 0.06 * k; d = (-1, 1, -1)[k]
+        p = clamp((t - s0) / 0.13); e = eout(p) if p > 0 else 0.0
+        if p <= 0:
+            pre = ein(clamp((t - a) / (s0 - a))) * 0.02 * W * d
+            im = _shift(A_, pre)
+        elif p >= 1: im = B_
+        else:
+            offA = d * W * e; offB = -d * W * (1 - e)
+            Ai = _hblur(_shift(A_, offA), 1 + 120 * (1 - abs(2 * e - 1))) if A_ is not None else B_
+            Bi = _hblur(_shift(B_, offB), 1 + 120 * (1 - e))
+            mb = ss(-2, 2, XX - offB) if d < 0 else 1 - ss(-2, 2, XX - (W + offB))   # B's edge travels with it
+            im = Ai * (1 - mb[..., None]) + Bi * mb[..., None]
+        out += im * m[k][..., None]
+    sl = np.exp(-((v - b1) / 2.0) ** 2) + np.exp(-((v - b2) / 2.0) ** 2)
+    gl = cv2.resize(cv2.GaussianBlur(cv2.resize(sl, (W // 4, H // 4), interpolation=cv2.INTER_AREA), (0, 0), 6), (W, H))
+    amp = math.sin(math.pi * clamp((t - a) / (b - a)))
+    return out + (sl[..., None] + gl[..., None] * SLAB_COL['gold'] * 2.4) * amp + 0.12 * math.exp(-abs(t - c) * 30)
+
+
+def t_flare(t, c, A, B, a, b):
+    """Cinematic anamorphic flare: a blue-white light source drifts across below the face line, its long horizontal
+    streak and lens ghosts brightening; at the cut it blooms over the frame and the next shot comes out of the glare."""
+    u = clamp((t - a) / (b - a)); px = lerp(1.15 * W, -0.15 * W, u); py = 0.60 * H
+    blo = math.exp(-((t - c) / 0.07) ** 2)
+    f = layer(A, t) if t < c else layer(B, t)
+    if t >= c: f = f * (1 + 0.35 * math.exp(-(t - c) / 0.08))
+    inten = 0.5 + 1.5 * math.exp(-((t - c) / 0.12) ** 2)
+    dy = YY - py; dx = XX - px
+    streak = np.exp(-(dy / 5.0) ** 2) * np.exp(-np.abs(dx) / (0.9 * W)) * 1.2 + np.exp(-(dy / 26.0) ** 2) * np.exp(-np.abs(dx) / (0.55 * W)) * 0.6
+    core = np.exp(-(dx ** 2 + dy ** 2) / (2 * 22.0 ** 2)) * 2.0 + np.exp(-(dx ** 2 + dy ** 2) / (2 * 120.0 ** 2)) * 0.5
+    flare = streak[..., None] * np.float32([1.0, 0.72, 0.38]) + core[..., None] * np.float32([1.0, 0.95, 0.9])
+    for k, (sc, r, col) in enumerate(((-0.6, 70, (1.0, 0.6, 0.3)), (-1.1, 34, (0.4, 0.9, 1.0)), (0.45, 50, (0.9, 0.5, 1.0)))):
+        gx, gy = W / 2 + (px - W / 2) * sc, H / 2 + (py - H / 2) * sc
+        disc = np.clip(1 - np.sqrt((XX - gx) ** 2 + (YY - gy) ** 2) / r, 0, 1) ** 0.6
+        flare = flare + disc[..., None] * np.float32(col) * 0.10
+    return f + flare * inten * 0.55 + blo * 0.40
+
+
+def _cover(img, x0, y0, x1, y1, fy=0.40):
+    """Map a full frame into the rectangle (cover-crop, the face line kept in view): returns image and mask."""
+    pw, ph = max(2.0, x1 - x0), max(2.0, y1 - y0); s = max(pw / W, ph / H)
+    ty = min(y0, max(y1 - s * H, (y0 + y1) / 2 - s * fy * H))
+    M = np.float32([[s, 0, (x0 + x1) / 2 - s * W / 2], [0, s, ty]])
+    im = cv2.warpAffine(img, M, (W, H), flags=cv2.INTER_AREA if s < 0.6 else cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    m = np.zeros((H, W), np.float32); m[int(max(0, y0)):int(min(H, y1)), int(max(0, x0)):int(min(W, x1))] = 1
+    return im, m
+
+
+def t_collage(t, c, A, B, a, b):
+    """The reference's collage frame: the shot shrinks into a panel and four more panels pop in on the 16ths (other
+    moments of the edit, live), white-bordered on a dark, blurred ground; on the beat the next shot's panel takes the
+    frame while the rest slide away."""
+    L = [(0.04, 0.05, 0.60, 0.44, A), (0.64, 0.05, 0.96, 0.27, 2), (0.64, 0.30, 0.96, 0.58, 7), (0.04, 0.48, 0.60, 0.95, B), (0.64, 0.61, 0.96, 0.95, 12)]
+    pops = (a, c - 0.24, c - 0.18, c - 0.12, c - 0.06)
+    if t < c:
+        u = clamp((t - a) / 0.14); e = eout(u)
+        bg = cv2.GaussianBlur(cv2.resize(layer(A, t), (W // 8, H // 8), interpolation=cv2.INTER_AREA), (0, 0), 3)
+        f = cv2.resize(bg, (W, H)) * lerp(1.0, 0.30, e)
+    v = clamp((t - c) / 0.18); ev = eout(v)
+    if t >= c:
+        bg = cv2.GaussianBlur(cv2.resize(layer(B, t), (W // 8, H // 8), interpolation=cv2.INTER_AREA), (0, 0), 3)
+        f = cv2.resize(bg, (W, H)) * lerp(0.30, 1.0, ev)
+    order = [0, 1, 2, 4, 3]
+    for j in order:
+        x0, y0, x1, y1, sh = L[j]
+        if t < pops[j]: continue
+        if j == 0:
+            if t >= c: continue
+            r = (lerp(0, x0, e) * W, lerp(0, y0, e) * H, lerp(1, x1, e) * W, lerp(1, y1, e) * H)
+            img = layer(A, t)
+        elif j == 3:
+            r0 = (x0 * W, y0 * H, x1 * W, y1 * H)
+            r = tuple(lerp(r0[q], (0, 0, W, H)[q], ev) for q in range(4)) if t >= c else r0
+            img = layer(B, t)
+        else:
+            if t >= c:
+                dxo = (1.2 * W) * ev; r = (x0 * W + dxo, y0 * H, x1 * W + dxo, y1 * H)
+            else: r = (x0 * W, y0 * H, x1 * W, y1 * H)
+            sh_ = SHOTS[sh]; img = layer(sh, sh_['start'] + 0.25 + (t - pops[j]))
+        pp = eout(clamp((t - pops[j]) / 0.08)) if j else 1.0
+        if pp < 1:
+            cxr, cyr = (r[0] + r[2]) / 2, (r[1] + r[3]) / 2; sc = lerp(0.80, 1.0, pp)
+            r = (cxr + (r[0] - cxr) * sc, cyr + (r[1] - cyr) * sc, cxr + (r[2] - cxr) * sc, cyr + (r[3] - cyr) * sc)
+        im, m = _cover(img, *r)
+        if f is None: f = np.zeros((H, W, 3), np.float32)
+        if j and pp < 1: im = im + 0.5 * (1 - pp)
+        bw = 5
+        mo = np.zeros((H, W), np.float32); mo[int(max(0, r[1] - bw)):int(min(H, r[3] + bw)), int(max(0, r[0] - bw)):int(min(W, r[2] + bw))] = 1
+        full = (j == 3 and ev > 0.98)
+        if not full:
+            sh_m = cv2.resize(cv2.GaussianBlur(cv2.resize(mo, (W // 4, H // 4), interpolation=cv2.INTER_AREA), (0, 0), 5), (W, H))
+            f = f * (1 - 0.6 * np.roll(sh_m, (10, 10), (0, 1))[..., None])
+            f = f * (1 - mo[..., None]) + np.float32([0.95, 0.96, 1.0]) * mo[..., None] * (1 - ev * (j == 3))
+        f = f * (1 - m[..., None]) + im * m[..., None]
+    return f + 0.25 * math.exp(-abs(t - c) * 28) * (t >= c)
+
+
+# ---- the cortex surge (loop)
+def t_cortex2(t, A, a, end):
+    """Loop: the camera hauls back and the last shot becomes the centre monitor of STAR Labs' curved cortex wall (the
+    camera swinging round the curve, every screen playing another moment of the edit); a surge of Speed Force
+    lightning jumps from screen to screen and each one it reaches flashes over to the first shot; when the whole wall
+    is the first shot the camera rushes back into the centre screen and lands on the start of the edit."""
+    if t >= end: return layer(0, t - DUR)
+    n = len(SHOTS); fpx = 1.15 * W; Sx, Sy = 1.12 * W, 1.10 * H; Rc = 3.2 * W
+    u = clamp((t - a) / (end - a)); S5 = lambda x: x * x * x * (x * (6 * x - 15) + 10)
+    if 'cx2' not in _K4:
+        scr = []
+        for r in range(-2, 3):
+            for j in range(-3, 4):
+                th = j * Sx / Rc
+                X, Z = Rc * math.sin(th), -Rc * (1 - math.cos(th))           # the wall curves toward the camera
+                d = math.hypot(j, r * 1.2)
+                k = n - 1 if (j, r) == (0, 0) else 1 + ((j + 3) * 5 + (r + 2) * 3) % (n - 2)
+                scr.append(dict(j=j, r=r, X=X, Y=r * Sy, Z=Z, yaw=-th, d=d, k=k))
+        _K4['cx2'] = scr
+    scr = _K4['cx2']
+    pull = S5(clamp(u / 0.42)); push = S5(clamp((u - 0.62) / 0.38))
+    D = fpx * (1 + 2.3 * (pull - push))
+    sw = math.sin(math.pi * S5(u))
+    yaw = math.radians(16) * sw * math.sin(math.pi * clamp(u / 0.9)); camx = -0.9 * W * sw * math.sin(math.pi * clamp(u / 0.9)); camy = -0.10 * H * sw
+    roll = 3.0 * sw
+    cz = -D
+    cy_, sy_ = math.cos(yaw), math.sin(yaw)
+    def proj(P):
+        x, y, z = P[0] - camx, P[1] - camy, P[2] - cz
+        xr, zr = cy_ * x - sy_ * z, sy_ * x + cy_ * z
+        return xr, y, zr
+    f = np.zeros((H, W, 3), np.float32) + np.float32([0.09, 0.035, 0.012]) + np.exp(-((YY - 0.5 * H) / (0.8 * H)) ** 2)[..., None] * np.float32([0.14, 0.06, 0.02])
+    tswitch = lambda s_: a + (end - a) * (0.40 + 0.055 * s_['d'])     # the surge spreads outward from the centre
+    spill = np.zeros((H // 4, W // 4), np.float32); cents = {}
+    vis = []
+    for s_ in scr:
+        hw, hh = W / 2, H / 2; ca, sa = math.cos(s_['yaw']), math.sin(s_['yaw'])
+        cs = [(s_['X'] - hw * ca, s_['Y'] - hh, s_['Z'] - hw * sa), (s_['X'] + hw * ca, s_['Y'] - hh, s_['Z'] + hw * sa),
+              (s_['X'] + hw * ca, s_['Y'] + hh, s_['Z'] + hw * sa), (s_['X'] - hw * ca, s_['Y'] + hh, s_['Z'] - hw * sa)]
+        pc = [proj(p) for p in cs]
+        if min(p[2] for p in pc) < 0.05 * fpx: continue
+        q = np.float32([[W / 2 + fpx * p[0] / p[2], H / 2 + fpx * p[1] / p[2]] for p in pc])
+        if q[:, 0].max() < -40 or q[:, 0].min() > W + 40 or q[:, 1].max() < -40 or q[:, 1].min() > H + 40: continue
+        vis.append((sum(p[2] for p in pc), s_, q))
+    vis.sort(key=lambda v_: -v_[0])
+    centre = None
+    for depth, s_, q in vis:
+        ts = tswitch(s_); is_c = (s_['j'], s_['r']) == (0, 0)
+        if t >= ts: img = layer(0, t - DUR) if is_c else layer(0, SHOTS[0]['start'] + 0.3 + (t - ts) + 0.05 * s_['d'])
+        elif is_c: img = layer(n - 1, t)
+        else: img = layer(s_['k'], SHOTS[s_['k']]['start'] + 0.25 + 0.1 * s_['d'] + (t - a))
+        hI, wI = img.shape[:2]
+        Pm = cv2.getPerspectiveTransform(np.float32([[0, 0], [wI, 0], [wI, hI], [0, hI]]), q)
+        area = abs(cv2.contourArea(q)) / (W * H)
+        small = area < 0.25
+        if small: img = cv2.resize(img, (W // 2, H // 2), interpolation=cv2.INTER_AREA); Pm = cv2.getPerspectiveTransform(np.float32([[0, 0], [W // 2, 0], [W // 2, H // 2], [0, H // 2]]), q)
+        pim = cv2.warpPerspective(img, Pm, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+        bq = q.mean(0) + (q - q.mean(0)) * 1.045
+        mb = np.zeros((H, W), np.float32); cv2.fillConvexPoly(mb, np.int32(bq * 4), 1.0, cv2.LINE_AA, shift=2)
+        mi = np.zeros((H, W), np.float32); cv2.fillConvexPoly(mi, np.int32(q * 4), 1.0, cv2.LINE_AA, shift=2)
+        full = clamp((area - 0.80) / 0.20)
+        f = f * (1 - mb[..., None]) + mb[..., None] * np.float32([0.035, 0.03, 0.03])
+        fl = 1 + 2.2 * math.exp(-max(0.0, t - ts) / 0.05) * (t >= ts) * (1 - full)
+        look = 1 - full
+        sheen = np.exp(-(((XX - q[:, 0].mean()) - (YY - q[:, 1].mean()) * 0.6) / (0.25 * (q[:, 0].max() - q[:, 0].min()) + 1)) ** 2) * 0.08 * look
+        f = f * (1 - mi[..., None]) + (pim * fl + sheen[..., None]) * mi[..., None]
+        rim = np.clip(mb - mi, 0, 1) * look
+        f = f + rim[..., None] * np.float32([0.25, 0.20, 0.16]) * (1 + 3 * math.exp(-max(0.0, t - ts) / 0.08) * (t >= ts))
+        spill += cv2.resize(mi, (W // 4, H // 4), interpolation=cv2.INTER_AREA) * float(min(1.0, pim[mi > 0.5].mean() if (mi > 0.5).any() else 0)) * look
+        cents[(s_['j'], s_['r'])] = (q.mean(0), ts)
+        if is_c: centre = q
+    f = f + cv2.resize(cv2.GaussianBlur(spill, (0, 0), 12), (W, H))[..., None] * np.float32([0.9, 0.65, 0.38]) * 0.7
+    segs = []                                                     # the surge: lightning jumps from screen to screen
+    rng = np.random.default_rng(int(t * FPS))
+    for (j, r), (p, ts) in cents.items():
+        if (j, r) == (0, 0) or not (ts - 0.07 <= t < ts + 0.04): continue
+        if abs(j) >= abs(r) and j != 0: jj, rr = j - (1 if j > 0 else -1), r
+        else: jj, rr = j, r - (1 if r > 0 else -1)
+        if (jj, rr) in cents:
+            segs.append((bolt_path(cents[(jj, rr)][0], p, rng, 5, 0.10), 1.0))
+    if segs: f = add(f, draw_bolts(segs, 4.0, amp=1.2))
+    if centre is not None and push > 0:                           # rush into the centre screen
+        k = math.sin(math.pi * clamp((u - 0.62) / 0.38)); cx_, cy_c = centre[:, 0].mean(), centre[:, 1].mean()
+        if k > 0.02: f = _radial(f, 1.0, 1 + 0.06 * k, cx_, cy_c, 5)
+    if abs(roll) > 0.02:
+        M = cv2.getRotationMatrix2D((W / 2, H / 2), roll, 1.0 + abs(roll) * 0.012)
+        f = cv2.warpAffine(f, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    return f + 0.18 * math.exp(-((u - 0.40) / 0.03) ** 2)
+
+
 TRANSITIONS = {
     'cut':       (lambda c, o: (c, c), None),
     'leaf':      (lambda c, o: (c - .15, c + .15), lambda t, c, A, B, o: t_leaf(t, c, A, B, o.get('ang', -38), o.get('seed', 3))),
@@ -7051,6 +7321,11 @@ TRANSITIONS = {
     'triptych':  (lambda c, o: (c - .50, c + .30), lambda t, c, A, B, o: t_triptych(t, c, A, B, c - .50, c + .30)),
     'chromasnap': (lambda c, o: (c - .44, c + .28), lambda t, c, A, B, o: t_chromasnap(t, c, A, B, c - .44, c + .28)),
     'title':     (lambda c, o: (c - 1.44, c + .30), lambda t, c, A, B, o: t_title(t, c, A, B, c - 1.44, c + .30)),
+    # Flash kit XIV (Remedy v2)
+    'stutter':   (lambda c, o: (c - .26, c + .20), lambda t, c, A, B, o: t_stutter(t, c, A, B, c - .26, c + .20)),
+    'shear':     (lambda c, o: (c - .20, c + .22), lambda t, c, A, B, o: t_shear(t, c, A, B, c - .20, c + .22)),
+    'flare':     (lambda c, o: (c - .22, c + .26), lambda t, c, A, B, o: t_flare(t, c, A, B, c - .22, c + .26)),
+    'collage':   (lambda c, o: (c - .32, c + .34), lambda t, c, A, B, o: t_collage(t, c, A, B, c - .32, c + .34)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
@@ -7066,10 +7341,10 @@ TRANSITIONS = {
 }
 
 
-LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck', 'whiploop', 'memories', 'memories3d', 'memories5', 'memtunnel', 'cortex')
+LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck', 'whiploop', 'memories', 'memories3d', 'memories5', 'memtunnel', 'cortex', 'cortex2')
 
 
-NO_MBLUR = {'futurepaper'}          # transitions that draw their own motion blur (sub-frame averaging would double them)
+NO_MBLUR = {'futurepaper', 'stutter'}          # transitions that draw their own motion blur (sub-frame averaging would double them)
 _NOMB = set()
 
 
@@ -7096,6 +7371,9 @@ def build_trans():
     elif lp == 'slidebox':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_slidebox(t, last, a, end)))
+    elif lp == 'cortex2':
+        c = CUTS[-1]; a, end = c - 1.30, c + 0.20
+        out.append((a, DUR + 1, lambda t: t_cortex2(t, last, a, end)))
     elif lp == 'cortex':
         c = CUTS[-1]; a, end = c - 1.25, c + 0.20
         out.append((a, DUR + 1, lambda t: t_cortex(t, last, a, end)))

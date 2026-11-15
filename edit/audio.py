@@ -609,6 +609,22 @@ def sfx_for(name, c, o, up):
         put(whoosh(0.50, 2500, 300, peak=0.3), c - 1.25, gain=0.05); put(buzz(0.45), c - 1.10, gain=0.015)
         for k_ in range(6): put(tick(0.05, 1200 + 300 * k_), c - 1.10 + 0.07 * k_, pan=(-0.6, 0.6)[k_ % 2], gain=0.03)
         put(shimmer(0.4), c - 0.70, gain=0.03); put(whoosh(0.40, 400, 4500, peak=0.9), c - 0.30, gain=0.06)
+    elif name == 'stutter':
+        for tc_ in (c - 0.24, c - 0.12, c - 0.06): put(tick(0.04, 3000), tc_, gain=0.05)
+        put(boom(0.4, 80, 36), c, gain=0.08)
+    elif name == 'shear':
+        for k_ in range(3): put(whoosh(0.16, 600, 5000, q=0.9, peak=0.8), c - 0.14 + 0.06 * k_, pan=(-0.6, 0.6, -0.6)[k_], gain=0.045)
+        put(shing(0.3), c - 0.12, gain=0.02)
+    elif name == 'flare':
+        put(whoosh(0.45, 2500, 600, q=0.6, peak=0.5), c - 0.22, gain=0.05); put(shimmer(0.5), c - 0.10, gain=0.035)
+    elif name == 'collage':
+        for k_ in range(5): put(clank(0.12), c - 0.30 + (0, 0.06, 0.12, 0.18, 0.24)[k_], pan=(-0.5, 0.5, 0.5, -0.5, 0.5)[k_], gain=0.03)
+        put(whoosh(0.20, 400, 4500, peak=0.9), c - 0.12, gain=0.05); put(boom(0.6, 60, 30), c, gain=0.10)
+    elif name == 'cortex2':
+        put(whoosh(0.55, 2500, 250, peak=0.3), c - 1.30, gain=0.06); put(buzz(0.5), c - 1.10, gain=0.015)
+        put(zap(0.5), c - 0.78, gain=0.05); put(thunder(0.8), c - 0.78, gain=0.04)
+        for k_ in range(6): put(tick(0.05, 1500 + 250 * k_), c - 0.76 + 0.05 * k_, pan=(-0.6, 0.6)[k_ % 2], gain=0.03)
+        put(whoosh(0.50, 300, 5000, peak=0.9), c - 0.45, gain=0.07)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)
