@@ -383,6 +383,20 @@ Don't reuse the same big transition twice in one edit. Blur, whip and punch can 
 | ~~`mirage`~~, ~~`disperse`~~, ~~`phaseslice`~~, ~~`whiploop`~~ (all replaced in v5: the user disliked the opening, the "dust away" particle transition, the 14 s transition and the whip loop) |
 | ~~`struck` (loop)~~ (replaced in v4: the user wanted the loop drastically improved and seamless) | the night he was struck: a stepped lightning leader feels its way down toward Barry, the return stroke whites out the frame, two re-strikes strobe, and the first shot comes out of the glare still crackling | loop ending | 0.85 + 0.10 s |
 
+
+**Flash kit XIII ("Remedy", `edits/remedy`, 2026-11-15).** Built from a reference TikTok (light slabs, collage
+panels, a title) on a phonk-style 808 track: the 808 plays 3-on/1-off blocks, so the silent steps carry
+anticipation moves and the block starts carry the hits.
+
+| name | what | use for | length |
+|---|---|---|---|
+| `prism` | **light-slab wipe (after the reference):** the camera slides left while thin tilted slabs of Speed Force light (cyan, gold, white, red; streak texture, white-hot head, coloured glow, tail fading) shoot across off the face line; a wide band carries the next shot in with glowing white edges and opens to the frame; the new shot keeps the slide and settles | the opening; any mid-edit beat | 0.30 + 0.34 s |
+| `slab` (`out_opts` col) | glue: one great slab of light sweeps across on the beat, the next shot already behind its tail, with satellite slabs above and below the face | between block hits | 0.12 + 0.14 s |
+| `triptych` | **the drop as a collage:** on the 808's three stutter hits (c-0.48, c-0.30, c-0.12) three panels slam in over the darkened shot (the next three shots, each framed on its face, from alternate sides with speed blur, flash and gold gaps); on the drop the middle panel (the drop shot) bursts open to the frame and pushes the others off the top and bottom | a drop preceded by a stutter | 0.50 + 0.30 s |
+| `chromasnap` | the breath before the hit: over a silent step the camera creeps in while the colour channels drift apart; on the beat a zoom-blur rush snaps into the next shot, which lands with its channels split wide and slams them together | into a hit after a silent step | 0.44 + 0.28 s |
+| `title` | **graphic into a transition:** THE FLASH (Inter Display Black Italic, burnished gold, hot rim, glow, drop shadow) builds over a quiet bar letter by letter, rising out of a baseline with speed blur, THE tracking in above, a glint across the metal; on the pickup the letters become windows onto the next shot and the camera dives into the L's stem (distance-transform deepest point) until the next shot is the frame | the quiet bar before a re-entry | 1.44 + 0.30 s |
+| `cortex` (loop) | **the STAR Labs cortex wall:** the last shot becomes one monitor as the camera pulls back; the screens around it flicker on in a ripple, each playing another shot of the edit live, light spilling into the haze; the camera glides diagonally (slight roll) to the screen playing the first shot, a gold trace runs around its bezel, and it pushes in until that screen is exactly the frame | loop ending | 1.25 + 0.20 s |
+
 ## Workflow for a new edit
 
 The user's stored footage is listed in `scenepacks/README.md` (Dexter S1, S2, S4 and mixes; The Flash S1, S2, S3, S5, all seasons, Blitzkrieg; plus a second voidfx reference edit). If `media/scenepacks/` is empty, run `bash scenepacks/fetch.sh [name-filter]` first. Shot lists are already in `scenepacks/catalog/<name>.json`. Choose the pack that matches the character the user asks for, and mix packs of the same show when one pack is too short. Put other inputs (song, new footage) in `media/`, which is gitignored and never committed. Tools need ffmpeg and `pip install numpy scipy opencv-python-headless soundfile`. The face model comes from rea-video's cache, `~/.cache/rea-video/models/face_detection_yunet_2023mar.onnx`. If that file is missing, get it from `https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx`; its sha256 starts with `8f2383e4`.

@@ -588,6 +588,27 @@ def sfx_for(name, c, o, up):
         put(whoosh(0.40, 300, 2500, peak=0.6), c - 1.20, gain=0.05); put(wind(1.0), c - 1.00, gain=0.05); put(shimmer(0.8), c - 0.90, gain=0.03)
         for k_ in range(6): put(whoosh(0.18, 600, 4000, peak=0.5), c - 0.95 + 0.13 * k_, pan=(-0.7, 0.7)[k_ % 2], gain=0.03)
         put(zap(0.5), c - 0.70, gain=0.03); put(whoosh(0.30, 500, 4500, peak=0.9), c - 0.20, gain=0.06)
+    # Flash kit XIII (Remedy)
+    elif name == 'prism':
+        put(whoosh(0.34, 400, 5000, q=0.9, peak=0.8), c - 0.30, pan=0.6, gain=0.07); put(shimmer(0.4), c - 0.20, gain=0.03)
+        put(whoosh(0.30, 3500, 500, peak=0.2), c, pan=-0.5, gain=0.05); put(boom(0.4, 90, 40), c, gain=0.07)
+    elif name == 'slab':
+        put(whoosh(0.26, 600, 6000, q=0.9, peak=0.6), c - 0.12, pan=0.5, gain=0.06); put(zap(0.2), c, gain=0.025)
+    elif name == 'triptych':
+        for k_, tc_ in enumerate((c - 0.48, c - 0.30, c - 0.12)):
+            put(whoosh(0.10, 800, 6000, q=0.9, peak=0.9), tc_ - 0.07, pan=(0.6, -0.6, 0.6)[k_], gain=0.05); put(clank(0.25), tc_, gain=0.04)
+        put(boom(1.0, 55, 26), c, gain=0.15); put(zap(0.4), c, gain=0.04)
+    elif name == 'chromasnap':
+        put(rewind_whine(0.40), c - 0.42, gain=0.025); put(whoosh(0.12, 300, 6000, q=1.0, peak=0.95), c - 0.10, gain=0.07)
+        put(boom(0.5, 80, 34), c, gain=0.10)
+    elif name == 'title':
+        for k_ in range(5): put(tick(0.06, 1800), c - 1.40 + 0.075 * k_, gain=0.05)
+        put(boom(0.4, 110, 50), c - 1.30, gain=0.06); put(shimmer(0.5), c - 0.84, gain=0.035)
+        put(whoosh(0.34, 200, 5000, q=0.8, peak=0.95), c - 0.32, gain=0.08); put(boom(0.6, 60, 30), c, gain=0.10)
+    elif name == 'cortex':
+        put(whoosh(0.50, 2500, 300, peak=0.3), c - 1.25, gain=0.05); put(buzz(0.45), c - 1.10, gain=0.015)
+        for k_ in range(6): put(tick(0.05, 1200 + 300 * k_), c - 1.10 + 0.07 * k_, pan=(-0.6, 0.6)[k_ % 2], gain=0.03)
+        put(shimmer(0.4), c - 0.70, gain=0.03); put(whoosh(0.40, 400, 4500, peak=0.9), c - 0.30, gain=0.06)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)
