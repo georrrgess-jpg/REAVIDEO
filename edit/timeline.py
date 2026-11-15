@@ -6059,6 +6059,194 @@ def t_memories3d(t, A, a, end):
     return f
 
 
+# ============================================================ Flash kit XI (Still Friends v7)
+# ---- the speed pass (0:10)
+def t_speedpass(t, c, A, B, a, b):
+    """Barry comes past the lens: a white-hot point far off on the left grows into a tapered red-gold comet that
+    sweeps across and past the camera -- speed-line texture through its body, the picture smeared sideways in its
+    wake, natural gold lightning along its flanks, a tight flare at its head, a jolt as it passes -- and the next shot
+    is behind it."""
+    p = clamp((t - a) / (b - a)); pc = (c - a) / (b - a)
+    hx = lerp(0.06 * W, 1.45 * W, ease(p) * 0.80 + 0.20 * p)
+    near = math.exp(-((p - pc) / 0.20) ** 2)
+    yc = H * (0.50 + 0.05 * math.sin(p * 3.0)); hh0 = 14 + 0.55 * H * near
+    src = layer(A, min(t, c - 1e-3)) if t < c else layer(B, t)
+    if t >= c: src = src * (0.6 + 0.4 * ease(clamp((t - c) / (b - c) * 1.6)))
+    back = np.clip(hx - XX, 0, None)                                                              # distance behind the head
+    taper = np.exp(-back / (0.65 * W)); hh = hh0 * (0.30 + 0.70 * taper)                           # comet: widest at the head
+    dy = np.abs(YY - yc) / np.maximum(hh, 1.0); ahead = ss(hx + 90, hx - 30, XX)
+    wake = np.exp(-dy ** 2 * 0.5) * ahead * np.exp(-back / (1.1 * W))
+    sm = cv2.blur(src, (int(1 + 150 * near) | 1, 1))
+    f = src * (1 - wake[..., None] * 0.9) + sm * wake[..., None] * 0.9
+    if 'sp_rows' not in _K4:
+        r_ = np.random.default_rng(9).random(H).astype(np.float32); _K4['sp_rows'] = np.convolve(r_, np.ones(5) / 5, 'same')
+    rows = _K4['sp_rows'][:, None]
+    prof = np.exp(-dy ** 2 * 2.0) * ahead * taper
+    tex = 0.65 + 0.7 * rows                                                                       # speed lines through the body
+    body = np.clip(prof * (0.55 + 0.40 * near) * tex, 0, 0.95)[..., None]
+    inner = np.exp(-dy ** 2 * 7.0)[..., None]
+    col = np.float32([0.06, 0.10, 0.80]) * (1 - inner) + np.float32([0.25, 0.60, 1.0]) * inner
+    f = f * (1 - body) + col * body
+    core = np.exp(-dy ** 2 * 40) * ahead * taper * (0.5 + 0.5 * near)
+    f = f + core[..., None] * np.float32([0.80, 0.93, 1.0])
+    rng = np.random.default_rng(int(t * FPS)); segs = []
+    for sg in (-1, 1):                                                                            # natural lightning along both flanks
+        for j in range(2):
+            x0 = max(-60, hx - rng.uniform(0.5, 1.1) * W); x1 = hx - rng.uniform(0, 0.1) * W
+            y0 = yc + sg * hh0 * 0.35 * rng.uniform(0.6, 1.0); y1 = yc + sg * hh0 * rng.uniform(0.55, 0.85)
+            segs.append((bolt_path((x0, y0), (x1, y1), rng, 6, 0.07), 1.0 if j == 0 else 0.6))
+    f = add(f, draw_bolts(segs, 2.5 + 2.5 * near, amp=1.1))
+    r2 = ((XX - hx) / (40 + 120 * near)) ** 2 + ((YY - yc) / (30 + 90 * near)) ** 2
+    f = f + (np.exp(-r2) * 0.8)[..., None] * np.float32([0.7, 0.9, 1.0]) + (np.exp(-r2 / 6) * 0.35)[..., None] * np.float32([0.15, 0.30, 1.0])
+    f = f + (np.exp(-((YY - yc) / 4) ** 2) * np.exp(-np.abs(XX - hx) / (250 + 350 * near)) * 0.55)[..., None] * np.float32([1.0, 0.85, 0.7])
+    jolt = int(14 * near * math.sin(t * 95)); f = np.roll(f, jolt, 0)
+    return f
+
+
+# ---- the emblem flare (the drop)
+def t_emblemflare(t, c, A, B, a, b):
+    """The drop, in one continuous move: the camera keeps pushing into Barry's face while a point of blue-white light
+    swells at the centre and throws rays across him; at the drop the light opens outward (centre first, soft edge)
+    onto the real chest emblem tight in frame, a horizontal flare streaking through it and lightning crawling along
+    its outline, and the camera keeps moving -- pulling back off the emblem to reveal Barry in the suit."""
+    key = ('eflare', B, round(c, 3))
+    if key not in _K4:
+        ref = layer(B, c + 0.25); ex, ey, Re = _bright_blob(ref)
+        _K4[key] = (ex, ey, Re, _emblem_contour(ref, ex, ey, Re))
+    ex, ey, Re, conts = _K4[key]
+    zmax = min(2.3, 0.55 * W / max(Re, 1.0)); P0 = (W / 2, H / 2)
+    r = np.sqrt((XX - P0[0]) ** 2 + (YY - P0[1]) ** 2); th = np.arctan2(YY - P0[1], XX - P0[0])
+    def tight(tt, v):
+        z = 1 + (zmax - 1) * (1 - ease(v)) ** 1.4
+        sx, sy = lerp(W / 2, ex, ease(v)), lerp(H / 2, ey, ease(v))
+        M = np.float32([[z, 0, sx - z * ex], [0, z, sy - z * ey]])
+        im = cv2.warpAffine(layer(B, tt), M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        return im * (1 - 0.22 * (z - 1) / max(zmax - 1, 1e-3)), M, z
+    def radial(f, k):
+        if k < 0.02: return f
+        acc = f.copy()
+        for j in (1, 2, 3, 4):
+            s = 1 + 0.03 * k * j; Mr = np.float32([[s, 0, P0[0] * (1 - s)], [0, s, P0[1] * (1 - s)]])
+            acc += cv2.warpAffine(f, Mr, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        return acc / 5
+    ts = c - 0.34; tw0, tw1 = c - 0.09, c + 0.05
+    if t < tw1:
+        u = clamp((t - a) / (c - a)); g = ease(clamp((t - ts) / (c - ts)))
+        fa = layer(A, min(t, c - 1e-3), 1 + 0.16 * ease(u))
+        fa = radial(fa, g)
+        rays = (0.5 + 0.5 * np.cos(th * 23 + 2.0 * np.sin(th * 5 + t * 3))) ** 10 * np.exp(-r / (80 + 900 * g)) * g
+        glow = np.exp(-(r / (30 + 260 * g)) ** 2) * (0.4 + 1.2 * g) * (t >= ts)
+        f = fa + (rays * 0.55 + glow)[..., None] * np.float32([1.0, 0.85, 0.65])
+        if t >= tw0:                                                                            # the light opens onto the emblem
+            w = ease(clamp((t - tw0) / (tw1 - tw0))); Rw = lerp(0, RFULL * 1.15, w)
+            m = ss(Rw + 220, Rw - 220, r)[..., None]
+            fb, M, z = tight(c, 0.0)
+            f = f * (1 - m) + (fb + glow[..., None] * np.float32([1.0, 0.85, 0.65]) * 0.5) * m
+        return f + 0.25 * math.exp(-((t - c) / 0.05) ** 2)
+    v = clamp((t - c) / (b - c)); fb, M, z = tight(t, v)
+    fb = radial(fb, 0.6 * (1 - ease(clamp(v / 0.35))))
+    amp = 1 - ease(clamp((v - 0.30) / 0.70))
+    rng = np.random.default_rng(int(t * FPS)); segs = []
+    for cc in conts:
+        P = cc @ M[:, :2].T + M[:, 2]
+        for _ in range(3):
+            i0 = rng.integers(0, len(P)); i1 = min(len(P) - 1, i0 + rng.integers(20, 60)); seg = P[i0:i1:3]
+            if len(seg) > 2: segs.append((seg + rng.normal(0, 3 + 5 * z / zmax, seg.shape), 0.8))
+    f = add(fb, draw_bolts(segs, 3.4, glow=BLUE_GLOW, core=np.float32([1, 1, 1]), amp=1.3 * amp))
+    sxy = M[:, :2] @ np.array([ex, ey]) + M[:, 2]
+    f = f + (np.exp(-((YY - sxy[1]) / 6) ** 2) * np.exp(-np.abs(XX - sxy[0]) / 420) * 1.0 * amp)[..., None] * np.float32([1.0, 0.9, 0.75])
+    rr = np.sqrt((XX - sxy[0]) ** 2 + (YY - sxy[1]) ** 2); Rr = Re * z * (1.0 + 3.0 * eout(clamp(v / 0.5)))
+    return f + (np.exp(-((rr - Rr) / 12) ** 2) * 0.8 * (1 - clamp(v / 0.5)))[..., None] * BLUE_GLOW
+
+
+# ---- Speed Force memories, v3 (loop)
+def _sf_void(t, camx, z, speed):
+    """Animated Speed Force background at half resolution: a violet-navy depth gradient, three parallax layers of
+    flowing gold and blue energy filaments, drifting motes, all moving with the camera."""
+    h, w = H // 2, W // 2; ys = np.arange(h, dtype=np.float32)[:, None]; xs = np.arange(w, dtype=np.float32)[None, :]
+    base = np.zeros((h, w, 3), np.float32)
+    g = np.exp(-((ys - h / 2) / (0.55 * h)) ** 2)
+    base += g[..., None] * np.float32([0.22, 0.06, 0.10]) + (1 - g)[..., None] * np.float32([0.10, 0.03, 0.03])
+    lines = np.zeros((h, w, 3), np.float32); rng = np.random.default_rng(77)
+    for layer_i, (par, cnt, wd, br) in enumerate(((0.25, 7, 1, 0.35), (0.6, 6, 1, 0.6), (1.2, 4, 2, 0.9))):
+        off = camx * par * 0.5 / max(z, 0.4)
+        for j in range(cnt):
+            y0 = rng.uniform(0.05, 0.95) * h; amp_ = rng.uniform(8, 40); fr = rng.uniform(0.004, 0.012); ph = rng.uniform(0, 6)
+            xx = np.arange(0, w + 8, 8, dtype=np.float32)
+            yy = y0 + amp_ * np.sin((xx + off) * fr + ph + t * (1.5 + layer_i)) + 6 * np.sin((xx + off) * fr * 3.1 + ph)
+            col = (np.float32([0.25, 0.65, 1.0]), np.float32([1.0, 0.72, 0.35]))[(j + layer_i) % 2] * br
+            m = np.zeros((h, w), np.float32); cv2.polylines(m, [np.int32(np.stack([xx, yy], 1))], False, 1.0, wd, cv2.LINE_AA)
+            lines += m[..., None] * col
+    glow = cv2.GaussianBlur(lines, (0, 0), 4) * 1.4 + cv2.GaussianBlur(lines, (0, 0), 14) * 0.8
+    out = base + lines * 0.8 + glow
+    mo = np.zeros((h, w), np.float32)
+    for k in range(120):
+        par = rng.uniform(0.3, 1.6); x = (rng.uniform(0, w * 3) - camx * par * 0.5 / max(z, 0.4)) % (w * 1.0); y = rng.uniform(0, h)
+        L = 1 + int(min(40, speed * par / 300)); cv2.line(mo, (int(x), int(y)), (int(x + L), int(y)), float(rng.uniform(0.3, 1.0)), 1, cv2.LINE_AA)
+    out += (cv2.GaussianBlur(mo, (0, 0), 0.8) * 1.2)[..., None] * np.float32([0.6, 0.85, 1.0])
+    return cv2.resize(out, (W, H), interpolation=cv2.INTER_LINEAR)
+
+
+def t_memories5(t, A, a, end):
+    """Loop: a gold light sweeps the last shot as its edges light up and it pulls back into a panel; the camera rises
+    into the Speed Force -- every shot of the edit hanging as a glowing memory along a gentle arc, panels banking toward
+    the lens as it accelerates past (far ones soft, lightning leaping between them, energy filaments streaming by,
+    chromatic fringing at top speed) -- then it slows at the first memory, which turns square to the lens, and the
+    camera glides into it: the start of the edit."""
+    if t >= end: return layer(0, t - DUR)
+    Mm = _mem3d_assets(); n = len(SHOTS); ps = 0.38; gap = 0.50 * W
+    u = clamp((t - a) / (end - a)); zmax = 1 / ps
+    xk = lambda k: k * gap; yk = lambda k: -0.05 * H * math.sin(k * 0.9)
+    S = lambda x: x * x * x * (x * (6 * x - 15) + 10)                                             # smootherstep
+    sp = S(clamp((u - 0.10) / 0.78)); camx = lerp(xk(n - 1), xk(0), sp)
+    zo = 1 - S(clamp(u / 0.26)); zi = S(clamp((u - 0.76) / 0.24)) ** 1.6
+    z = math.exp(math.log(zmax) * max(zo, zi)) * (1 - 0.10 * math.sin(math.pi * sp))
+    kk = camx / gap; k0 = int(math.floor(kk)); fr_ = kk - k0
+    camy = lerp(yk(k0), yk(min(n - 1, k0 + 1)), fr_) * (1 if 0.05 < sp < 0.95 else 1)
+    speed = abs(xk(n - 1) - xk(0)) / (0.78 * (end - a)) * 30 * sp * (1 - sp) / 1.875                # px/s (smootherstep velocity)
+    f = _sf_void(t, camx, z, speed)
+    f = f * (0.35 + 0.65 * clamp((zmax - z) / (zmax - 1.0)))
+    order = sorted(range(n), key=lambda k: -abs(xk(k) - camx))
+    for k in order:
+        sx = (xk(k) - camx) * z + W / 2; sy = (yk(k) - camy) * z + H / 2
+        hw, hh = ps * z * W / 2, ps * z * H / 2
+        if abs(sx - W / 2) > W / 2 + 2.4 * hw: continue
+        off = max(-1.0, min(1.0, (sx - W / 2) / W)); full = clamp((z - 1.6) / 0.6)
+        yaw = off * math.radians(45) * (1 - full); cw = math.cos(yaw); kL = 1 + 0.25 * math.sin(yaw); kR = 1 - 0.25 * math.sin(yaw)
+        quad = np.float32([[sx - hw * cw, sy - hh * kL], [sx + hw * cw, sy - hh * kR], [sx + hw * cw, sy + hh * kR], [sx - hw * cw, sy + hh * kL]])
+        live = (k == n - 1 and u < 0.30) or (k == 0 and u > 0.70)
+        img = (layer(n - 1, t) if k == n - 1 else layer(0, t - DUR)) if live else (Mm['thumbs_b'][k] if abs(off) > 0.40 else Mm['thumbs'][k])
+        hI, wI = img.shape[:2]
+        Pm = cv2.getPerspectiveTransform(np.float32([[0, 0], [wI, 0], [wI, hI], [0, hI]]), quad)
+        pim = cv2.warpPerspective(img, Pm, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        pm = cv2.warpPerspective(np.ones((hI, wI), np.float32), Pm, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        rimk = (1 - full) * (ease(clamp(u / 0.18)) if k == n - 1 else 1.0)
+        glow = np.clip(cv2.GaussianBlur(pm, (0, 0), 20) - pm, 0, 1) * 2.0 * rimk
+        rim = np.clip(pm - cv2.erode(pm, np.ones((5, 5), np.uint8)), 0, 1) * rimk
+        dim = 1.0 - 0.40 * min(1.0, abs(off) * 1.5) * (0 if live else 1)
+        f = f * (1 - pm[..., None]) + pim * pm[..., None] * dim + glow[..., None] * GOLD_GLOW + rim[..., None] * np.float32([0.65, 0.9, 1.0])
+        if k == n - 1 and u < 0.22:                                                              # a light sweep across the glass
+            gl = clamp(u / 0.20); d = ((XX - sx) / max(hw, 1) + (YY - sy) / max(hh, 1) * 0.5) - lerp(-1.8, 1.8, gl)
+            f = f + (np.exp(-(d / 0.10) ** 2) * pm * 0.35)[..., None]
+    race = math.sin(math.pi * sp) * (0.10 < u < 0.90)
+    if race > 0.05:                                                                              # lightning leaping between memories
+        rng = np.random.default_rng(int(t * FPS)); segs = []
+        for k in range(n - 1):
+            x0 = (xk(k) - camx) * z + W / 2 + ps * z * W / 2; x1 = (xk(k + 1) - camx) * z + W / 2 - ps * z * W / 2
+            if x1 < -100 or x0 > W + 100 or rng.random() > 0.6: continue
+            y0 = (yk(k) - camy) * z + H / 2 + rng.uniform(-0.3, 0.3) * ps * z * H; y1 = (yk(k + 1) - camy) * z + H / 2 + rng.uniform(-0.3, 0.3) * ps * z * H
+            segs.append((bolt_path((x0, y0), (x1, y1), rng, 5, 0.25), 0.8))
+        f = add(f, draw_bolts(segs, 2.6, amp=1.0 * race))
+        sp_px = int(10 * race)                                                                     # chromatic fringing at speed
+        if sp_px > 1: f = f.copy(); f[..., 2] = np.roll(f[..., 2], sp_px, 1); f[..., 0] = np.roll(f[..., 0], -sp_px, 1)
+        kb = int(1 + 50 * race) | 1; f = cv2.blur(f, (kb, 1))
+    if u > 0.80:                                                                                 # converging speed lines into the dive
+        q = clamp((u - 0.80) / 0.20); rr = np.sqrt((XX - W / 2) ** 2 + (YY - H / 2) ** 2); th = np.arctan2(YY - H / 2, XX - W / 2)
+        ln = (0.5 + 0.5 * np.cos(th * 60)) ** 30 * ss(0.25 * H, 0.9 * H, rr) * math.sin(math.pi * q)
+        f = f + (ln * 0.35)[..., None] * np.float32([0.7, 0.9, 1.0])
+    return f
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -6334,6 +6522,9 @@ TRANSITIONS = {
     'redmatch':  (lambda c, o: (c - .34, c + .40), lambda t, c, A, B, o: t_redmatch(t, c, A, B, c - .34, c + .40)),
     'futurepaper': (lambda c, o: (c - 1.20, c + .40), lambda t, c, A, B, o: t_futurepaper(t, c, A, B, c - 1.20, c + .40)),
     'boltiris':  (lambda c, o: (c - .36, c + .20), lambda t, c, A, B, o: t_boltiris(t, c, A, B, c - .36, c + .20)),
+    # Flash kit XI
+    'speedpass': (lambda c, o: (c - .36, c + .36), lambda t, c, A, B, o: t_speedpass(t, c, A, B, c - .36, c + .36)),
+    'emblemflare': (lambda c, o: (c - .70, c + .50), lambda t, c, A, B, o: t_emblemflare(t, c, A, B, c - .70, c + .50)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
@@ -6349,7 +6540,7 @@ TRANSITIONS = {
 }
 
 
-LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck', 'whiploop', 'memories', 'memories3d')
+LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck', 'whiploop', 'memories', 'memories3d', 'memories5')
 
 
 NO_MBLUR = {'futurepaper'}          # transitions that draw their own motion blur (sub-frame averaging would double them)
@@ -6379,6 +6570,9 @@ def build_trans():
     elif lp == 'slidebox':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_slidebox(t, last, a, end)))
+    elif lp == 'memories5':
+        c = CUTS[-1]; a, end = c - 0.80, c + 0.22
+        out.append((a, DUR + 1, lambda t: t_memories5(t, last, a, end)))
     elif lp == 'memories3d':
         c = CUTS[-1]; a, end = c - 0.80, c + 0.22
         out.append((a, DUR + 1, lambda t: t_memories3d(t, last, a, end)))

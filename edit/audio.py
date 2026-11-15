@@ -568,6 +568,16 @@ def sfx_for(name, c, o, up):
     elif name == 'memories3d':
         put(whoosh(0.30, 3000, 600, peak=0.2), c - 0.80, gain=0.06); put(shimmer(0.8), c - 0.58, gain=0.035)
         put(whoosh(0.50, 300, 4000, peak=0.5), c - 0.58, pan=-0.5, gain=0.06); put(whoosh(0.30, 500, 4500, peak=0.9), c - 0.20, gain=0.06)
+    elif name == 'speedpass':
+        put(whoosh(0.72, 300, 6000, q=0.9, peak=0.5), c - 0.36, pan=0.0, gain=0.10); put(zap(0.4), c - 0.15, gain=0.04)
+        put(boom(0.6, 60, 30), c, gain=0.11)
+    elif name == 'emblemflare':
+        put(whoosh(0.50, 150, 1500, q=0.7, peak=0.95), c - 0.50, gain=0.05); put(shimmer(0.4), c - 0.34, gain=0.035)
+        put(boom(1.0, 55, 26), c, gain=0.15); put(zap(0.5), c, gain=0.05); put(whoosh(0.5, 2500, 300, peak=0.15), c, gain=0.05)
+    elif name == 'memories5':
+        put(shimmer(0.4), c - 0.80, gain=0.035); put(whoosh(0.30, 3000, 600, peak=0.2), c - 0.80, gain=0.05)
+        put(whoosh(0.60, 300, 4000, peak=0.5), c - 0.68, pan=-0.5, gain=0.07); put(zap(0.5), c - 0.55, gain=0.03)
+        put(whoosh(0.30, 500, 4500, peak=0.9), c - 0.20, gain=0.06)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)
