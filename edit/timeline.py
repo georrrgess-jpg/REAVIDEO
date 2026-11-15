@@ -5563,6 +5563,72 @@ def t_struck(t, A, a, end):
     return np.roll(f, jolt, 0)
 
 
+# ---- molecular phase: the frame vibrates apart in bands and phases into the next shot
+def t_phaseslice(t, c, A, B, a, b, n=26):
+    """Barry phases through: the frame splits into horizontal bands that vibrate sideways at speed (blue-white glow
+    on their edges, a slight colour split), each band snapping over to the next shot at its own instant around the
+    beat, then the vibration dies down."""
+    env = ease(clamp((t - a) / (c - a))) if t < c else 1 - ease(clamp((t - c) / (b - c)))
+    fa = layer(A, min(t, c - 1e-3)); fb = layer(B, t)
+    rng = np.random.default_rng(14); sw = c + (rng.random(n) - 0.5) * 0.22
+    hb = H / n; f = np.empty_like(fa); edges = np.zeros((H, W), np.float32)
+    for k in range(n):
+        y0, y1 = int(k * hb), int((k + 1) * hb)
+        src = fb if t >= sw[k] else fa
+        off = int(env * W * 0.07 * math.sin(t * 140 + k * 1.9) * (0.5 + rng.random()))
+        band = np.roll(src[y0:y1], off, 1)
+        if env > 0.15:
+            band = band.copy(); sp = int(10 * env); band[..., 2] = np.roll(band[..., 2], sp, 1); band[..., 0] = np.roll(band[..., 0], -sp, 1)
+        f[y0:y1] = band
+        if abs(t - sw[k]) < 0.05: f[y0:y1] = f[y0:y1] + 0.35 * (1 - abs(t - sw[k]) / 0.05)
+        edges[max(0, y0 - 1):y0 + 2] = 1.0
+    glow = cv2.GaussianBlur(edges, (0, 0), 3) * 1.5 + edges
+    return f + (glow * env * 0.45)[..., None] * BLUE_GLOW
+
+
+# ---- speed-out whip loop
+def t_whiploop(t, A, a, end):
+    """Loop: gold lightning gathers round Barry on the last shot, he tears off to the right as a red-gold blur with
+    a lightning trail, and the camera whip-pans after him across the gap -- the whip eases into the first shot of the
+    edit, so the end runs straight into the beginning without a cut."""
+    if t >= end: return layer(0, t - DUR)
+    t1 = a + 0.28; gap = 0.18 * W; span = W + gap
+    p = ease(clamp((t - t1) / (end - t1))); vel = 6 * clamp((t - t1) / (end - t1)) * (1 - clamp((t - t1) / (end - t1)))
+    X = p * span                                                                                # camera position
+    fa = layer(A, t); f0 = layer(0, t - DUR)
+    charge = ease(clamp((t - a) / (t1 - a + 0.10)))
+    if t < t1 + 0.12:                                                                            # lightning gathers round him
+        rng = np.random.default_rng(int(t * FPS)); segs = []
+        cx, cy = W * 0.50, H * 0.40
+        for _ in range(int(3 + 6 * charge)):
+            ang = rng.uniform(0, 2 * math.pi); r0 = rng.uniform(0.18, 0.32) * W
+            p0 = (cx + r0 * math.cos(ang), cy + 1.3 * r0 * math.sin(ang)); L = rng.uniform(60, 180)
+            segs.append((bolt_path(p0, (p0[0] + L * math.cos(ang + 1.2), p0[1] + L * math.sin(ang + 1.2)), rng, 5, 0.16), 0.7))
+        fa = add(fa, draw_bolts(segs, 2.8, amp=1.1 * charge))
+    if t >= t1 - 0.04:                                                                           # Barry blurs out to the right
+        k = clamp((t - (t1 - 0.04)) / 0.20)
+        trail = fa.copy()
+        for j in range(1, 6):
+            g = np.roll(fa, int(j * 60 * k), 1) * (RED_T if j % 2 else GOLD_T)
+            trail = np.maximum(trail, g * (0.7 - 0.1 * j) * k)
+        fa = trail
+    canvas = np.zeros((H, W, 3), np.float32) + np.float32([0.03, 0.03, 0.05])
+    def place(img, x0):
+        x0 = int(round(x0)); xs, xe = max(0, x0), min(W, x0 + W)
+        if xe > xs: canvas[:, xs:xe] = img[:, xs - x0:xe - x0]
+    place(fa, -X); place(f0, span - X)
+    kb = int(1 + 220 * vel) | 1                                                                   # motion blur with the camera's speed
+    if kb >= 3: canvas = cv2.blur(canvas, (kb, 1))
+    if t >= t1:                                                                                  # the lightning trail he leaves, across the gap
+        ys = H * 0.46; sx0, sx1 = W * 0.55 - X, span + W * 0.40 - X
+        head = lerp(sx0, sx1, clamp((t - t1) / (end - t1) * 1.15))
+        xs = np.linspace(sx0, head, 50); ys_ = ys + 40 * np.sin(xs / 210) + np.random.default_rng(int(t * FPS)).normal(0, 6, 50)
+        fade = 1 - ease(clamp((t - (end - 0.18)) / 0.18))
+        canvas = add(canvas, draw_bolts([(np.stack([xs, ys_], 1), 1.0)], 6.0, amp=1.4 * fade))
+        canvas = add(canvas, draw_bolts([(np.stack([xs, ys_ + 16], 1), 0.6)], 3.0, glow=np.float32([0.15, 0.25, 1.0]), amp=0.9 * fade))
+    return canvas
+
+
 # ---- spray-paint X ("X gon' give it to ya", second time)
 def _spray_assets():
     if 'spray' in _K4: return _K4['spray']
@@ -5828,6 +5894,7 @@ TRANSITIONS = {
     'trailbolt': (lambda c, o: (c - .56, c + .38), lambda t, c, A, B, o: t_trailbolt(t, c, A, B, c - .56, c + .38)),
     'disperse':  (lambda c, o: (c - .48, c + .40), lambda t, c, A, B, o: t_disperse(t, c, A, B, c - .48, c + .40)),
     'remnants':  (lambda c, o: (c - .34, c + .36), lambda t, c, A, B, o: t_remnants(t, c, A, B, c - .34, c + .36)),
+    'phaseslice': (lambda c, o: (c - .34, c + .34), lambda t, c, A, B, o: t_phaseslice(t, c, A, B, c - .34, c + .34)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
@@ -5843,7 +5910,7 @@ TRANSITIONS = {
 }
 
 
-LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck')
+LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck', 'whiploop')
 
 
 def build_trans():
@@ -5868,6 +5935,9 @@ def build_trans():
     elif lp == 'slidebox':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_slidebox(t, last, a, end)))
+    elif lp == 'whiploop':
+        c = CUTS[-1]; a, end = c - 0.70, c + 0.30
+        out.append((a, DUR + 1, lambda t: t_whiploop(t, last, a, end)))
     elif lp == 'struck':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_struck(t, last, a, end)))

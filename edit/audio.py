@@ -536,6 +536,10 @@ def sfx_for(name, c, o, up):
         put(boom(0.6, 60, 30), c, gain=0.12)
     elif name == 'struck':
         put(zap(0.4), c - 0.85, gain=0.03); put(thunder(1.2), c - 0.47, gain=0.10); put(boom(0.9, 50, 25), c - 0.47, gain=0.12)
+    elif name == 'phaseslice':
+        put(buzz(0.6), c - 0.34, gain=0.04); put(zap(0.3), c - 0.12, gain=0.03); put(boom(0.6, 60, 30), c, gain=0.11)
+    elif name == 'whiploop':
+        put(zap(0.4), c - 0.70, gain=0.035); put(whoosh(0.70, 300, 6000, q=0.8, peak=0.55), c - 0.42, pan=0.0, gain=0.09)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)
