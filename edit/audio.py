@@ -622,7 +622,8 @@ def sfx_for(name, c, o, up):
         put(whoosh(0.20, 400, 4500, peak=0.9), c - 0.12, gain=0.05); put(boom(0.6, 60, 30), c, gain=0.10)
     elif name == 'cortex2':
         put(whoosh(0.55, 2500, 250, peak=0.3), c - 1.30, gain=0.06); put(buzz(0.5), c - 1.10, gain=0.015)
-        put(zap(0.5), c - 0.78, gain=0.05); put(thunder(0.8), c - 0.78, gain=0.04)
+        put(crackle(0.15), c - 0.94, gain=0.04); put(zap(0.5), c - 0.80, gain=0.07); put(thunder(1.2), c - 0.80, gain=0.08)
+        put(boom(0.8, 50, 24), c - 0.80, gain=0.10)
         for k_ in range(6): put(tick(0.05, 1500 + 250 * k_), c - 0.76 + 0.05 * k_, pan=(-0.6, 0.6)[k_ % 2], gain=0.03)
         put(whoosh(0.50, 300, 5000, peak=0.9), c - 0.45, gain=0.07)
     elif name == 'echowhip':

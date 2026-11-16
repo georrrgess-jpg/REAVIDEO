@@ -7201,13 +7201,46 @@ def t_cortex2(t, A, a, end):
         if (jj, rr) in cents:
             segs.append((bolt_path(cents[(jj, rr)][0], p, rng, 5, 0.10), 1.0))
     if segs: f = add(f, draw_bolts(segs, 4.0, amp=1.2))
+    # the hero strike: a stepped leader feels its way down from above the wall, the return stroke hits the centre
+    # screen (which sets off the surge), the whole wall lights up, two re-strikes flicker down the same channel
+    t_s = a + (end - a) * 0.40; dt_ = t - t_s
+    if -0.13 < dt_ < 0.30:
+        if 'cx2bolt' not in _K4:
+            rg = np.random.default_rng(1234)
+            tree = bolt_tree((0.0, 0.0), (1.0, 0.0), rg, branches=7, disp=0.13, depth=7)
+            _K4['cx2bolt'] = tree
+        tree = _K4['cx2bolt']
+        pa = proj((0.35 * W, -3.4 * H, 0.0)); pb = proj((0.0, -H / 2, 0.0))
+        if pa[2] > 1 and pb[2] > 1:
+            P0 = np.float64([W / 2 + fpx * pa[0] / pa[2], H / 2 + fpx * pa[1] / pa[2]])
+            P1 = np.float64([W / 2 + fpx * pb[0] / pb[2], H / 2 + fpx * pb[1] / pb[2]])
+            v_ = P1 - P0; n_ = np.float64([-v_[1], v_[0]])
+            mp = lambda pts: P0 + pts[:, :1] * v_ + pts[:, 1:2] * n_
+            if dt_ < 0:                                           # stepped leader, branches growing with it
+                frac = (np.floor(clamp((dt_ + 0.13) / 0.13) * 9) / 9) ** 1.3
+                hs = []
+                for k, (pts, w) in enumerate(tree):
+                    if k == 0: n0 = max(2, int(len(pts) * frac)); hs.append((mp(pts[:n0]), 0.55))
+                    elif pts[0][0] < frac * 0.95: n0 = max(2, int(len(pts) * min(1.0, (frac - pts[0][0]) * 3))); hs.append((mp(pts[:n0]), w * 0.5))
+                f = add(f, draw_bolts(hs, 4.5, amp=1.0))
+                tip = hs[0][0][-1]
+                f = f + np.exp(-((XX - tip[0]) ** 2 + (YY - tip[1]) ** 2) / (2 * 18.0 ** 2))[..., None] * 1.2
+            else:
+                env = math.exp(-dt_ / 0.05) + 0.8 * math.exp(-((dt_ - 0.075) / 0.018) ** 2) + 0.55 * math.exp(-((dt_ - 0.15) / 0.02) ** 2)
+                env *= 1 - ss(0.20, 0.30, dt_)
+                fl = np.random.default_rng(int(t * FPS)).uniform(0.85, 1.15)
+                hs = [(mp(pts), w * (1.0 if k == 0 else fl)) for k, (pts, w) in enumerate(tree)]
+                f = add(f, draw_bolts(hs, 10.0, amp=1.7 * env))
+                d_ = np.sqrt((XX - P1[0]) ** 2 + (YY - P1[1]) ** 2)
+                f = f + (np.exp(-(d_ / 60.0) ** 2) * 1.6 + np.exp(-(d_ / 380.0) ** 2) * 0.35)[..., None] * np.float32([0.75, 0.92, 1.0]) * env
+                f = f * (1 + 0.35 * env) + 0.10 * env                 # the whole wall lit by the stroke
     if centre is not None and push > 0:                           # rush into the centre screen
         k = math.sin(math.pi * clamp((u - 0.62) / 0.38)); cx_, cy_c = centre[:, 0].mean(), centre[:, 1].mean()
         if k > 0.02: f = _radial(f, 1.0, 1 + 0.06 * k, cx_, cy_c, 5)
     if abs(roll) > 0.02:
         M = cv2.getRotationMatrix2D((W / 2, H / 2), roll, 1.0 + abs(roll) * 0.012)
         f = cv2.warpAffine(f, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-    return f + 0.07 * math.exp(-((u - 0.40) / 0.04) ** 2)
+    return f
 
 
 # ==== Flash kit XV (Remedy v3): one of a kind -- echo whip, light burn, card flip, grey shock, strip fall, emblem lock ====

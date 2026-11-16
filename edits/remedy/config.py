@@ -28,6 +28,9 @@ v6 (user: instead of the prism, an emblem transition that traces his actual embl
 cinematic): the night shot now starts earlier and wider so his whole emblem is in frame; the camera locks onto the
 real emblem, a spark traces its real ring and bolt outline with lightning off the head, it charges, and bursts open
 onto the next shot with that shot's emblem locked into the same place.
+v7 (user: a really cool lightning bolt with the last transition): the loop gains a hero strike -- a stepped
+leader feels down from above the wall, the return stroke hits the centre screen and sets off the surge, the wall
+lights up, two re-strikes flicker down the same channel (thunder and boom under it).
 Build: bash ../../edit/build.sh .
 """
 W, H, FPS = 1080, 1920, 60
