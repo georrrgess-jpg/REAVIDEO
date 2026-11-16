@@ -64,7 +64,7 @@ SHOTS = [
  dict(name='debris', beats=2, out='flip', fx=['bump', 'slabhit'], pack=S1, src=279.00, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # F100 debris storm
  dict(name='suit_smile', beats=2, out='greyshock', fx=['bump', 'emblempulse', 'slabhit'], pack=ALL, src=93.00, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # FA49 suit, smile
  dict(name='mask_bright', beats=2, out='strips', fx=['bump', 'slabhit'], pack=ALL, src=85.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # FA46 cowl, daylight
- dict(name='night_suit', beats=2, out='emblemtrace', fx=['bump'], pack=S5, src=72.30, x=0.50, frame='wide', valid=(0, 107), push=(1.00, 1.04), **g(0.60, 1.15)),   # F533 night street
+ dict(name='night_suit', beats=2, out='emblemtrace', fx=['bump'], pack=S5, src=72.30, x=0.50, frame='wide', valid=(0, 107), push=(1.00, 1.04), **g(0.60, 1.50)),   # F533 night street
  dict(name='lab_suit', beats=3, out='cortex2', fx=['bump', 'emblempulse'], pack=BLZ, src=167.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.15)),   # FB88 suited up in STAR Labs
 ]
 for s in SHOTS: s.setdefault('z', 1.0); s.setdefault('frame', 'auto')
