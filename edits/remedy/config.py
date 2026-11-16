@@ -21,6 +21,9 @@ into the black-and-white shot with a shockwave, strips falling as the colour ret
 v4 (user: "room for improvement... smooth out transitions, animations"): measured every frame-to-frame jump and
 flash and evened them out -- the stutter frames exposure-matched and blended, cut flashes halved, the flare bloom, slab
 glare and loop surge toned down, and the title dive rebuilt as one eased camera move landing on the beat.
+v5 (user: replace the transition at 0:17 with something unique and creative): the emblem lock is replaced by a glass
+prism -- it glides in on the silent step, the next shot refracted inside it with spectral edges and a glint, and the
+camera dives into it on the beat.
 Build: bash ../../edit/build.sh .
 """
 W, H, FPS = 1080, 1920, 60
@@ -57,7 +60,7 @@ SHOTS = [
  dict(name='debris', beats=2, out='flip', fx=['bump', 'slabhit'], pack=S1, src=279.00, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # F100 debris storm
  dict(name='suit_smile', beats=2, out='greyshock', fx=['bump', 'emblempulse', 'slabhit'], pack=ALL, src=93.00, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # FA49 suit, smile
  dict(name='mask_bright', beats=2, out='strips', fx=['bump', 'slabhit'], pack=ALL, src=85.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.00)),   # FA46 cowl, daylight
- dict(name='night_suit', beats=2, out='emblemlock', fx=['bump', 'emblempulse', 'slabhit', 'gapsplit'], pack=S5, src=73.50, x=0.50, push=(1.00, 1.05), **g(0.60, 1.10)),   # F533 night street
+ dict(name='night_suit', beats=2, out='prismglass', fx=['bump', 'emblempulse', 'slabhit'], pack=S5, src=73.50, x=0.50, push=(1.00, 1.05), **g(0.60, 1.10)),   # F533 night street
  dict(name='lab_suit', beats=3, out='cortex2', fx=['bump', 'emblempulse'], pack=BLZ, src=167.60, x=0.50, push=(1.00, 1.05), **g(0.55, 1.15)),   # FB88 suited up in STAR Labs
 ]
 for s in SHOTS: s.setdefault('z', 1.0); s.setdefault('frame', 'auto')

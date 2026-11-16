@@ -640,6 +640,9 @@ def sfx_for(name, c, o, up):
     elif name == 'emblemlock':
         put(shimmer(0.3), c - 0.30, gain=0.03); put(whoosh(0.30, 300, 3000, peak=0.9), c - 0.30, gain=0.05)
         put(boom(0.5, 70, 32), c, gain=0.09); put(zap(0.3), c, gain=0.03)
+    elif name == 'prismglass':
+        put(whoosh(0.40, 2500, 900, q=0.8, peak=0.3), c - 0.48, pan=0.6, gain=0.05); put(chime(0.9, 1320), c - 0.30, gain=0.02)
+        put(shimmer(0.4), c - 0.20, gain=0.03); put(whoosh(0.25, 400, 4500, peak=0.9), c - 0.12, gain=0.06); put(boom(0.4, 80, 36), c, gain=0.06)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)

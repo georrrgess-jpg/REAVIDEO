@@ -7371,6 +7371,101 @@ def t_emblemlock(t, c, A, B, a, b):
     return f + (ring[..., None] * 0.9 + gl[..., None] * GOLD_GLOW * 0.9) * k + 0.18 * math.exp(-abs(t - c) * 25)
 
 
+# ==== Flash kit XVI (Remedy v5): the glass prism ====
+def _tri(cx, cy, R, ang):
+    return np.float32([[cx + R * math.cos(ang + k * 2 * math.pi / 3 - math.pi / 2), cy + R * math.sin(ang + k * 2 * math.pi / 3 - math.pi / 2)] for k in range(3)])
+
+
+def _poly_mask(q, sub=4):
+    m = np.zeros((H, W), np.float32)
+    cv2.fillPoly(m, [np.int32(np.round(q * sub))], 1.0, cv2.LINE_AA, shift=2)
+    return m
+
+
+def t_prismglass(t, c, A, B, a, b):
+    """A glass prism: through the 808's silent step a crystal prism glides in from the right, turning, and settles
+    beside his face; inside it the next shot is seen refracted (offset along the glass, colour channels dispersed,
+    caustic lines), its edges fringed with spectrum and a glint running along them, a faint rainbow thrown across
+    the scene beside it; on the beat the camera dives into the prism until the refracted shot is the frame and the
+    dispersion settles out."""
+    S5 = lambda x: x * x * x * (x * (6 * x - 15) + 10)
+    tz = c - 0.07                                                # the dive starts just before the beat
+    g = clamp((t - a) / (tz - a)); e = eout(g)
+    cx0, cy0 = lerp(1.30 * W, 0.66 * W, e), lerp(0.78 * H, 0.68 * H, e)
+    ang0 = math.radians(lerp(75, 8, e) + 4 * math.sin(2.2 * (t - a)))
+    R0 = lerp(0.24 * W, 0.32 * W, e)
+    k = clamp((t - tz) / (b - tz - 0.04)); kz = S5(k)
+    R = R0 * math.exp(math.log(3.2 * H / R0) * kz)
+    cx, cy = lerp(cx0, W / 2, kz), lerp(cy0, 0.36 * H, kz)        # the prism's inradius ends well beyond the frame
+    ang = ang0 * (1 - kz)
+    q = _tri(cx, cy, R, ang)
+    m = _poly_mask(q)
+    # outside: the outgoing shot, gently pushed, a soft rainbow cast from the prism's lower-right
+    A_ = layer(A, t, 1 + 0.05 * clamp((t - a) / (c - a)) + 0.25 * kz)
+    fan = np.zeros((H, W, 3), np.float32)
+    if kz < 0.6:
+        vx, vy = q[1]                                            # lower-right vertex
+        th = np.arctan2(YY - vy, XX - vx); rr = np.sqrt((XX - vx) ** 2 + (YY - vy) ** 2)
+        base = math.radians(35); spread = 0.30
+        x_ = np.clip((th - base) / spread + 0.5, 0, 1)
+        inside = ((th > base - spread / 2) & (th < base + spread / 2)).astype(np.float32)
+        hue = np.stack([np.clip(1.5 - np.abs(x_ * 3 - 0.5) * 1.6, 0, 1), np.clip(1.5 - np.abs(x_ * 3 - 1.5) * 1.6, 0, 1), np.clip(1.5 - np.abs(x_ * 3 - 2.5) * 1.6, 0, 1)], 2)
+        fan = hue * (inside * np.exp(-rr / (0.55 * H)) * np.clip(rr / 60, 0, 1))[..., None] * 0.22 * e * (1 - kz / 0.6)
+        fan = cv2.GaussianBlur(fan, (0, 0), 6)
+    # inside: the next shot refracted -- shifted along the glass, channels dispersed, a slight magnification
+    dirx, diry = math.cos(ang + math.pi / 6), math.sin(ang + math.pi / 6)
+    spread_px = 12 * (1 - kz) + 2 * (1 - clamp((t - c) / (b - c)))
+    # the prism is a lens: the next shot's face is framed in it, and the dive grows that into the full frame
+    cen = q.mean(0); fx_, fy_ = W / 2, 0.36 * H
+    sB = lerp(0.42 * R0 / (0.30 * W), 1.0, kz) * (1 + 0.02 * (1 - clamp((t - c) / (b - c))))
+    tx_, ty_ = lerp(cen[0] - sB * fx_, W / 2 * (1 - sB), kz), lerp(cen[1] - sB * fy_, 0.42 * H * (1 - sB), kz)
+    Bf = layer(B, t)
+    chans = []
+    for ch, sgn in ((0, -1), (1, 0), (2, 1)):
+        ox = dirx * sgn * spread_px; oy = diry * sgn * spread_px
+        M = np.float32([[sB, 0, tx_ + ox], [0, sB, ty_ + oy]])
+        chans.append(cv2.warpAffine(Bf[..., ch], M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT))
+    inner = np.stack(chans, 2) * (1.0 + 0.25 * (1 - kz))
+    if kz < 0.999:                                               # three facets: the glass reads as a solid crystal
+        fac = np.ones((H, W), np.float32)
+        for j, lv in enumerate((1.18, 0.92, 0.80)):
+            mj = _poly_mask(np.float32([cen, q[j], q[(j + 1) % 3]]))
+            fac = fac + (lv - 1) * mj
+        inner = inner * (1 + (fac - 1) * (1 - kz))[..., None]
+    # caustic lines inset from each edge, and a light falloff toward the edges (thickness of the glass)
+    look = 1 - kz
+    if look > 0.02:
+        qi = cen + (q - cen) * 0.80
+        cau = np.zeros((H, W), np.float32)
+        for j in range(3):
+            p0, p1 = qi[j], qi[(j + 1) % 3]
+            cv2.line(cau, tuple(int(v) for v in p0), tuple(int(v) for v in p1), 1.0, 2, cv2.LINE_AA)
+        cau = cv2.GaussianBlur(cau, (0, 0), 3) * 0.35 + cau * 0.25
+        inner = inner + cau[..., None] * np.float32([0.95, 0.9, 1.0]) * look
+    if kz < 0.6:
+        sh = cv2.resize(cv2.GaussianBlur(cv2.resize(m, (W // 4, H // 4), interpolation=cv2.INTER_AREA), (0, 0), 6), (W, H))
+        A_ = A_ * (1 - 0.45 * np.roll(sh, (14, 10), (0, 1)) * e * (1 - kz / 0.6))[..., None]
+    f = (A_ + fan) * (1 - m[..., None]) + inner * m[..., None]
+    if look > 0.02:
+        # spectral fringe: the outline drawn three times, slightly offset outward, in blue, green and red
+        cen = q.mean(0); edge = np.zeros((H, W, 3), np.float32)
+        for ch, s_ in ((0, 1.000), (1, 1.012), (2, 1.024)):
+            e_ = np.zeros((H, W), np.float32); qq = cen + (q - cen) * s_
+            cv2.polylines(e_, [np.int32(np.round(qq * 4))], True, 1.0, 3, cv2.LINE_AA, shift=2)
+            edge[..., ch] = e_
+        core = np.zeros((H, W), np.float32); cv2.polylines(core, [np.int32(np.round(q * 4))], True, 1.0, 2, cv2.LINE_AA, shift=2)
+        glow = cv2.resize(cv2.GaussianBlur(cv2.resize(core, (W // 4, H // 4), interpolation=cv2.INTER_AREA), (0, 0), 5), (W, H))
+        # a glint travelling along the perimeter
+        per = np.vstack([q, q[:1]]); Ls = np.r_[0, np.cumsum(np.hypot(*np.diff(per, axis=0).T))]
+        sg = (0.15 + 1.4 * clamp((t - a) / (c - a))) % 1.0 * Ls[-1]
+        gx, gy = np.interp(sg, Ls, per[:, 0]), np.interp(sg, Ls, per[:, 1])
+        gl = np.exp(-((XX - gx) ** 2 + (YY - gy) ** 2) / (2 * 26.0 ** 2))
+        ridge = np.zeros((H, W), np.float32)                     # the facet ridges from the centre to each vertex
+        for j in range(3): cv2.line(ridge, (int(cen[0]), int(cen[1])), (int(q[j][0]), int(q[j][1])), 1.0, 2, cv2.LINE_AA)
+        f = f + (edge * 0.9 + core[..., None] * 0.8 + glow[..., None] * np.float32([0.95, 0.85, 0.7]) * 1.2 + gl[..., None] * 1.3 + ridge[..., None] * 0.35) * look * e
+    return f + 0.06 * math.exp(-abs(t - c) * 30)
+
+
 TRANSITIONS = {
     'cut':       (lambda c, o: (c, c), None),
     'leaf':      (lambda c, o: (c - .15, c + .15), lambda t, c, A, B, o: t_leaf(t, c, A, B, o.get('ang', -38), o.get('seed', 3))),
@@ -7496,6 +7591,7 @@ TRANSITIONS = {
     'greyshock': (lambda c, o: (c - .46, c + .30), lambda t, c, A, B, o: t_greyshock(t, c, A, B, c - .46, c + .30)),
     'strips':    (lambda c, o: (c - .18, c + .22), lambda t, c, A, B, o: t_strips(t, c, A, B, c - .18, c + .22)),
     'emblemlock': (lambda c, o: (c - .30, c + .20), lambda t, c, A, B, o: t_emblemlock(t, c, A, B, c - .30, c + .20)),
+    'prismglass': (lambda c, o: (c - .48, c + .20), lambda t, c, A, B, o: t_prismglass(t, c, A, B, c - .48, c + .20)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
