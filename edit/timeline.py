@@ -6652,7 +6652,7 @@ def t_prism(t, c, A, B, a, b):
                                       (0.62 * H, 0.030 * H, a + 0.10, 1.2 * W, 'white', 300), (0.86 * H, 0.060 * H, c - 0.02, 1.8 * W, 'red', 1300),
                                       (0.08 * H, 0.035 * H, c + 0.06, 1.3 * W, 'gold', 400)):
         if t0 <= t <= t0 + 0.50: f = _slab(f, t, y0, hh, hx(t0), L, col, off)
-    return f + 0.18 * math.exp(-abs(t - c) * 30)
+    return f + 0.08 * math.exp(-abs(t - c) * 30)
 
 
 def t_slab(t, c, A, B, a, b, col='gold'):
@@ -6667,7 +6667,7 @@ def t_slab(t, c, A, B, a, b, col='gold'):
     if A_ is None: f = B_
     else:
         mB = ss(L * 0.30, L * 0.45, xx); f = A_ * (1 - mB[..., None]) + B_ * mB[..., None]
-    f = _slab(f, t, 0.50 * H, 2.6 * H, hx, L * 0.55, col, 900, alpha=0.95)
+    f = _slab(f, t, 0.50 * H, 2.6 * H, hx, L * 0.55, col, 900, alpha=0.80)
     f = _slab(f, t, 0.10 * H, 0.04 * H, hx + 0.35 * W, 1.4 * W, 'white', 100)
     f = _slab(f, t, 0.84 * H, 0.05 * H, hx - 0.25 * W, 1.4 * W, 'cyan' if col != 'cyan' else 'red', 1500)
     return f
@@ -6731,7 +6731,7 @@ def t_triptych(t, c, A, B, a, b):
         for yy in (top, bot):
             if 0 <= yy < H: ln[max(0, int(yy) - 3):int(yy) + 3] = 1
         f = f + cv2.GaussianBlur(ln, (0, 0), 3)[..., None] * (1 - e) * 1.5 + cv2.GaussianBlur(ln, (0, 0), 25)[..., None] * GOLD_GLOW * (1 - e) * 3
-    return f + 0.30 * math.exp(-(t - c) * 20)
+    return f + 0.18 * math.exp(-(t - c) * 20)
 
 
 def _rgb_zoom(img, zs, cx, cy, ang=0.0):
@@ -6765,12 +6765,12 @@ def t_chromasnap(t, c, A, B, a, b):
         f = _rgb_zoom(img, (z * (1 - sep), z, z * (1 + sep)), cx, cy, 1.2 * k)
         if snap > 0: f = _radial(f, 1.0, 1 + 0.25 * snap, cx, cy)
         vig = 1 - 0.45 * k * np.clip(((XX - cx) ** 2 + (YY - cy) ** 2) / (0.8 * H) ** 2, 0, 1)
-        return f * vig[..., None] + 0.15 * snap ** 2
+        return f * vig[..., None] + 0.06 * snap ** 2
     v = clamp((t - c) / (b - c)); e = eout(v)
     z = lerp(1.30, 1.0, e); sep = 0.07 * (1 - e) ** 1.5
     f = _rgb_zoom(layer(B, t), (z * (1 + sep), z, z * (1 - sep)), cx, cy, -1.5 * (1 - e))
     if e < 0.7: f = _radial(f, 1.0, 1 + 0.18 * (1 - e / 0.7), cx, cy, 5)
-    return f + 0.22 * math.exp(-(t - c) * 22)
+    return f + 0.10 * math.exp(-(t - c) * 22)
 
 
 # ---- THE FLASH title as a window into the next shot
@@ -6810,9 +6810,9 @@ def t_title(t, c, A, B, a, b):
     the next shot is the frame."""
     T = _title_assets(); L = T['letters']
     tx, ty = T['target']
-    td = c - 0.30                                                # the dive starts on the 808's pickup
-    zdive = math.exp(math.log(60.0) * ein(clamp((t - td) / 0.34)))
-    k = clamp((t - td) / 0.34)
+    td = c - 0.30                                                # the dive: one eased move, landing on the beat
+    k = clamp((t - td) / 0.30); S5k = k * k * k * (k * (6 * k - 15) + 10)
+    zdive = math.exp(math.log(40.0) * (0.6 * S5k + 0.4 * k * k))
     # build the title mask (per-letter animation)
     m = np.zeros((H, W), np.float32)
     for j, lm in enumerate(L):
@@ -6829,22 +6829,22 @@ def t_title(t, c, A, B, a, b):
             sc = 1 + 0.6 * (1 - e); M = cv2.getRotationMatrix2D((W / 2, 0.47 * H - 0.25 * W), 0, sc)
             mm = cv2.warpAffine(lm, M, (W, H)) * e
         m = np.maximum(m, mm)
-    winB = ss(td - 0.10, td + 0.02, t)                           # letters become windows onto the next shot
+    winB = ss(td - 0.06, td + 0.08, t)                           # letters become windows onto the next shot
     ztot = zdive
     if ztot > 1.0001:
-        cxp, cyp = lerp(tx, W / 2, ease(k)), lerp(ty, H / 2, ease(k))
+        cxp, cyp = lerp(tx, W / 2, S5k), lerp(ty, H / 2, S5k)
         M = np.float32([[ztot, 0, cxp - ztot * tx], [0, ztot, cyp - ztot * ty]])
         m = cv2.warpAffine(m, M, (W, H), flags=cv2.INTER_LINEAR)
         gold = cv2.warpAffine(T['gold'], M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
     else:
         gold = T['gold']
-    zA = 1 + 0.06 * clamp((t - a) / (c - a)) + 1.5 * ein(k)
+    zA = 1 + 0.06 * clamp((t - a) / (c - a)) + 2.0 * S5k
     A_ = _shift(layer(A, t), 0, 0, zA, W / 2, 0.42 * H)
-    if k > 0: A_ = _radial(A_, 1.0, 1 + 0.12 * k, W / 2, H / 2, 4)
-    dim = 1 - 0.40 * ss(a, a + 0.30, t)
+    if k > 0: A_ = _radial(A_, 1.0, 1 + 0.10 * math.sin(math.pi * k), W / 2, H / 2, 4)
+    dim = (1 - 0.40 * ss(a, a + 0.30, t)) * (1 - 0.5 * S5k)
     zb = 1.10 - 0.10 * eout(clamp((t - td) / (b - td)))
     Bf = _shift(layer(B, t), 0, 0, zb, W / 2, 0.42 * H)
-    fill = gold * (1 - winB) + Bf * winB
+    fill = gold * (1 - winB) + Bf * (1 + 0.35 * (1 - S5k)) * winB
     sweep = np.exp(-(((XX - (lerp(-0.3, 1.3, clamp((t - (a + 0.60)) / 0.30)) * W)) + (YY - 0.4 * H) * 0.5) / 26.0) ** 2) * (1 - winB)
     rimw = np.clip(m - cv2.erode(m, np.ones((7, 7), np.uint8)), 0, 1) * (1 - ss(td + 0.10, td + 0.25, t))
     glow = cv2.resize(cv2.GaussianBlur(cv2.resize(m, (W // 4, H // 4), interpolation=cv2.INTER_AREA), (0, 0), 7), (W, H))
@@ -6854,7 +6854,7 @@ def t_title(t, c, A, B, a, b):
     f = f + glow[..., None] * GOLD_GLOW * (0.55 * (1 - winB) + 0.25) * (1 - k)
     f = f * (1 - m[..., None]) + (fill + sweep[..., None] * 0.9) * m[..., None]
     f = f + rimw[..., None] * np.float32([0.75, 0.95, 1.0]) * 0.9
-    return f + 0.25 * math.exp(-abs(t - c) * 25) * (t > td)
+    return f
 
 
 # ---- the cortex: the edit was on STAR Labs' screens all along (loop)
@@ -7006,10 +7006,12 @@ def t_stutter(t, c, A, B, a, b):
         for tf in (c - 0.24, c - 0.12, c - 0.06):
             if tf <= t < tf + 0.034:
                 im = _rgb_zoom(layer(B, t), (1.27, 1.25, 1.23), cx, cy)
-                return im * 1.15 + 0.10
+                Ai = layer(A, t, 1 + 0.08 * u)
+                im = im * float(np.clip((Ai.mean() * 1.12 + 0.02) / (im.mean() + 1e-3), 0.5, 1.2))
+                return 0.25 * Ai + 0.75 * im
         return _rgb_zoom(layer(A, t), (1 + 0.08 * u - 0.006 * u, 1 + 0.08 * u, 1 + 0.08 * u + 0.006 * u), cx, cy)
     v = clamp((t - c) / (b - c)); e = eout(v); z = lerp(1.16, 1.0, e); sp = 0.012 * (1 - e)
-    return _rgb_zoom(layer(B, t), (z * (1 + sp), z, z * (1 - sp)), cx, cy) + 0.20 * math.exp(-(t - c) * 25)
+    return _rgb_zoom(layer(B, t), (z * (1 + sp), z, z * (1 - sp)), cx, cy) + 0.08 * math.exp(-(t - c) * 25)
 
 
 def t_shear(t, c, A, B, a, b):
@@ -7046,8 +7048,8 @@ def t_flare(t, c, A, B, a, b):
     u = clamp((t - a) / (b - a)); px = lerp(1.15 * W, -0.15 * W, u); py = 0.60 * H
     blo = math.exp(-((t - c) / 0.07) ** 2)
     f = layer(A, t) if t < c else layer(B, t)
-    if t >= c: f = f * (1 + 0.35 * math.exp(-(t - c) / 0.08))
-    inten = 0.5 + 1.5 * math.exp(-((t - c) / 0.12) ** 2)
+    if t >= c: f = f * (1 + 0.15 * math.exp(-(t - c) / 0.10))
+    inten = 0.5 + 1.1 * math.exp(-((t - c) / 0.14) ** 2)
     dy = YY - py; dx = XX - px
     streak = np.exp(-(dy / 5.0) ** 2) * np.exp(-np.abs(dx) / (0.9 * W)) * 1.2 + np.exp(-(dy / 26.0) ** 2) * np.exp(-np.abs(dx) / (0.55 * W)) * 0.6
     core = np.exp(-(dx ** 2 + dy ** 2) / (2 * 22.0 ** 2)) * 2.0 + np.exp(-(dx ** 2 + dy ** 2) / (2 * 120.0 ** 2)) * 0.5
@@ -7056,7 +7058,7 @@ def t_flare(t, c, A, B, a, b):
         gx, gy = W / 2 + (px - W / 2) * sc, H / 2 + (py - H / 2) * sc
         disc = np.clip(1 - np.sqrt((XX - gx) ** 2 + (YY - gy) ** 2) / r, 0, 1) ** 0.6
         flare = flare + disc[..., None] * np.float32(col) * 0.10
-    return f + flare * inten * 0.55 + blo * 0.40
+    return f + flare * inten * 0.45 + blo * 0.18
 
 
 def _cover(img, x0, y0, x1, y1, fy=0.40):
@@ -7115,7 +7117,7 @@ def t_collage(t, c, A, B, a, b):
             f = f * (1 - 0.6 * np.roll(sh_m, (10, 10), (0, 1))[..., None])
             f = f * (1 - mo[..., None]) + np.float32([0.95, 0.96, 1.0]) * mo[..., None] * (1 - ev * (j == 3))
         f = f * (1 - m[..., None]) + im * m[..., None]
-    return f + 0.25 * math.exp(-abs(t - c) * 28) * (t >= c)
+    return f + 0.10 * math.exp(-abs(t - c) * 28) * (t >= c)
 
 
 # ---- the cortex surge (loop)
@@ -7180,7 +7182,7 @@ def t_cortex2(t, A, a, end):
         mi = np.zeros((H, W), np.float32); cv2.fillConvexPoly(mi, np.int32(q * 4), 1.0, cv2.LINE_AA, shift=2)
         full = clamp((area - 0.80) / 0.20)
         f = f * (1 - mb[..., None]) + mb[..., None] * np.float32([0.035, 0.03, 0.03])
-        fl = 1 + 2.2 * math.exp(-max(0.0, t - ts) / 0.05) * (t >= ts) * (1 - full)
+        fl = 1 + 1.1 * math.exp(-max(0.0, t - ts) / 0.06) * (t >= ts) * (1 - full)
         look = 1 - full
         sheen = np.exp(-(((XX - q[:, 0].mean()) - (YY - q[:, 1].mean()) * 0.6) / (0.25 * (q[:, 0].max() - q[:, 0].min()) + 1)) ** 2) * 0.08 * look
         f = f * (1 - mi[..., None]) + (pim * fl + sheen[..., None]) * mi[..., None]
@@ -7205,7 +7207,7 @@ def t_cortex2(t, A, a, end):
     if abs(roll) > 0.02:
         M = cv2.getRotationMatrix2D((W / 2, H / 2), roll, 1.0 + abs(roll) * 0.012)
         f = cv2.warpAffine(f, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-    return f + 0.18 * math.exp(-((u - 0.40) / 0.03) ** 2)
+    return f + 0.07 * math.exp(-((u - 0.40) / 0.04) ** 2)
 
 
 # ==== Flash kit XV (Remedy v3): one of a kind -- echo whip, light burn, card flip, grey shock, strip fall, emblem lock ====
@@ -7223,7 +7225,7 @@ def t_echowhip(t, c, A, B, a, b):
         if w < 0.01: continue
         e = _hblur(_shift(src, dx + sgn * k * 0.15 * W * u), 1 + 60 * u)
         f = f + e * lerp(RED, GOLD, k / 4) * w
-    return f / (1 + 0.25 * u) + 0.15 * math.exp(-abs(t - c) * 30)
+    return f / (1 + 0.45 * u) + 0.06 * math.exp(-abs(t - c) * 30)
 
 
 def t_burn(t, c, A, B, a, b):
@@ -7295,7 +7297,7 @@ def t_greyshock(t, c, A, B, a, b):
     mx = (XX - ux * disp).astype(np.float32); my = (YY - uy * disp).astype(np.float32)
     f = cv2.remap(layer(B, t, 1.08 - 0.08 * eout(v)), mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
     ring = np.exp(-((rr - R) / 0.012) ** 2) * (1 - v)
-    return f + ring[..., None] * 0.6 + 0.25 * math.exp(-(t - c) * 25)
+    return f + ring[..., None] * 0.45 + 0.10 * math.exp(-(t - c) * 25)
 
 
 def t_strips(t, c, A, B, a, b):

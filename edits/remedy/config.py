@@ -18,6 +18,9 @@ the first shot, a rush back in).
 v3 (user: "diversify the transitions... different instead of the same"): every transition is now one of a kind --
 the repeats replaced by kit XV: an echo whip, a light burn out of the fiery lunge, a card flip, the colour draining
 into the black-and-white shot with a shockwave, strips falling as the colour returns, and an emblem-to-emblem lock.
+v4 (user: "room for improvement... smooth out transitions, animations"): measured every frame-to-frame jump and
+flash and evened them out -- the stutter frames exposure-matched and blended, cut flashes halved, the flare bloom, slab
+glare and loop surge toned down, and the title dive rebuilt as one eased camera move landing on the beat.
 Build: bash ../../edit/build.sh .
 """
 W, H, FPS = 1080, 1920, 60

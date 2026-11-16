@@ -480,6 +480,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-16: Remedy v3 feedback: "still room for improvement... smooth out transitions, animations". Method that worked for a polish pass: measure every frame-to-frame difference and brightness jump in the render, then even out the outliers (exposure-match strobe frames, keep cut flashes at ~0.10 added light, no white blooms), and make dives one eased (smootherstep) camera move that lands on the beat.
 - 2026-11-15: Remedy v2 feedback: "diversify the transitions and make them different instead of the same. I do like the improvements you made." Rule: every transition in an edit is used once (glue included); keep the beat overlays.
 - 2026-11-15: Remedy v1 feedback: "drastically improve... significantly more animations, transitions... keep up with the beat... be creative with the graphics but don't be outlandish"; the flat monitor-wall loop was "underwhelming". Rule: on a beat-driven drop, animate every kick/snare (slabs, emblem pulses), give silent steps their own move, leave no plain cuts, and make the loop the biggest moment.
 - 2026-11-15: **The user made Still Friends v8 the speedster / superpower standard** ("This edit is adequate, make it a standard"). `new_edit.py --from still_friends`. Treat it as the minimum to beat.
