@@ -7466,6 +7466,157 @@ def t_prismglass(t, c, A, B, a, b):
     return f + 0.06 * math.exp(-abs(t - c) * 30)
 
 
+# ==== Flash kit XVII (Remedy v6): trace the real emblem ====
+def _emblem_shape(img):
+    """The real chest emblem's geometry from the footage: centre and radius of its white disc (min enclosing circle
+    of the near-white blobs at the emblem) and the outline of the dark bolt inside it (its largest contour)."""
+    ex, ey, re = _emblem_low(img)
+    R = int(max(60, 2.4 * re))
+    x0, x1 = max(0, int(ex - R)), min(W, int(ex + R)); y0, y1 = max(0, int(ey - R)), min(H, int(ey + R))
+    roi = img[y0:y1, x0:x1]; l = luma(roi); sat = roi.max(2) - roi.min(2)
+    sc = np.clip(l - 1.2 * sat, 0, 1)
+    sc8 = (sc * 255).astype(np.uint8); _, th = cv2.threshold(sc8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    th = cv2.morphologyEx(th, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    n, lab, st, cen = cv2.connectedComponentsWithStats(th)
+    if n <= 1: return None
+    big = max(st[1:, cv2.CC_STAT_AREA])
+    keep = np.zeros_like(th)
+    for k in range(1, n):                                        # the disc (possibly split in two by the bolt)
+        d = math.hypot(cen[k][0] - (ex - x0), cen[k][1] - (ey - y0))
+        if st[k, cv2.CC_STAT_AREA] > 0.15 * big and d < 1.6 * re: keep[lab == k] = 255
+    pts = cv2.findNonZero(keep)
+    if pts is None: return None
+    (cx, cy), r = cv2.minEnclosingCircle(pts)
+    inside = np.zeros_like(th); cv2.circle(inside, (int(cx), int(cy)), int(r * 0.97), 255, -1)
+    bolt = cv2.bitwise_and(inside, cv2.bitwise_not(keep))
+    bolt = cv2.morphologyEx(bolt, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    cs, _ = cv2.findContours(bolt, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    path = None
+    if cs:
+        cmax = max(cs, key=cv2.contourArea)
+        if cv2.contourArea(cmax) > 0.03 * math.pi * r * r:
+            ap = cv2.approxPolyDP(cmax, 1.2, True)[:, 0, :].astype(np.float32)
+            path = ap + np.float32([x0, y0])
+    return dict(cx=cx + x0, cy=cy + y0, r=r, bolt=path)
+
+
+def _ring_arc(cx, cy, R, th0, th1, rng, jit=0.06):
+    n = max(8, int(abs(th1 - th0) / 0.08))
+    ths = np.linspace(th0, th1, n); rr = R * (1 + jit * np.cumsum(rng.normal(0, 0.35, n)) / np.sqrt(n) + rng.normal(0, jit * 0.35, n))
+    rr[0] = rr[-1] = R
+    return np.stack([cx + rr * np.cos(ths), cy + rr * np.sin(ths)], 1).astype(np.float32)
+
+
+def _trace_line(pts, width, glowcol, amp):
+    """A traced line of light: white core, tight gold glow and a wide soft glow."""
+    if len(pts) < 2 or amp <= 0.01: return None
+    c = np.zeros((H, W), np.float32); P = np.int32(np.round(pts * 4))
+    cv2.polylines(c, [P], False, 1.0, max(1, int(width)), cv2.LINE_AA, shift=2)
+    q = 4; g = cv2.resize(c, (W // q, H // q), interpolation=cv2.INTER_AREA)
+    g1 = cv2.resize(cv2.GaussianBlur(g, (0, 0), 2.0), (W, H)); g2 = cv2.resize(cv2.GaussianBlur(g, (0, 0), 9.0), (W, H))
+    return amp * (c[..., None] * np.float32([0.95, 0.98, 1.0]) + g1[..., None] * glowcol * 2.2 + g2[..., None] * glowcol * 1.4)
+
+
+def t_emblemtrace(t, c, A, B, a, b):
+    """The real emblem: the camera locks onto the emblem on his chest (found in the footage and tracked frame to frame)
+    and glides in on it; a spark of light traces its actual ring, then the actual outline of its bolt, lightning
+    snapping off the tracing head; the traced emblem charges -- arcs crawl around the ring, the disc glows -- and on
+    the beat it bursts open: the emblem becomes a window onto the next shot, whose own emblem is locked into the same
+    place, and the camera pushes through as a ring of lightning rides the opening edge out of frame."""
+    S5 = lambda x: x * x * x * (x * (6 * x - 15) + 10)
+    key_ = ('etrace', A, B, round(c, 3))
+    if key_ not in _K4:
+        ref = layer(A, c - 0.30); E = _emblem_shape(ref)
+        if E is None: ex, ey, re = _emblem_low(ref); E = dict(cx=ex, cy=ey, r=re, bolt=None)
+        r = E['r']; P = int(2.4 * r)
+        g0 = cv2.cvtColor(np.clip(ref * 255, 0, 255).astype(np.uint8), cv2.COLOR_BGR2GRAY)
+        x0, y0 = int(max(0, E['cx'] - P)), int(max(0, E['cy'] - P))
+        tpl = g0[y0:int(min(H, E['cy'] + P)), x0:int(min(W, E['cx'] + P))]
+        Bref = layer(B, c + 0.08); EB = _emblem_shape(Bref)
+        if EB is None: bx, by, rb = _emblem_low(Bref); EB = dict(cx=bx, cy=by, r=rb, bolt=None)
+        bolt = E['bolt']
+        if bolt is not None:                                     # resample the bolt outline evenly, start at its top
+            seg = np.vstack([bolt, bolt[:1]]); L = np.r_[0, np.cumsum(np.hypot(*np.diff(seg, axis=0).T))]
+            s_ = np.linspace(0, L[-1], 220); bp = np.stack([np.interp(s_, L, seg[:, 0]), np.interp(s_, L, seg[:, 1])], 1)
+            k0 = int(np.argmin(bp[:, 1])); bolt = np.roll(bp, -k0, 0).astype(np.float32)
+        _K4[key_] = dict(E=E, tpl=tpl, tpos=(x0, y0), EB=EB, bolt=bolt, track={})
+    D = _K4[key_]; E, EB = D['E'], D['EB']
+    if 'fit' not in D:                                           # detect across the window, fit a smooth path
+        ts_, obs = np.arange(a - 0.04, c + 0.06, 2.0 / FPS), []
+        for tt in ts_:
+            e_ = _emblem_shape(layer(A, tt))
+            if e_ is not None: obs.append((tt, e_['cx'], e_['cy'], e_['r']))
+        O = np.array(obs) if obs else np.array([[c, E['cx'], E['cy'], E['r']]])
+        keep = np.abs(O[:, 3] / np.median(O[:, 3]) - 1) < 0.12
+        for _ in range(2):                                       # robust quadratic fits for x, y and r over time
+            if keep.sum() < 4: break
+            fits = [np.polyfit(O[keep, 0] - c, O[keep, q_], 2) for q_ in (1, 2, 3)]
+            res = np.hypot(np.polyval(fits[0], O[:, 0] - c) - O[:, 1], np.polyval(fits[1], O[:, 0] - c) - O[:, 2])
+            keep = keep & (res < max(6.0, 2.5 * np.median(res[keep])))
+        D['fit'] = [np.polyfit(O[keep, 0] - c, O[keep, q_], 2 if keep.sum() >= 4 else 0) for q_ in (1, 2, 3)]
+    ecx, ecy, er = (float(np.polyval(fq, min(max(t, a - 0.04), c + 0.06) - c)) for fq in D['fit'])
+    dx, dy = 0.0, 0.0
+    r = er; Zt = 0.25 * W / r
+    gA = S5(clamp((t - a) / (c - 0.04 - a)))
+    Af0 = layer(A, t)
+    px = min(max(W / 2, W - Zt * (W - ecx) + 2), Zt * ecx - 2)
+    py = min(max(0.50 * H, H - Zt * (H - ecy) + 2), Zt * ecy - 2)
+    v = clamp((t - (c - 0.03)) / (b - c + 0.01)); sv = S5(v)
+    Z = (1 + (Zt - 1) * gA) * (1 + 1.6 * sv)
+    ox, oy = lerp(ecx, px, gA), lerp(ecy, py, gA)
+    M = np.float32([[Z, 0, ox - Z * ecx], [0, Z, oy - Z * ecy]])
+    f = cv2.warpAffine(Af0, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    if sv > 0.01: f = _radial(f, 1.0, 1 + 0.08 * math.sin(math.pi * v), ox, oy, 4)
+    Rr = r * Z / (1 + 1.6 * sv)                                  # the emblem's ring in output coordinates
+    rng = np.random.default_rng(int(t * FPS * 7) % 100000)
+    lay = np.zeros((H, W, 3), np.float32)
+    # 1) trace the ring (clockwise from the top), 2) trace the bolt outline
+    pr = S5(clamp((t - (a + 0.03)) / 0.19)); pb = S5(clamp((t - (a + 0.18)) / 0.17))
+    fade = 1 - ss(c - 0.07, c + 0.01, t)
+    heads = []
+    if pr > 0:
+        ths = np.linspace(-math.pi / 2, -math.pi / 2 + 2 * math.pi * pr, max(3, int(160 * pr)))
+        ring = np.stack([ox + Rr * np.cos(ths), oy + Rr * np.sin(ths)], 1).astype(np.float32)
+        lay = add(lay, _trace_line(ring, 4, GOLD_GLOW, 1.0 * fade))
+        if pr < 1: heads.append(ring[-1])
+    if pb > 0 and D['bolt'] is not None:
+        bp = (D['bolt'] - np.float32([E['cx'], E['cy']])) * (er / E['r']) * Z / (1 + 1.6 * sv) + np.float32([ox, oy])
+        n = max(2, int(len(bp) * pb)); lay = add(lay, _trace_line(bp[:n], 3, GOLD_GLOW, 0.95 * fade))
+        if pb < 1: heads.append(bp[n - 1])
+    segs = []
+    for hx_, hy_ in heads:                                       # sparks and short lightning off the tracing head
+        for j in range(2):
+            a_ = rng.uniform(0, 2 * math.pi); Lb = rng.uniform(0.25, 0.6) * Rr
+            segs.append((bolt_path((hx_, hy_), (hx_ + Lb * math.cos(a_), hy_ + Lb * math.sin(a_)), rng, 4, 0.18), 0.6))
+        lay = lay + np.exp(-((XX - hx_) ** 2 + (YY - hy_) ** 2) / (2 * 14.0 ** 2))[..., None] * np.float32([1, 1, 1]) * 1.4
+    # 3) charge: the traced emblem glows, arcs crawl around the ring
+    ch = ss(a + 0.30, c, t) * fade + 0.0
+    if ch > 0.01:
+        disc = np.exp(-(((XX - ox) ** 2 + (YY - oy) ** 2) / (Rr ** 2)) ** 3)
+        lay = lay + disc[..., None] * np.float32([0.55, 0.80, 1.0]) * 0.35 * ch
+        for j in range(3):
+            t0_ = rng.uniform(0, 2 * math.pi); span = rng.uniform(0.6, 1.5)
+            segs.append((_ring_arc(ox, oy, Rr * 1.06, t0_, t0_ + span, rng), 0.8 * ch))
+    # 4) the burst: the emblem opens as a window onto the next shot (its own emblem locked in place)
+    if t >= c - 0.03:
+        Rc = max(math.hypot(ox - x_, oy - y_) for x_ in (0, W) for y_ in (0, H)) + 40
+        Rw = lerp(Rr, Rc, sv)
+        sB = math.exp(lerp(math.log(Rr / EB['r']), 0.0, sv))       # B's own emblem stays centred in the window
+        pxB, pyB = lerp(ox, EB['cx'], sv), lerp(oy, EB['cy'], sv)
+        tx_, ty_ = pxB - sB * EB['cx'], pyB - sB * EB['cy']
+        MB = np.float32([[sB, 0, tx_], [0, sB, ty_]])
+        Bf = cv2.warpAffine(layer(B, t), MB, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        d = np.sqrt((XX - ox) ** 2 + (YY - oy) ** 2); m = 1 - ss(Rw - 3, Rw + 3, d)
+        f = f * (1 - m[..., None]) + Bf * m[..., None]
+        k = 1 - sv
+        if k > 0.02:
+            lay = lay + (np.exp(-((d - Rw) / 5.0) ** 2)[..., None] * 0.9 + np.exp(-((d - Rw) / 45.0) ** 2)[..., None] * GOLD_GLOW * 0.9) * k
+            for j in range(4):
+                t0_ = rng.uniform(0, 2 * math.pi); segs.append((_ring_arc(ox, oy, Rw, t0_, t0_ + rng.uniform(0.5, 1.2), rng, 0.04), 1.0 * k))
+    if segs: lay = add(lay, draw_bolts(segs, 3.0, amp=1.0))
+    return f + lay + 0.12 * math.exp(-((t - c) / 0.035) ** 2)
+
+
 TRANSITIONS = {
     'cut':       (lambda c, o: (c, c), None),
     'leaf':      (lambda c, o: (c - .15, c + .15), lambda t, c, A, B, o: t_leaf(t, c, A, B, o.get('ang', -38), o.get('seed', 3))),
@@ -7592,6 +7743,7 @@ TRANSITIONS = {
     'strips':    (lambda c, o: (c - .18, c + .22), lambda t, c, A, B, o: t_strips(t, c, A, B, c - .18, c + .22)),
     'emblemlock': (lambda c, o: (c - .30, c + .20), lambda t, c, A, B, o: t_emblemlock(t, c, A, B, c - .30, c + .20)),
     'prismglass': (lambda c, o: (c - .48, c + .20), lambda t, c, A, B, o: t_prismglass(t, c, A, B, c - .48, c + .20)),
+    'emblemtrace': (lambda c, o: (c - .48, c + .20), lambda t, c, A, B, o: t_emblemtrace(t, c, A, B, c - .48, c + .20)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
@@ -7610,7 +7762,7 @@ TRANSITIONS = {
 LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck', 'whiploop', 'memories', 'memories3d', 'memories5', 'memtunnel', 'cortex', 'cortex2')
 
 
-NO_MBLUR = {'futurepaper', 'stutter'}          # transitions that draw their own motion blur (sub-frame averaging would double them)
+NO_MBLUR = {'futurepaper', 'stutter', 'emblemtrace'}          # transitions that draw their own motion blur (sub-frame averaging would double them)
 _NOMB = set()
 
 

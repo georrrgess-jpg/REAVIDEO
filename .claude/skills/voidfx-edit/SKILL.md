@@ -435,6 +435,14 @@ The repeats were replaced with:
 |---|---|---|---|
 | `prismglass` | a faceted glass prism glides in on the silent step, turning, and settles clear of the face; it is a lens -- the next shot's face is framed and refracted inside it (channels dispersed along the glass, three lit facets, ridges, caustic lines), spectral fringes on its edges, a glint running round the perimeter, a soft shadow and a faint rainbow cast on the outgoing shot; on the beat the camera dives into it (smootherstep log-zoom) and the lens framing opens into the full next shot | the last transition before the loop; any calm beat in a prismatic-light edit | 0.48 + 0.20 s |
 
+
+**Flash kit XVII (Remedy v6, 2026-11-16).** The user swapped the prism for "a wonderfully animated, visually appealing
+emblem transition... trace his actual emblem and have lightning effects... smooth and cinematic".
+
+| name | what | use for | length |
+|---|---|---|---|
+| `emblemtrace` | **the real emblem traced:** `_emblem_shape` finds the emblem in the footage (white disc = min enclosing circle of the near-white blobs, the bolt = the largest dark contour inside it); it is detected every 2 frames across the window and a robust quadratic path is fitted to its centre and radius, so the camera lock-on glides (smootherstep zoom until the disc is 25% of the width, kept inside the frame). A spark traces the real ring, then the real bolt outline (resampled from its top), white core + gold glows, lightning snapping off the head; the traced emblem charges (disc glow, arcs hugging the ring); on the beat it bursts into a window onto the next shot whose own emblem is held in the same place and size, then eases out to its framing while lightning rides the opening rim. In `NO_MBLUR` | emblem shot into emblem shot; the outgoing shot must show the whole emblem (use `frame='wide'` and `valid=` to stay clear of hidden source cuts) | 0.48 + 0.20 s |
+
 ## Workflow for a new edit
 
 The user's stored footage is listed in `scenepacks/README.md` (Dexter S1, S2, S4 and mixes; The Flash S1, S2, S3, S5, all seasons, Blitzkrieg; plus a second voidfx reference edit). If `media/scenepacks/` is empty, run `bash scenepacks/fetch.sh [name-filter]` first. Shot lists are already in `scenepacks/catalog/<name>.json`. Choose the pack that matches the character the user asks for, and mix packs of the same show when one pack is too short. Put other inputs (song, new footage) in `media/`, which is gitignored and never committed. Tools need ffmpeg and `pip install numpy scipy opencv-python-headless soundfile`. The face model comes from rea-video's cache, `~/.cache/rea-video/models/face_detection_yunet_2023mar.onnx`. If that file is missing, get it from `https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx`; its sha256 starts with `8f2383e4`.
@@ -488,6 +496,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-16: Remedy v5: the user asked for the 0:17 prism to become an emblem transition that traces his actual emblem with lightning, smooth and cinematic (`emblemtrace`). Lessons: track the real emblem with a fitted smooth path (per-frame detection jitters); check the source for camera cuts the scene detector misses (a cut to a closer angle mid-shot broke the lock).
 - 2026-11-16: Remedy v3 feedback: "still room for improvement... smooth out transitions, animations". Method that worked for a polish pass: measure every frame-to-frame difference and brightness jump in the render, then even out the outliers (exposure-match strobe frames, keep cut flashes at ~0.10 added light, no white blooms), and make dives one eased (smootherstep) camera move that lands on the beat.
 - 2026-11-15: Remedy v2 feedback: "diversify the transitions and make them different instead of the same. I do like the improvements you made." Rule: every transition in an edit is used once (glue included); keep the beat overlays.
 - 2026-11-15: Remedy v1 feedback: "drastically improve... significantly more animations, transitions... keep up with the beat... be creative with the graphics but don't be outlandish"; the flat monitor-wall loop was "underwhelming". Rule: on a beat-driven drop, animate every kick/snare (slabs, emblem pulses), give silent steps their own move, leave no plain cuts, and make the loop the biggest moment.
