@@ -1,6 +1,6 @@
 """Start a new edit from a STANDARD.
 
-  python edit/tools/new_edit.py NAME --song media/song.mp3 --section media/NAME_section.json [--from perfect_girl|still_friends|x_gon|new_person|hold_on|flash] [--pack PACK]
+  python edit/tools/new_edit.py NAME --song media/song.mp3 --section media/NAME_section.json [--from perfect_girl|remedy|still_friends|x_gon|new_person|hold_on|flash] [--pack PACK]
 
 Standards (user-approved):
   perfect_girl  Dexter x The Perfect Girl (Mareux) v11: THE Dexter standard (latest). Default. The user called it
@@ -20,8 +20,16 @@ Standards (user-approved):
               graphic (badge, newspaper, evidence bag, tape, blinds, plastic, crown, red, knife, case file),
               thematic slide-box loop. 16 slots, 3-3-2 rhythm on off-beat kicks.
   hold_on  Dexter x Hold On v3: the earlier Dexter standard (22 slots).
-  still_friends  The Flash x ARE WE STILL FRIENDS? v8: THE speedster / superpower standard (latest; the user
-              called it "adequate": the minimum to beat). 13 slots on a 124 BPM half-time grid, a hush into the
+  remedy   The Flash x Remedy (RJ Pasin) v7: THE speedster / superpower standard (latest; the user called it
+           "adequate": the minimum to beat). Use --from remedy. 16 slots on a 125 BPM beat grid, a hush into an
+           808 drop, built from a reference TikTok: light slabs, collage panels, a title. Every transition used
+           once (prism slabs, triptych collage drop on the 808 stutter, stutter flash-frames, chroma snap, slab,
+           shear, echo whip, anamorphic flare, THE FLASH title matte, light burn, collage, card flip, grey shock,
+           strips, real-emblem trace with lightning), every kick/snare animated (light slabs, real-emblem pulses),
+           the 808's silent steps split the frame (set GAPS for the new song), and the STAR Labs cortex-wall loop
+           (hero lightning strike, surge, every screen flips to the first shot, rush back in).
+  still_friends  The Flash x ARE WE STILL FRIENDS? v8: the previous speedster / superpower standard (the user
+              called it "adequate"). 13 slots on a 124 BPM half-time grid, a hush into the
               drop. Cinematic camera techniques over pasted graphics: a zoom-through into the real chest emblem on
               the drop, the gold trail drawing the bolt, a speed ramp with a whip, the 2024 FLASH MISSING newspaper
               with a camera move to the byline, a lightning iris, and a 3-D flight down a corridor of memories as
@@ -121,6 +129,24 @@ ROLES_STILL_FRIENDS = [
     'short: unmasked look up, daylight (lightning iris out)',
     'END (3 steps): unmasked in the suit, calm (the memory-corridor loop back to OPEN)',
 ]
+ROLES_REMEDY = [
+    'OPEN (the hush, under letterbox): suit walking out, emblem lit (light-slab prism wipe out)',
+    'masked close-up, low-key (the triptych collage slams in on the 808 stutter, bursts open on the drop)',
+    'the drop: suit with lightning/speed streaks, emblem visible (stutter flash-frames out)',
+    'short: action crouch / run with lightning (chroma snap across the silent step)',
+    'short: masked grin close-up (slab sweep out)',
+    'short: suit vibrating with lightning, emblem visible (the silent-step split carried into the shear)',
+    'short: action close-up, eyes (echo whip out)',
+    'short: dark shot with lightning (anamorphic flare into the calm bar)',
+    'CALM BAR (4 steps): warm unmasked moment (THE FLASH title builds over it and dives into the next shot)',
+    'short: fiery lightning shot (light burn out)',
+    'short: masked extreme close-up (collage frame out)',
+    'short: unmasked, daylight (card flip out)',
+    'short: suit in colour, emblem visible (colour drains on the silent step -> grey shockwave)',
+    'short: BLACK-AND-WHITE masked close-up (strips fall as the colour returns)',
+    'short: WIDE suit shot with the WHOLE emblem in frame (real-emblem trace out; frame=wide, check for hidden source cuts)',
+    'END (3 steps): suit with the emblem visible in a lab/tech space (the cortex-wall strike-and-surge loop back to OPEN)',
+]
 ROLES_X_GON = [
     'OPEN: daylight face close-up with an expression change (the opener graphic rises over it on the bass)',
     'short dark beat (hallway, night): hard cut into the first lyric hit',
@@ -164,7 +190,8 @@ TEMPLATES = {'perfect_girl': (os.path.join(ROOT, 'edits', 'perfect_girl', 'confi
              'new_person': (os.path.join(ROOT, 'edits', 'new_person', 'config.py'), ROLES_NEW_PERSON, 'dexter_mix_1440p'),
              'hold_on': (os.path.join(ROOT, 'edits', 'hold_on', 'config.py'), ROLES_HOLD_ON, 'dexter_mix_1440p'),
              'flash': (os.path.join(ROOT, 'edits', 'flash', 'config.py'), ROLES_FLASH, 'flash_all_seasons'),
-             'still_friends': (os.path.join(ROOT, 'edits', 'still_friends', 'config.py'), ROLES_STILL_FRIENDS, 'flash_all_seasons')}
+             'still_friends': (os.path.join(ROOT, 'edits', 'still_friends', 'config.py'), ROLES_STILL_FRIENDS, 'flash_all_seasons'),
+             'remedy': (os.path.join(ROOT, 'edits', 'remedy', 'config.py'), ROLES_REMEDY, 'flash_all_seasons')}
 KEEP = ('beats', 'out', 'out_opts', 'fx', 'punch', 'z', 'cy', 'track', 'frame', 'sat', 'rk', 'yk', 'con', 'tint', 'gain', 'push')
 
 
@@ -176,6 +203,7 @@ def standard_shots(STANDARD):
     try: spec.loader.exec_module(m)
     finally: os.chdir(cwd)
     extra = {k: getattr(m, k) for k in ('MBLUR', 'BUMP', 'BUMP_DECAY', 'LETTERBOX') if hasattr(m, k)}
+    if hasattr(m, 'GAPS'): extra['GAPS'] = []              # song-specific: list this song's silent steps
     return m.SHOTS, m.FIRST_CUT, {k: getattr(m, k) for k in ('KICKS', 'SNARES') if hasattr(m, k)}, extra
 
 

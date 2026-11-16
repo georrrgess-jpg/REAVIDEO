@@ -6955,7 +6955,8 @@ def slabhit_fx(f, t, s):
     return f
 
 
-GAPS = (11, 15, 19, 27, 31, 35)                                  # the 808's silent steps
+import config as _cfg_gaps
+GAPS = tuple(getattr(_cfg_gaps, 'GAPS', ()))                     # config: the 808's silent steps (fx 'gapsplit')
 
 
 def gapsplit_fx(f, t, s):

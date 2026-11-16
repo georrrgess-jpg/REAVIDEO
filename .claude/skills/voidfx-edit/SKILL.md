@@ -1,6 +1,6 @@
 ---
 name: voidfx-edit
-description: The user's preferred editing style for short vertical fan edits ("voidfx" style). The current Dexter STANDARD is "The Perfect Girl" v11 (edits/perfect_girl, approved as adequate); the speedster standard is edits/still_friends (Flash x Are We Still Friends v8). New edits start from a standard with edit/tools/new_edit.py. Use for ANY request to make, remake, recut or restyle an edit, TikTok/Reels/Shorts edit, fan edit, scene-pack edit or music edit, even if the style isn't named. Covers the style rules (beat-grid timing, themed transitions, grade, framing, loop ending, SFX level), the build workflow with the tools in edit/, and the QA checklist.
+description: The user's preferred editing style for short vertical fan edits ("voidfx" style). The current Dexter STANDARD is "The Perfect Girl" v11 (edits/perfect_girl, approved as adequate); the speedster standard is edits/remedy (Flash x Remedy v7, approved as adequate; previous: edits/still_friends). New edits start from a standard with edit/tools/new_edit.py. Use for ANY request to make, remake, recut or restyle an edit, TikTok/Reels/Shorts edit, fan edit, scene-pack edit or music edit, even if the style isn't named. Covers the style rules (beat-grid timing, themed transitions, grade, framing, loop ending, SFX level), the build workflow with the tools in edit/, and the QA checklist.
 ---
 
 # voidfx edit style (the user's default)
@@ -87,7 +87,29 @@ retune grade and gain per shot.
 - Every transition previewed with `render.py sheet` before the final.
 - Avoid what the user rejected (glass light-streak glow, floating slides, water, glass shatter); see the preference log.
 
-**Speedster / superpower standard (user-approved 2026-11-15): `edits/still_friends`.**
+**Speedster / superpower standard (user-approved 2026-11-16): `edits/remedy`.**
+The Flash × "Remedy" (RJ Pasin) v7 (the user's words: "This edit is adequate, make it a standard"). Start new
+powered-character edits with `new_edit.py <name> --song ... --section ... --from remedy`, then fill the 16 slots,
+list the new song's silent steps in `GAPS`, and build an all-new set of transitions for the new song. It is the
+floor, not the target. What makes it the standard; each point is a rule:
+- **A reference edit sets the look, not the shots:** the reference TikTok gave the vocabulary (slabs of light, collage
+  panels, a title); the shots and transitions were new.
+- **Every transition is used once** (glue included): 16 different transitions in 16 cuts (kits XIII-XVII).
+- **Every hit is animated:** light slabs on every kick and snare (top/bottom bands, never the face line), the real
+  chest emblem pulsing on the big hits, and the 808's silent steps given their own move (frame splits, chroma snap,
+  colour drain). Bumps on the big kicks.
+- **Anchored to the real footage:** the emblem trace finds, fits and traces the actual emblem (ring and bolt) with
+  lightning; emblem pulses and the emblem-to-emblem burst use the real emblems.
+- **A graphic into a transition:** THE FLASH title builds over the calm bar and the camera dives through its letters.
+- **The loop is the biggest moment:** the cortex wall (curved, live screens) with a hero lightning strike that sets
+  off a surge flipping every screen to the first shot, then a rush back in.
+- **Smoothness pass before delivery:** measure frame-to-frame jumps and brightness spikes; exposure-match strobes, keep
+  cut flashes small (~0.10), eased (smootherstep) camera moves landing on the beat; check for hidden camera cuts in a
+  source take.
+- **Rhythm:** 125 BPM, 40 beat-steps (19.2 s): a 7-step hush, an 808 stutter on step 7, the drop on step 8, then
+  2-step slots on the 808's 3-on/1-off blocks, a 4-step calm bar for the title, a 3-step end into the loop.
+
+**Previous speedster standard (user-approved 2026-11-15): `edits/still_friends`.**
 The Flash × "ARE WE STILL FRIENDS?" v8 (the user's words: "This edit is adequate, make it a standard"). Like every
 "adequate" standard, it is **the floor, not the target**. Start with `new_edit.py <name> ... --from still_friends`
 (13 slots; carries MBLUR, BUMP, LETTERBOX). What it established, learned over 8 versions (see the preference log):
@@ -496,6 +518,7 @@ To add a new transition: write `t_<name>` in `timeline.py`, register it in `TRAN
 Update this file so the preference sticks. Change the rule and add a dated line to the log below. If a change only applies to one edit, put it in that edit's config instead.
 
 ### Preference log
+- 2026-11-16: "This edit is adequate, make it a standard": The Flash × Remedy v7 is the speedster standard (`--from remedy`), replacing Still Friends. Its arc of feedback: v1 too sparse -> animate every hit; repeats -> every transition once; polish -> measured smoothing pass; the 0:17 prism -> a real-emblem trace with lightning; a hero lightning strike on the loop.
 - 2026-11-16: Remedy v5: the user asked for the 0:17 prism to become an emblem transition that traces his actual emblem with lightning, smooth and cinematic (`emblemtrace`). Lessons: track the real emblem with a fitted smooth path (per-frame detection jitters); check the source for camera cuts the scene detector misses (a cut to a closer angle mid-shot broke the lock).
 - 2026-11-16: Remedy v3 feedback: "still room for improvement... smooth out transitions, animations". Method that worked for a polish pass: measure every frame-to-frame difference and brightness jump in the render, then even out the outliers (exposure-match strobe frames, keep cut flashes at ~0.10 added light, no white blooms), and make dives one eased (smootherstep) camera move that lands on the beat.
 - 2026-11-15: Remedy v2 feedback: "diversify the transitions and make them different instead of the same. I do like the improvements you made." Rule: every transition in an edit is used once (glue included); keep the beat overlays.

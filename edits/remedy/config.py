@@ -31,6 +31,7 @@ onto the next shot with that shot's emblem locked into the same place.
 v7 (user: a really cool lightning bolt with the last transition): the loop gains a hero strike -- a stepped
 leader feels down from above the wall, the return stroke hits the centre screen and sets off the surge, the wall
 lights up, two re-strikes flicker down the same channel (thunder and boom under it).
+User-approved as the speedster standard after v7 ("This edit is adequate, make it a standard"), 2026-11-16.
 Build: bash ../../edit/build.sh .
 """
 W, H, FPS = 1080, 1920, 60
@@ -45,6 +46,7 @@ TAIL = 19.2 - (39 * 0.48 + 0.077)          # exactly 40 steps
 PRE, POST = 0.60, 0.50
 KICKS = [7, 8, 12, 16, 24, 28, 32]
 SNARES = [10, 14, 18, 26, 30, 34]
+GAPS = [11, 15, 19, 27, 31, 35]     # the 808's silent steps (fx 'gapsplit', the chroma snaps and the grey shock sit on them)
 MBLUR = True
 BUMP, BUMP_KICKS, BUMP_DECAY = 0.03, [8, 12, 16, 24, 28, 32], 0.12
 LETTERBOX = dict(h=0.09, open=[(3.70, 3.92)], close=[(18.70, 19.20)])
