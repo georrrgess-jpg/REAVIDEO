@@ -648,6 +648,20 @@ def sfx_for(name, c, o, up):
         put(whoosh(0.45, 300, 1500, q=0.7, peak=0.6), c - 0.48, gain=0.04); put(shimmer(0.35), c - 0.45, gain=0.03)
         put(zap(0.25), c - 0.44, gain=0.03); put(zap(0.20), c - 0.30, gain=0.03); put(crackle(0.30), c - 0.18, gain=0.04)
         put(whoosh(0.20, 400, 5000, peak=0.9), c - 0.16, gain=0.05); put(boom(0.7, 60, 28), c, gain=0.12); put(zap(0.4), c, gain=0.05)
+    elif name == 'eyematch':
+        put(shimmer(0.5), c - 0.30, gain=0.025); put(whoosh(0.45, 1200, 400, q=0.6, peak=0.5), c - 0.30, gain=0.03)
+    elif name == 'eyeportal':
+        put(rewind_whine(0.45), c - 0.55, gain=0.02); put(crackle(0.35), c - 0.40, gain=0.04); put(whoosh(0.30, 200, 5000, peak=0.95), c - 0.30, gain=0.07)
+        put(boom(1.0, 55, 26), c, gain=0.14); put(zap(0.4), c, gain=0.05)
+    elif name == 'flowwhip':
+        put(whoosh(0.34, 500, 5500, q=0.9, peak=0.5), c - 0.17, gain=0.08)
+    elif name == 'boltfollow':
+        put(zap(0.35), c - 0.30, gain=0.06); put(crackle(0.3), c - 0.20, gain=0.04); put(whoosh(0.25, 300, 4000, peak=0.8), c - 0.08, gain=0.05)
+        put(boom(0.5, 70, 32), c, gain=0.09)
+    elif name == 'timestop':
+        put(downer(0.40), c - 0.38, gain=0.03); put(boom(0.7, 60, 28), c, gain=0.12)
+    elif name == 'timerewind':
+        put(rewind_whine(0.80), c - 0.80, gain=0.04); put(whoosh(0.8, 4000, 300, peak=0.4), c - 0.80, gain=0.05); put(shimmer(0.5), c - 0.30, gain=0.03)
     # Dexter kit V (the kill ritual)
     elif name == 'saw':
         put(sawwhine(0.44), c - 0.42, gain=0.05); put(crackle(0.4), c - 0.30, gain=0.03)

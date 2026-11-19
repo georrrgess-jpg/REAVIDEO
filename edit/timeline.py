@@ -7651,6 +7651,221 @@ def t_emblemtrace(t, c, A, B, a, b):
     return f + lay + 0.12 * math.exp(-((t - c) / 0.035) ** 2)
 
 
+# ==== See You Again (test edit, 2026-11-19): eye match, eye portal, motion-matched whip, bolt follow, time-stop,
+# time-rewind loop. Built for edits/see_you_again only; not part of any standard.
+def _glow_eye(img):
+    """The glowing (orange) eye in an extreme close-up: centre and radius of the brightest orange blob."""
+    b, g, r = img[..., 0], img[..., 1], img[..., 2]
+    sc = np.clip(r - 0.6 * b, 0, 1) * np.clip(r + g, 0, 2) * (r > 0.45)
+    sc = cv2.GaussianBlur(sc.astype(np.float32), (0, 0), 6)
+    if sc.max() < 1e-3: return W / 2, 0.4 * H, 0.08 * W
+    thr = sc.max() * 0.45; m = (sc >= thr).astype(np.uint8)
+    n, lab, st, cen = cv2.connectedComponentsWithStats(m)
+    k = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
+    return float(cen[k][0]), float(cen[k][1]), float(max(st[k, cv2.CC_STAT_WIDTH], st[k, cv2.CC_STAT_HEIGHT])) * 0.5
+
+
+def _sya_eye(B, c):
+    key = ('syaeye', B)
+    if key not in _K4:
+        s = SHOTS[B]; best = None
+        for tt in np.linspace(s['start'], s['end'] - 0.02, 12):          # strongest glow in the shot = the iris
+            img = layer(B, tt); ex, ey, er = _glow_eye(img)
+            v = float(img[int(np.clip(ey, 0, H - 1)), int(np.clip(ex, 0, W - 1)), 2])
+            if best is None or v > best[0]: best = (v, ex, ey, er)
+        _K4[key] = best[1:]
+    return _K4[key]
+
+
+def t_eyematch(t, c, A, B, a, b):
+    """Eye to eye: the camera drifts into Iris's eye (face landmarks) while Barry's eye -- the extreme close-up --
+    resolves in exactly the same place through a soft circular dissolve that grows out of her eye."""
+    bx, by, br = _sya_eye(B, c)
+    key = ('syaeyeA', A)
+    if key not in _K4:
+        s = SHOTS[A]; lm = _landmarks(A, int(round((PRE + (c - 0.30) - s['start']) * FPS)))
+        if lm is not None:
+            e0, e1 = lm[0], lm[1]; iod = math.hypot(e1[0] - e0[0], e1[1] - e0[1])
+            e = e0 if abs(e0[0] - W / 2) < abs(e1[0] - W / 2) else e1
+            _K4[key] = (float(e[0]), float(e[1]), 0.16 * iod)
+        else: _K4[key] = (W / 2, 0.38 * H, 0.03 * W)
+    ax, ay, ar = _K4[key]
+    S5 = lambda x: x * x * x * (x * (6 * x - 15) + 10)
+    u = S5(clamp((t - a) / (b - a)))
+    zt = br / ar                                                 # A's eye grows to Barry's eye size
+    zA = math.exp(math.log(zt * 1.35) * u)
+    px, py = lerp(ax, bx, u), lerp(ay, by, u)
+    Af = cv2.warpAffine(layer(A, t), np.float32([[zA, 0, px - zA * ax], [0, zA, py - zA * ay]]), (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    zB = math.exp(math.log(1 / zt) * (1 - u) * 0.35)             # Barry's eye rides on hers, a touch smaller, and settles
+    Bf = cv2.warpAffine(layer(B, t), np.float32([[zB, 0, px - zB * bx], [0, zB, py - zB * by]]), (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    R = lerp(0.6 * br, 1.6 * H, ss(0.40, 1.0, u) ** 1.5)          # the dissolve grows out of the (moving) eye
+    d = np.sqrt((XX - px) ** 2 + (YY - py) ** 2)
+    m = (1 - ss(R * 0.45, R, d)) * ss(0.30, 0.55, u)
+    if zA > 1.6: Af = blur(Af, min(8, (zA - 1.6) * 2))
+    return Af * (1 - m[..., None]) + Bf * m[..., None]
+
+
+def t_eyeportal(t, c, A, B, a, b):
+    """The drop through his eye: the real eye's orange glow swells and lightning veins crawl out from the iris as
+    the camera pushes in; the pupil opens into the next shot, the camera falls through it onto the drop."""
+    ex, ey, er = _sya_eye(A, c)
+    S5 = lambda x: x * x * x * (x * (6 * x - 15) + 10)
+    u = clamp((t - a) / (c - a)); k = ein(u)
+    z = math.exp(math.log(9.0) * k ** 1.4)
+    Af = cv2.warpAffine(layer(A, t), np.float32([[z, 0, W / 2 - z * ex + (ex - W / 2) * (1 - k)], [0, z, 0.45 * H - z * ey + (ey - 0.45 * H) * (1 - k)]]), (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    ox, oy = W / 2 + (ex - W / 2) * (1 - k), 0.45 * H + (ey - 0.45 * H) * (1 - k)
+    R = er * z
+    d = np.sqrt((XX - ox) ** 2 + (YY - oy) ** 2)
+    glow = np.exp(-(d / (R * 1.4)) ** 2) * (0.25 + 0.9 * u)
+    f = Af + glow[..., None] * np.float32([0.10, 0.45, 1.0]) * 0.8
+    if u > 0.15 and t < c + 0.02:                                # lightning veins from the iris
+        rng = np.random.default_rng(int(t * FPS)); segs = []
+        for j in range(7):
+            th = j * 2 * math.pi / 7 + rng.normal(0, 0.25); L = R * (0.8 + 2.5 * u) * rng.uniform(0.6, 1.1)
+            p0 = (ox + R * 0.7 * math.cos(th), oy + R * 0.7 * math.sin(th)); p1 = (ox + (R * 0.7 + L) * math.cos(th), oy + (R * 0.7 + L) * math.sin(th))
+            segs.append((bolt_path(p0, p1, rng, 5, 0.16), 0.7))
+        f = add(f, draw_bolts(segs, 2.5, amp=0.9 * ss(0.15, 0.6, u) * (1 - ss(c - 0.04, c + 0.02, t))))
+    # the pupil opens onto the next shot
+    vB = clamp((t - (c - 0.16)) / (b - c + 0.16)); eB = S5(vB)
+    Rp = lerp(0.35 * R, 1.6 * H, eB ** 1.3) if t >= c - 0.16 else 0
+    zB = lerp(1.45, 1.0, S5(clamp((t - c + 0.16) / (b - c + 0.16))))
+    if Rp > 0:
+        Bf = cv2.warpAffine(layer(B, t), np.float32([[zB, 0, ox - zB * W / 2], [0, zB, oy - zB * 0.45 * H]]), (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        if t > c: Bf = _radial(Bf, 1.0, 1 + 0.12 * (1 - eB), W / 2, 0.45 * H, 4)
+        m = 1 - ss(Rp * 0.85, Rp, d)
+        rim = np.exp(-((d - Rp) / 10.0) ** 2) * (1 - eB)
+        f = f * (1 - m[..., None]) + Bf * m[..., None] + rim[..., None] * np.float32([0.2, 0.6, 1.0]) * 1.2
+    return f + 0.12 * math.exp(-((t - c) / 0.04) ** 2)
+
+
+def _dir_blur(img, ang, k):
+    q = 2; k2 = int(k / q) | 1
+    if k2 < 3: return img
+    ker = np.zeros((k2, k2), np.float32); c0 = k2 // 2
+    for j in range(k2): ker[int(round(c0 + (j - c0) * math.sin(ang))), int(round(c0 + (j - c0) * math.cos(ang)))] = 1
+    ker /= ker.sum()
+    sm = cv2.filter2D(cv2.resize(img, (W // q, H // q), interpolation=cv2.INTER_AREA), -1, ker)
+    return cv2.resize(sm, (W, H), interpolation=cv2.INTER_LINEAR)
+
+
+def t_flowwhip(t, c, A, B, a, b):
+    """Motion carried across the cut: the dominant movement in the last frames of the fight (optical flow) sets the
+    whip's direction; the shot smears away that way and the next shot arrives travelling the same way and settles."""
+    key = ('flow', A, round(c, 3))
+    if key not in _K4:
+        g0 = cv2.cvtColor(np.clip(cv2.resize(layer(A, c - 0.12), (W // 4, H // 4)) * 255, 0, 255).astype(np.uint8), cv2.COLOR_BGR2GRAY)
+        g1 = cv2.cvtColor(np.clip(cv2.resize(layer(A, c - 0.04), (W // 4, H // 4)) * 255, 0, 255).astype(np.uint8), cv2.COLOR_BGR2GRAY)
+        fl = cv2.calcOpticalFlowFarneback(g0, g1, None, 0.5, 3, 21, 3, 5, 1.2, 0)
+        mag = np.hypot(fl[..., 0], fl[..., 1]); w_ = mag > np.percentile(mag, 70)
+        vx, vy = float(fl[..., 0][w_].mean()), float(fl[..., 1][w_].mean())
+        _K4[key] = math.atan2(vy, vx) if math.hypot(vx, vy) > 0.3 else 0.0
+    ang = _K4[key]; dx, dy = math.cos(ang), math.sin(ang)
+    if t < c:
+        u = ein(clamp((t - a) / (c - a))); off = 0.6 * W * u; src = layer(A, t)
+    else:
+        v = clamp((t - c) / (b - c)); u = (1 - eout(v)); off = -0.6 * W * u; src = layer(B, t)
+    f = cv2.warpAffine(src, np.float32([[1, 0, dx * off], [0, 1, dy * off]]), (W, H), borderMode=cv2.BORDER_REFLECT)
+    return _dir_blur(f, ang, 1 + 150 * u) + 0.06 * math.exp(-abs(t - c) * 30)
+
+
+def _arm_bolt(A, c):
+    key = ('armbolt', A, round(c, 3))
+    if key in _K4: return _K4[key]
+    img = layer(A, c - 0.32); b, g, r = img[..., 0], img[..., 1], img[..., 2]
+    m = ((r > 0.75) & (g > 0.45) & (b < 0.6 * r)).astype(np.uint8)
+    pts = cv2.findNonZero(m)
+    if pts is None or len(pts) < 50: line = (1.0, -0.3, W * 0.3, H * 0.6)
+    else: vx, vy, x0, y0 = cv2.fitLine(pts, cv2.DIST_L2, 0, 0.01, 0.01).ravel(); line = (float(vx), float(vy), float(x0), float(y0))
+    vx, vy, x0, y0 = line
+    if vx < 0: vx, vy = -vx, -vy
+    # from the lightning on the arm, through the frame to the far edge
+    ts = []
+    for tt in ((-x0) / vx if abs(vx) > 1e-3 else -1e9, (W - x0) / vx if abs(vx) > 1e-3 else 1e9, (-y0) / vy if abs(vy) > 1e-3 else -1e9, (H - y0) / vy if abs(vy) > 1e-3 else 1e9): ts.append(tt)
+    ts = sorted(ts); t0_, t1_ = ts[1], ts[2]
+    p0 = np.float64([x0 + vx * t0_, y0 + vy * t0_]); p1 = np.float64([x0 + vx * t1_, y0 + vy * t1_])
+    if pts is not None and len(pts) >= 50:                       # start where the real lightning is
+        pp = np.asarray(pts).reshape(-1, 2).astype(np.float64)
+        proj = (pp[:, 0] - x0) * vx + (pp[:, 1] - y0) * vy; s0 = float(np.percentile(proj, 10))
+        p0 = np.float64([x0 + vx * s0, y0 + vy * s0])
+    rng = np.random.default_rng(77)
+    path = bolt_path(p0, p1, rng, 7, 0.10)
+    _K4[key] = (path, np.float64([vx, vy]), p0)
+    return _K4[key]
+
+
+def t_boltfollow(t, c, A, B, a, b):
+    """Follow the bolt: the real lightning on his arm (found by colour, a line fitted through it) leaps off and races
+    across the frame along its own direction; its path becomes a seam, and the frame splits open along it onto the
+    next shot, lightning still crackling on the parted edges."""
+    path, (vx, vy), p0 = _arm_bolt(A, c)
+    nx, ny = -vy, vx
+    S5 = lambda x: x * x * x * (x * (6 * x - 15) + 10)
+    head = clamp((t - a) / (c - 0.06 - a)); hk = 1 - (1 - head) ** 2
+    op = S5(clamp((t - (c - 0.06)) / (b - c + 0.02)))
+    Af = layer(A, t) if op < 0.999 else None
+    Bf = layer(B, t, 1.12 - 0.12 * op)
+    side = (XX - p0[0]) * nx + (YY - p0[1]) * ny                   # signed distance from the bolt line
+    if Af is None: f = Bf
+    else:
+        gap = op * 0.75 * W
+        A1 = cv2.warpAffine(Af, np.float32([[1, 0, -nx * gap], [0, 1, -ny * gap]]), (W, H), borderMode=cv2.BORDER_CONSTANT, borderValue=(-1, -1, -1))
+        A2 = cv2.warpAffine(Af, np.float32([[1, 0, nx * gap], [0, 1, ny * gap]]), (W, H), borderMode=cv2.BORDER_CONSTANT, borderValue=(-1, -1, -1))
+        m1 = (1 - ss(-gap - 1.5, -gap + 1.5, side)) * (A1[..., 0] >= 0); m2 = ss(gap - 1.5, gap + 1.5, side) * (A2[..., 0] >= 0)
+        f = Bf * (1 - m1 - m2)[..., None] + np.clip(A1, 0, None) * m1[..., None] + np.clip(A2, 0, None) * m2[..., None]
+    rng = np.random.default_rng(int(t * FPS))
+    n = max(2, int(len(path) * hk))
+    segs = []
+    amp = 1.0 - ss(c + 0.05, b, t)
+    if op < 0.02:
+        segs.append((path[:n], 1.0))
+        hx_, hy_ = path[n - 1]
+        f = f + np.exp(-((XX - hx_) ** 2 + (YY - hy_) ** 2) / (2 * 22.0 ** 2))[..., None] * 1.3
+    else:
+        gap = op * 0.75 * W
+        for sgn in (-1, 1):
+            q = path + sgn * gap * np.float64([nx, ny])
+            jit = q + rng.normal(0, 4, q.shape); segs.append((jit, 0.8))
+    f = add(f, draw_bolts(segs, 7.0, amp=1.6 * amp))
+    return f
+
+
+def t_timestop(t, c, A, B, a, b):
+    """Through the one silent beat time stops: the frame freezes mid-clash, the colour drains toward cold blue and the
+    camera creeps forward through the stillness; the next shot crashes in on the beat."""
+    if t >= c:
+        v = clamp((t - c) / (b - c)); return layer(B, t, 1.10 - 0.10 * eout(v)) + 0.15 * math.exp(-(t - c) * 25)
+    u = clamp((t - a) / (c - a)); e = eout(clamp(u / 0.25))
+    f = layer(A, a, 1 + 0.06 * ease(u))
+    g = luma(f)[..., None] * np.float32([1.10, 1.0, 0.85])
+    f = f * (1 - 0.75 * e) + g * 0.75 * e
+    return f * (1 - 0.15 * e) + 0.10 * math.exp(-((t - a) / 0.03) ** 2)
+
+
+def t_timerewind(t, A, a, end):
+    """Loop: he runs back in time to see her again -- the picture is swept into a blue Speed Force rewind, every
+    moment of the edit racing past backwards (each shot a smeared, reversed glimpse), slowing as it nears the start,
+    and the blue clears on the first shot."""
+    if t >= end: return layer(0, t - DUR)
+    n = len(SHOTS); u = clamp((t - a) / (end - a))
+    S5 = lambda x: x * x * x * (x * (6 * x - 15) + 10)
+    pos = (n - 1) * S5(u)                                        # where in the edit (shot index) the rewind is
+    k = int(math.floor(pos)); fr = pos - k
+    idx = n - 1 - k; nxt = max(0, idx - 1)
+    def glimpse(i, w):
+        if i == 0 and u > 0.85: return layer(0, t - DUR)
+        if i == n - 1 and u < 0.1: return layer(n - 1, t)
+        s = SHOTS[i]; tt = s['end'] - (s['end'] - s['start']) * w         # sampled backwards within the shot
+        return layer(i, tt)
+    f = glimpse(idx, fr) * (1 - fr) + glimpse(nxt, 0.0) * fr if idx != nxt else glimpse(idx, fr)
+    sp = math.sin(math.pi * u)
+    f = _dir_blur(f, math.pi, 1 + 90 * sp) if sp > 0.05 else f
+    g = luma(f)[..., None]
+    tint = f * (1 - 0.6 * sp) + g * np.float32([1.25, 0.85, 0.45]) * 0.6 * sp
+    r = np.sqrt((XX - W / 2) ** 2 + (YY - 0.45 * H) ** 2) / H
+    streak = np.exp(-((r - (0.2 + 0.8 * ((u * 7) % 1))) / 0.02) ** 2) * 0.25 * sp
+    return tint + streak[..., None] * np.float32([1.0, 0.75, 0.35]) + 0.05 * sp
+
+
 TRANSITIONS = {
     'cut':       (lambda c, o: (c, c), None),
     'leaf':      (lambda c, o: (c - .15, c + .15), lambda t, c, A, B, o: t_leaf(t, c, A, B, o.get('ang', -38), o.get('seed', 3))),
@@ -7778,6 +7993,12 @@ TRANSITIONS = {
     'emblemlock': (lambda c, o: (c - .30, c + .20), lambda t, c, A, B, o: t_emblemlock(t, c, A, B, c - .30, c + .20)),
     'prismglass': (lambda c, o: (c - .48, c + .20), lambda t, c, A, B, o: t_prismglass(t, c, A, B, c - .48, c + .20)),
     'emblemtrace': (lambda c, o: (c - .48, c + .20), lambda t, c, A, B, o: t_emblemtrace(t, c, A, B, c - .48, c + .20)),
+    # See You Again (test edit)
+    'eyematch':  (lambda c, o: (c - .40, c + .30), lambda t, c, A, B, o: t_eyematch(t, c, A, B, c - .40, c + .30)),
+    'eyeportal': (lambda c, o: (c - .55, c + .35), lambda t, c, A, B, o: t_eyeportal(t, c, A, B, c - .55, c + .35)),
+    'flowwhip':  (lambda c, o: (c - .18, c + .18), lambda t, c, A, B, o: t_flowwhip(t, c, A, B, c - .18, c + .18)),
+    'boltfollow': (lambda c, o: (c - .30, c + .30), lambda t, c, A, B, o: t_boltfollow(t, c, A, B, c - .30, c + .30)),
+    'timestop':  (lambda c, o: (c - o.get('hold', .382), c + .20), lambda t, c, A, B, o: t_timestop(t, c, A, B, c - o.get('hold', .382), c + .20)),
     # Dexter kit V (the kill ritual)
     'saw':       (lambda c, o: (c - .42, c + .36), lambda t, c, A, B, o: t_saw(t, c, A, B, c - .42, c + .36)),
     'ziptie':    (lambda c, o: (c - .36, c + .24), lambda t, c, A, B, o: t_ziptie(t, c, A, B, c - .36, c + .24)),
@@ -7793,10 +8014,10 @@ TRANSITIONS = {
 }
 
 
-LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck', 'whiploop', 'memories', 'memories3d', 'memories5', 'memtunnel', 'cortex', 'cortex2')
+LOOPS = ('iris', 'tunnel', 'boltsplit', 'clock', 'rewind', 'slidebox', 'vinyl', 'frost', 'mirror', 'shades', 'breach', 'struck', 'whiploop', 'memories', 'memories3d', 'memories5', 'memtunnel', 'cortex', 'cortex2', 'timerewind')
 
 
-NO_MBLUR = {'futurepaper', 'stutter', 'emblemtrace'}          # transitions that draw their own motion blur (sub-frame averaging would double them)
+NO_MBLUR = {'futurepaper', 'stutter', 'emblemtrace', 'timestop'}          # transitions that draw their own motion blur (sub-frame averaging would double them)
 _NOMB = set()
 
 
@@ -7823,6 +8044,9 @@ def build_trans():
     elif lp == 'slidebox':
         c = CUTS[-1]; a, end = c - 0.85, c + 0.10
         out.append((a, DUR + 1, lambda t: t_slidebox(t, last, a, end)))
+    elif lp == 'timerewind':
+        c = CUTS[-1]; a, end = c - 0.80, c + 0.10
+        out.append((a, DUR + 1, lambda t: t_timerewind(t, last, a, end)))
     elif lp == 'cortex2':
         c = CUTS[-1]; a, end = c - 1.30, c + 0.20
         out.append((a, DUR + 1, lambda t: t_cortex2(t, last, a, end)))
